@@ -56,3 +56,5 @@ jobs:
           name: seoul-realestate-panel
           path: out/*.csv
           retention-days: 30
+
+# (워크플로 등록 재시도)
