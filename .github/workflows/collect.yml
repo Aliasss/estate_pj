@@ -1,0 +1,58 @@
+# 서울 부동산 실거래가 수집 → 집계 → CSV 아티팩트
+# Secrets: MOLIT_SERVICE_KEY
+#
+# 최초 1회는 5년치를 다 받느라 40분~1시간 걸린다. 이후 매월 실행은 최근 3개월만
+# 다시 받으므로 몇 분이면 끝난다. 중단돼도 캐시된 SQLite에서 이어받는다.
+
+name: 서울 실거래가 수집
+
+on:
+  schedule:
+    # 매월 3일 오전 9시 KST (전월 신고분이 어느 정도 쌓인 뒤)
+    - cron: '0 0 3 * *'
+  workflow_dispatch:
+    inputs:
+      refresh_recent:
+        description: '최근 N개월 강제 재수집'
+        default: '3'
+
+env:
+  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      # 수집 결과를 캐시에 남겨 다음 실행에서 이어받는다. restore-keys로 직전 캐시를 끌어온다.
+      - name: SQLite 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: seoul_rt.sqlite
+          key: seoul-rt-${{ github.run_id }}
+          restore-keys: seoul-rt-
+
+      - name: 실거래가 수집
+        run: python collect.py --db seoul_rt.sqlite --refresh-recent ${{ inputs.refresh_recent || 3 }}
+
+      - name: 집계 패널 생성
+        run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
+
+      - name: 집계 CSV 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: seoul-realestate-panel
+          path: out/*.csv
+          retention-days: 30
