@@ -1,8 +1,13 @@
-# 서울 부동산 실거래가 수집 → 집계 → CSV 아티팩트
+# 서울 부동산 실거래가 수집 → 집계 → 리포지토리 커밋 + 릴리스 스냅샷
 # Secrets: MOLIT_SERVICE_KEY
 #
-# 최초 1회는 5년치를 다 받느라 40분~1시간 걸린다. 이후 매월 실행은 최근 3개월만
-# 다시 받으므로 몇 분이면 끝난다. 중단돼도 캐시된 SQLite에서 이어받는다.
+# 데이터가 남는 곳 세 군데:
+#   data/*.csv           집계 패널. 리포지토리에 커밋되어 영구 보존 + 월별 변화 추적
+#   릴리스 data-latest   원본 SQLite(gzip). 만료 없음. 다음 실행이 여기서 이어받는다
+#   아티팩트             집계 CSV. 30일 보관. 웹에서 바로 받을 때 편의용
+#
+# Actions 캐시는 7일 미접근 시 삭제되는데 스케줄은 30일 간격이라 항상 만료된 뒤에
+# 돌게 된다. 그래서 캐시 대신 릴리스 자산을 이어받기 저장소로 쓴다.
 
 name: 서울 실거래가 수집
 
@@ -16,13 +21,22 @@ on:
         description: '최근 N개월 강제 재수집'
         default: '3'
 
+# 동시 실행되면 릴리스 자산과 커밋이 서로 덮어쓴다.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
 env:
   MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SNAPSHOT_TAG: data-latest
 
 jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    permissions:
+      contents: write   # data/ 커밋 + 릴리스 자산 업로드
 
     steps:
       - name: 저장소 체크아웃
@@ -36,19 +50,50 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
-      # 수집 결과를 캐시에 남겨 다음 실행에서 이어받는다. restore-keys로 직전 캐시를 끌어온다.
-      - name: SQLite 캐시 복원
-        uses: actions/cache@v4
-        with:
-          path: seoul_rt.sqlite
-          key: seoul-rt-${{ github.run_id }}
-          restore-keys: seoul-rt-
+      # 이전 실행이 남긴 원본을 받아온다. 없으면(최초 실행) 빈 상태로 시작한다.
+      - name: 직전 스냅샷 복원
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber; then
+            gunzip -f seoul_rt.sqlite.gz
+            python -c "import sqlite3;c=sqlite3.connect('seoul_rt.sqlite');print('복원됨:', c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0], '건');c.close()"
+          else
+            echo "이전 스냅샷 없음. 5년치를 처음부터 수집합니다 (40분~1시간)."
+          fi
 
       - name: 실거래가 수집
+        id: collect
+        continue-on-error: true
         run: python collect.py --db seoul_rt.sqlite --refresh-recent ${{ inputs.refresh_recent || 3 }}
+
+      # 수집이 중간에 깨져도 받은 만큼은 보존해야 다음 실행이 이어받는다.
+      - name: 원본 스냅샷 발행
+        if: always() && hashFiles('seoul_rt.sqlite') != ''
+        run: |
+          # WAL을 본체에 합쳐야 파일 하나로 온전해진다.
+          python -c "import sqlite3;c=sqlite3.connect('seoul_rt.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
+          gzip -kf seoul_rt.sqlite
+          ls -lh seoul_rt.sqlite.gz
+          gh release view "$SNAPSHOT_TAG" >/dev/null 2>&1 || \
+            gh release create "$SNAPSHOT_TAG" --title "실거래가 원본 스냅샷" \
+              --notes "국토교통부 실거래가 원본 SQLite. 매 수집 실행마다 갱신된다. gunzip 후 sqlite3로 열면 된다."
+          gh release upload "$SNAPSHOT_TAG" seoul_rt.sqlite.gz --clobber
 
       - name: 집계 패널 생성
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
+
+      - name: 집계 CSV 커밋
+        run: |
+          mkdir -p data
+          cp out/*.csv data/
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --staged --quiet; then
+            echo "집계 결과에 변화 없음. 커밋 생략."
+          else
+            git commit -m "데이터 갱신 $(TZ=Asia/Seoul date +%Y-%m-%d)"
+            git push
+          fi
 
       - name: 집계 CSV 업로드
         uses: actions/upload-artifact@v4
@@ -57,4 +102,10 @@ jobs:
           path: out/*.csv
           retention-days: 30
 
-# (워크플로 등록 재시도)
+      # 수집 단계 실패를 삼키지 않는다. 스냅샷은 이미 위에서 보존됐다.
+      - name: 수집 실패 여부 확인
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo "수집 단계가 실패했습니다. 위 로그에서 원인을 확인하세요."
+          echo "받은 구간은 스냅샷에 남았으므로 재실행하면 이어받습니다."
+          exit 1

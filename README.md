@@ -86,7 +86,7 @@ python aggregate.py --db seoul_rt.sqlite --csv-dir ./out
 
 CSV는 UTF-8 BOM으로 나가므로 Excel에서 바로 열리고 Google Sheets 임포트도 깨지지 않는다.
 
-## 4. 어디에 두나
+## 4. 데이터가 어디에 남나
 
 **원본은 SQLite 파일 하나가 종착지다.** 150~200만 행에 인덱스까지 합쳐 1GB 안팎이라 외부 DB로
 옮길 이유가 없고, 물건 단위 분석(전세가율, 담보여력, 같은 단지 매매-전세 페어링)은 SQLite에서
@@ -97,12 +97,37 @@ sqlite3 seoul_rt.sqlite
 sqlite> SELECT * FROM deals WHERE sgg_nm='강남구' AND ym='2026-06' LIMIT 5;
 ```
 
-**집계 패널은 CSV로 내보내 스프레드시트에 올린다.** `out/*.csv`를 그대로 임포트하면 된다.
-`monthly_panel` 6,000행 × 15열 = 9만 셀로 Google Sheets 1,000만 셀 한도에 한참 못 미친다.
-CSV는 UTF-8 BOM으로 나가므로 Excel에서 바로 열리고 Sheets 임포트도 한글이 깨지지 않는다.
+**집계 패널은 CSV로 내보내 스프레드시트에 올린다.** `monthly_panel` 6,000행 × 15열 = 9만 셀로
+Google Sheets 1,000만 셀 한도에 한참 못 미친다. CSV는 UTF-8 BOM으로 나가므로 Excel에서 바로
+열리고 Sheets 임포트도 한글이 깨지지 않는다.
 
 원본 150만~200만 행은 Excel 시트당 104만 행 한도에도, Sheets 셀 한도에도 안 들어가므로
 스프레드시트에 올리지 말 것.
+
+### Actions로 돌릴 때
+
+러너 디스크는 잡이 끝나면 파기되므로 결과를 세 군데로 빼놓는다.
+
+| 위치 | 내용 | 보존 |
+|---|---|---|
+| `data/*.csv` | 집계 패널 3종 | 리포지토리에 커밋. 영구 + 월별 변화가 git 히스토리에 남는다 |
+| 릴리스 `data-latest` | 원본 SQLite (gzip, 300MB 안팎) | 만료 없음. 다음 실행이 여기서 이어받는다 |
+| 아티팩트 | 집계 패널 3종 | 30일. 웹에서 바로 받을 때 편의용 |
+
+Actions 캐시를 안 쓰는 이유: 캐시는 **7일 미접근 시 삭제**되는데 스케줄은 30일 간격이라 항상
+만료된 뒤에 돌게 된다. 그러면 매달 5년치를 처음부터 다시 받는다. 릴리스 자산은 만료가 없어서
+`--refresh-recent 3`이 의도대로 동작한다.
+
+수집이 중간에 깨져도 받은 만큼은 릴리스에 올라가므로, 재실행하면 이어받는다.
+
+원본을 로컬로 가져오려면:
+
+```bash
+gh release download data-latest --repo Aliasss/estate_pj
+gunzip seoul_rt.sqlite.gz
+```
+
+`data/*.csv`는 Google Sheets에서 `IMPORTDATA`로 raw URL을 직접 물려도 된다.
 
 ## 데이터 함정
 
