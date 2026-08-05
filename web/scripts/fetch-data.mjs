@@ -1,0 +1,111 @@
+// 빌드 시점에 데이터를 public/data로 굽는다.
+//
+// 티어 1: 리포지토리에 커밋된 data/*.csv -> tier1.json (앱 번들에 실려 오프라인 동작)
+// 티어 2: data-latest 릴리스의 units.tar.gz -> public/data/units/ (구 선택 시 지연 로딩)
+//
+// 티어 2를 릴리스에서 받는 이유는 10MB급 파일을 매달 커밋하면 리포지토리가 그만큼씩
+// 불어나기 때문이다. 로컬 개발 중이라면 build_units.py가 만든 ../units를 그냥 복사한다.
+
+import { createWriteStream } from 'node:fs'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import path from 'node:path'
+import { pipeline } from 'node:stream/promises'
+import { Readable } from 'node:stream'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+
+const run = promisify(execFile)
+const here = path.dirname(fileURLToPath(import.meta.url))
+const repo = path.resolve(here, '../..')
+const outDir = path.resolve(here, '../public/data')
+
+const UNITS_URL =
+  'https://github.com/Aliasss/estate_pj/releases/download/data-latest/units.tar.gz'
+
+/** 쉼표를 품은 따옴표 필드까지 처리하는 최소 CSV 파서. */
+function parseCsv(text) {
+  const rows = []
+  let row = [], field = '', quoted = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ } else quoted = false
+      } else field += c
+    } else if (c === '"') quoted = true
+    else if (c === ',') { row.push(field); field = '' }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else if (c !== '\r') field += c
+  }
+  if (field || row.length) { row.push(field); rows.push(row) }
+  return rows.filter((r) => r.some((v) => v !== ''))
+}
+
+const num = (v) => (v === '' || v == null ? null : Number(v))
+
+async function loadCsv(name, numeric) {
+  const raw = await readFile(path.join(repo, 'data', name), 'utf8')
+  const [head, ...rows] = parseCsv(raw.replace(/^﻿/, ''))
+  return rows.map((r) =>
+    Object.fromEntries(head.map((h, i) => [h, numeric.has(h) ? num(r[i]) : r[i]]))
+  )
+}
+
+async function buildTier1() {
+  const panel = await loadCsv('monthly_panel.csv', new Set([
+    'n_deals', 'n_cancelled', 'n_jeonse', 'n_wolse', 'n_new', 'n_renew',
+    'median_amount_manwon', 'median_price_per_pyeong', 'avg_area_m2', 'avg_build_year',
+  ]))
+  const ratio = await loadCsv('jeonse_ratio.csv', new Set([
+    'n_sale', 'n_jeonse', 'median_sale_manwon', 'median_jeonse_manwon',
+    'median_sale_ppp', 'median_jeonse_ppp', 'jeonse_ratio_amount', 'jeonse_ratio_ppp',
+  ]))
+  const coverage = await loadCsv('monthly_coverage.csv', new Set(['n_deals', 'n_gu']))
+
+  const months = [...new Set(panel.map((r) => r.ym))].sort()
+  // 마지막 2개월은 30일 신고 기한 때문에 계속 채워진다. 잠정 구간으로 표시한다.
+  const provisional = months.slice(-2)
+
+  const gu = [...new Map(panel.map((r) => [r.lawd_cd, r.sgg_nm])).entries()]
+    .map(([lawd_cd, sgg_nm]) => ({ lawd_cd, sgg_nm }))
+    .sort((a, b) => a.sgg_nm.localeCompare(b.sgg_nm, 'ko'))
+
+  await mkdir(outDir, { recursive: true })
+  await writeFile(
+    path.join(outDir, 'tier1.json'),
+    JSON.stringify({ months, provisional, gu, panel, ratio, coverage })
+  )
+  const bytes = (await readFile(path.join(outDir, 'tier1.json'))).length
+  console.log(`tier1.json  ${months.length}개월 · ${gu.length}개 구 · ${(bytes / 1e6).toFixed(2)}MB`)
+}
+
+async function buildTier2() {
+  const dest = path.join(outDir, 'units')
+  await rm(dest, { recursive: true, force: true })
+  await mkdir(dest, { recursive: true })
+
+  const local = path.join(repo, 'units')
+  if (existsSync(path.join(local, 'index.json'))) {
+    await cp(local, dest, { recursive: true })
+    console.log('units/     로컬 ../units 사용')
+    return
+  }
+
+  const res = await fetch(UNITS_URL)
+  if (!res.ok) {
+    // 데이터 없이도 빌드는 통과시키되, 앱이 티어 2 화면을 감추도록 빈 인덱스를 남긴다.
+    console.warn(`units/     릴리스를 받지 못했습니다 (HTTP ${res.status}). 티어 2 없이 빌드합니다.`)
+    await writeFile(path.join(dest, 'index.json'), JSON.stringify({ gu: [] }))
+    return
+  }
+  const tgz = path.join(outDir, 'units.tar.gz')
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(tgz))
+  await run('tar', ['-xzf', tgz, '-C', dest])
+  await rm(tgz)
+  console.log('units/     릴리스에서 내려받음')
+}
+
+await buildTier1()
+await buildTier2()

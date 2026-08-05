@@ -81,6 +81,15 @@ jobs:
       - name: 집계 패널 생성
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
 
+      # 물건 단위 패널은 10MB급이라 커밋하면 리포지토리가 매달 그만큼 불어난다.
+      # 릴리스 자산으로 올리고 Vercel 빌드가 받아 정적 파일로 굽는다.
+      - name: 물건 단위 패널 발행
+        run: |
+          python build_units.py --db seoul_rt.sqlite --out units
+          tar -czf units.tar.gz -C units .
+          ls -lh units.tar.gz
+          gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
+
       - name: 집계 CSV 커밋
         run: |
           mkdir -p data

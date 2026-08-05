@@ -4,4 +4,7 @@
 out/
 __pycache__/
 .env
-web/data/units/
+units/
+web/public/data/
+web/node_modules/
+web/dist/

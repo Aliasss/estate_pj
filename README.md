@@ -156,3 +156,39 @@ gunzip seoul_rt.sqlite.gz
 | `collect.py` | API 수집 → SQLite |
 | `aggregate.py` | 원본 → 집계 패널 + CSV |
 | `lawd_codes.py` | 서울 25개 자치구 법정동코드 |
+
+## 웹앱 (PWA)
+
+`web/`에 Vite + React PWA가 있다. 설치형이고 오프라인에서 동작한다 — 이 데이터를 실제로
+꺼내 보는 순간은 책상이 아니라 집을 보러 간 현장이기 때문이다.
+
+```bash
+cd web
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # dist/
+```
+
+`npm run build`는 먼저 `scripts/fetch-data.mjs`를 돌려 데이터를 `public/data`로 굽는다.
+
+| 티어 | 출처 | 크기 | 로딩 |
+|---|---|---|---|
+| 1 | 커밋된 `data/*.csv` → `tier1.json` | 2.6MB (gzip 249KB) | 프리캐시. 오프라인 동작의 기반 |
+| 2 | `data-latest` 릴리스의 `units.tar.gz` | 구당 gzip 112KB | 구를 열었을 때만 받고 캐시 |
+
+티어 2를 릴리스로 돌리는 이유는 10MB급 파일을 매달 커밋하면 리포지토리가 그만큼씩 불어나기
+때문이다. 로컬에서 `build_units.py`로 `../units`를 만들어 뒀다면 그쪽을 그대로 쓴다.
+
+### Vercel 배포
+
+프로젝트를 만들 때 **Root Directory를 `web`으로** 지정한다. 나머지는 자동으로 잡힌다
+(프레임워크 Vite, 빌드 `npm run build`, 출력 `dist`). 매월 수집 워크플로가 `data/`를
+커밋하면 Vercel이 그 푸시를 받아 자동 재배포한다.
+
+### 차트 규칙
+
+- 축이 다른 지표는 차트를 나눈다. 이중 축은 쓰지 않는다.
+- 계열이 둘 이상이면 범례를 두고 선 끝에 직접 라벨을 붙인다. 색만으로 식별시키지 않는다.
+- 평단가 계열은 `jeonse_ratio`에서 가져온다. `monthly_panel`의 '전월세'에는 월세 보증금이
+  섞여 있어 전세가율 차트와 숫자가 어긋난다.
+- 마지막 두 달은 회색 음영 + '잠정' 표기. 신고 지연 구간을 시장 변화로 오독하면 안 된다.

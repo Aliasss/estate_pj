@@ -1,0 +1,133 @@
+/* 색은 역할로만 참조한다. 라이트/다크 값이 한 곳에서 바뀌도록. */
+:root {
+  color-scheme: light;
+  --surface-0: #f6f5f2;
+  --surface-1: #fcfcfb;
+  --border: #e2e1dc;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7c7a74;
+  --series-1: #2a78d6;   /* 매매 */
+  --series-2: #eb6834;   /* 전세 */
+  --grid: #ebeae6;
+  --critical: #d03b3b;
+  --warning: #fab219;
+  --good: #0ca30c;
+  --bar: #2a78d6;
+  --bar-track: #eceae5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #34342f;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e84;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --grid: #2a2a26;
+    --bar: #3987e5;
+    --bar-track: #26261f;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --border: #34342f;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e84;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --grid: #2a2a26;
+  --bar: #3987e5;
+  --bar-track: #26261f;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard',
+        'Noto Sans KR', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+
+header h1 { font-size: 19px; margin: 4px 0 2px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 16px 0; align-items: center;
+}
+.seg { display: inline-flex; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--text-secondary);
+  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+  min-height: 32px;
+}
+.seg button[aria-pressed='true'] { background: var(--series-1); color: #fff; }
+select {
+  font: inherit; font-size: 13px; padding: 7px 10px; min-height: 36px;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px 14px 10px; margin-bottom: 14px;
+}
+.card h2 { font-size: 14px; margin: 0 0 2px; letter-spacing: -0.01em; }
+.card .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin: 0 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; }
+
+figure { margin: 0; }
+svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+.axis { fill: var(--text-muted); font-size: 10px; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px;
+  padding: 7px 9px; font-size: 12px; color: var(--text-primary);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16); white-space: nowrap;
+}
+.tip b { font-weight: 600; }
+.tip .row { display: flex; justify-content: space-between; gap: 12px; }
+.plot { position: relative; }
+
+.rank { display: grid; gap: 3px; }
+.rank-row {
+  display: grid; grid-template-columns: 62px 1fr 52px; align-items: center;
+  gap: 8px; padding: 3px 4px; border-radius: 7px; cursor: pointer;
+}
+.rank-row:hover, .rank-row:focus-visible { background: var(--surface-0); outline: none; }
+.rank-row[aria-current='true'] { background: var(--surface-0); }
+.rank-name { font-size: 12px; color: var(--text-secondary); }
+.rank-row[aria-current='true'] .rank-name { color: var(--text-primary); font-weight: 600; }
+.rank-val { font-size: 12px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+.track { display: block; background: var(--bar-track); border-radius: 4px; height: 12px; overflow: hidden; }
+/* 인라인 span은 높이가 먹지 않는다. 데이터 끝만 둥글게 해 기준선에 붙인다. */
+.fill { display: block; background: var(--bar); height: 100%; min-width: 3px; border-radius: 0 4px 4px 0; }
+
+.note {
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+  border-top: 1px solid var(--border); padding-top: 12px; margin-top: 20px;
+}
+.note strong { color: var(--text-secondary); font-weight: 600; }
+
+table.data { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+table.data th, table.data td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data th { color: var(--text-muted); font-weight: 500; }
+details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 6px 0; }
+.scroll-x { overflow-x: auto; }
