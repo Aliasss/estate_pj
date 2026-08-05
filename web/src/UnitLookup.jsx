@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -120,10 +120,13 @@ function UnitCard({ u, onClose }) {
   )
 }
 
+const PAGE = 80
+
 export default function UnitLookup({ lawdCd, guName, housing }) {
   const [state, setState] = useState({ status: 'idle' })
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(null)
+  const [limit, setLimit] = useState(PAGE)
 
   useEffect(() => {
     setSel(null)
@@ -148,13 +151,28 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
       ? typed.filter((r) => r.name?.includes(needle) || r.umd?.includes(needle) || r.jibun?.includes(needle))
       : typed
     // 검색 전에는 위험한 것부터. 매매 사례가 없는 쪽이 먼저 온다.
-    const out = [...rows]
-      .sort((a, b) => (needle
-        ? (b.n_jeonse_24m ?? 0) - (a.n_jeonse_24m ?? 0)
-        : riskScore(b) - riskScore(a)))
-      .slice(0, 60)
+    const out = [...rows].sort((a, b) => (needle
+      ? (b.n_jeonse_24m ?? 0) - (a.n_jeonse_24m ?? 0)
+      : riskScore(b) - riskScore(a)))
     return Object.assign(out, { total: typed.length })
   }, [state, q, housing])
+
+  // 조건이 바뀌면 다시 처음부터 보여준다
+  useEffect(() => { setLimit(PAGE) }, [q, housing, lawdCd])
+
+  // 목록 끝이 보이면 다음 묶음을 이어 붙인다. 전량은 이미 메모리에 있으므로
+  // 네트워크 요청 없이 DOM 노드만 늘어난다.
+  const sentinel = useRef(null)
+  useEffect(() => {
+    const node = sentinel.current
+    if (!node || limit >= list.length) return
+    const io = new IntersectionObserver(
+      (entries) => entries[0].isIntersecting && setLimit((n) => n + PAGE),
+      { rootMargin: '400px' }
+    )
+    io.observe(node)
+    return () => io.disconnect()
+  }, [limit, list.length])
 
   if (state.status === 'error') {
     return (
@@ -192,7 +210,7 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
             </p>
           )}
           <ul className="unit-list">
-            {list.map((u) => (
+            {list.slice(0, limit).map((u) => (
               <li key={u.id}>
                 <button onClick={() => setSel(u)}>
                   <span className="u-name">{u.name || '(이름 없음)'}</span>
@@ -210,7 +228,19 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
             ))}
           </ul>
           {!list.length && <p className="muted-line">검색 결과가 없습니다.</p>}
-          {list.length === 60 && <p className="muted-line">상위 60개만 표시했습니다. 검색어를 좁혀 보세요.</p>}
+          {limit < list.length && (
+            <>
+              <div ref={sentinel} aria-hidden="true" />
+              <button className="more" onClick={() => setLimit((n) => n + PAGE)}>
+                더 보기 ({list.length - limit}개 남음)
+              </button>
+            </>
+          )}
+          {list.length > 0 && (
+            <p className="muted-line">
+              {list.length.toLocaleString()}개 중 {Math.min(limit, list.length).toLocaleString()}개 표시
+            </p>
+          )}
         </>
       )}
     </section>
