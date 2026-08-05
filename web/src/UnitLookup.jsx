@@ -133,24 +133,27 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
       .then((d) => {
         const idx = Object.fromEntries(d.cols.map((c, i) => [c, i]))
         const rows = d.rows.map((r) => Object.fromEntries(d.cols.map((c, i) => [c, r[i]])))
-        setState({ status: 'ready', rows, window: d.window, idx })
+        setState({ status: 'ready', rows, window: d.window, hasHt: d.cols.includes('ht') })
       })
       .catch((e) => setState({ status: 'error', message: e.message }))
   }, [lawdCd])
 
   const list = useMemo(() => {
-    if (state.status !== 'ready') return []
+    if (state.status !== 'ready') return Object.assign([], { total: 0 })
     const needle = q.trim()
-    const typed = state.rows.filter((r) => r.ht === (housing === '아파트' ? 'A' : 'R'))
+    // ht 없이 만들어진 예전 스냅샷이 배포에 실려도 빈 목록이 되지 않게 한다
+    const wantHt = housing === '아파트' ? 'A' : 'R'
+    const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
     const rows = needle
       ? typed.filter((r) => r.name?.includes(needle) || r.umd?.includes(needle) || r.jibun?.includes(needle))
       : typed
     // 검색 전에는 위험한 것부터. 매매 사례가 없는 쪽이 먼저 온다.
-    return [...rows]
+    const out = [...rows]
       .sort((a, b) => (needle
         ? (b.n_jeonse_24m ?? 0) - (a.n_jeonse_24m ?? 0)
         : riskScore(b) - riskScore(a)))
       .slice(0, 60)
+    return Object.assign(out, { total: typed.length })
   }, [state, q, housing])
 
   if (state.status === 'error') {
@@ -171,9 +174,7 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
       <h2>{guName} 물건 조회</h2>
       <p className="sub">
         {housing} · 건물명·법정동·지번으로 검색. 최근 2년 전세 계약이 있는 물건만 있습니다
-        {state.status === 'ready'
-          ? ` (${state.rows.filter((r) => r.ht === (housing === '아파트' ? 'A' : 'R')).length.toLocaleString()}개)`
-          : ''}
+        {state.status === 'ready' ? ` (${list.total.toLocaleString()}개)` : ''}
       </p>
       <input className="search" type="search" value={q} placeholder="예: 화곡동, 우성테마빌"
              onChange={(e) => setQ(e.target.value)} aria-label="물건 검색" />
