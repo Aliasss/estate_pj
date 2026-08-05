@@ -155,7 +155,7 @@ def build(conn: sqlite3.Connection, out_dir: str) -> None:
     med_b = {k: median(v) for k, v in umd_sale_b.items() if len(v) >= MIN_COMPS}
     med_bm = {k: median(v) for k, v in umd_sale_bm.items() if len(v) >= MIN_COMPS}
 
-    COLS = ["id", "name", "umd", "jibun", "area", "build_year",
+    COLS = ["id", "ht", "name", "umd", "jibun", "area", "build_year",
             "n_sale_24m", "n_sale_all", "med_sale", "direct_share",
             "n_jeonse_24m", "n_wolse_24m", "med_jeonse",
             "ratio", "stage", "n_comps", "ratio_prev", "renew_hike"]
@@ -193,6 +193,7 @@ def build(conn: sqlite3.Connection, out_dir: str) -> None:
         hike = hikes.get(key)
         by_gu[lawd].append([
             unit_id(key),
+            "A" if ht == "아파트" else "R",
             names[key].most_common(1)[0][0] if names[key] else "",
             umd, info["jibun"],
             round(info["area"], 2) if info["area"] else None,

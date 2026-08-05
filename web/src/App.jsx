@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LineChart, RankBars } from './charts.jsx'
+import UnitLookup from './UnitLookup.jsx'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -12,6 +13,7 @@ export default function App() {
   const [err, setErr] = useState(null)
   const [housing, setHousing] = useState('연립다세대')
   const [gu, setGu] = useState('11500')       // 강서구
+  const [tab, setTab] = useState('market')
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/tier1.json`)
@@ -100,6 +102,14 @@ export default function App() {
         </select>
       </div>
 
+      <div className="seg tabs" role="tablist" aria-label="화면">
+        <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>자치구 흐름</button>
+        <button role="tab" aria-pressed={tab === 'unit'} onClick={() => setTab('unit')}>물건 조회</button>
+      </div>
+
+      {tab === 'unit' && <UnitLookup lawdCd={gu} guName={view.guName} housing={housing} />}
+
+      {tab === 'market' && <>
       <section className="card">
         <h2>자치구별 전세가율 — {housing}</h2>
         <p className="sub">최근 12개월({view.lastSolid} 기준) 중위값. 전세 보증금 ÷ 매매가, 평단가 기준. 눌러서 선택</p>
@@ -150,6 +160,7 @@ export default function App() {
           </div>
         </details>
       </section>
+      </>}
 
       <p className="note">
         <strong>읽는 법.</strong> 평단가는 <strong>전용면적</strong> 기준이라 공급면적으로 표시하는
