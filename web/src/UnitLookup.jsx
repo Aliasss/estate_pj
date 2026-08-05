@@ -122,11 +122,32 @@ function UnitCard({ u, onClose }) {
 
 const PAGE = 80
 
+/**
+ * 필터. 목록을 훑는 것보다 조건으로 좁히는 게 실제 쓰임에 가깝다
+ * ("우리 동네에서 매매 사례 없는 빌라").
+ */
+const FILTERS = [
+  { key: 'confirmed', label: '확인된 깡통',
+    hint: '그 건물 매매 3건 이상 기준으로 보증금이 매매가를 넘음',
+    test: (u) => u.stage === 'A' && u.n_sale_24m >= 3 && u.ratio >= 1 },
+  { key: 'high', label: '전세가율 90%↑',
+    hint: '근거 단계와 무관하게 90% 이상',
+    test: (u) => u.ratio >= 0.9 },
+  { key: 'nosale', label: '매매 0건',
+    hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치 검증 불가',
+    test: (u) => !u.n_sale_24m },
+  { key: 'reverse', label: '역전세',
+    hint: '갱신 계약에서 보증금이 5% 이상 내려감',
+    test: (u) => u.renew_hike != null && u.renew_hike <= -0.05 },
+]
+
 export default function UnitLookup({ lawdCd, guName, housing }) {
   const [state, setState] = useState({ status: 'idle' })
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(null)
   const [limit, setLimit] = useState(PAGE)
+  const [active, setActive] = useState([])   // 켜진 필터 키
+  const [umd, setUmd] = useState('')         // 법정동
 
   useEffect(() => {
     setSel(null)
@@ -147,18 +168,21 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
     // ht 없이 만들어진 예전 스냅샷이 배포에 실려도 빈 목록이 되지 않게 한다
     const wantHt = housing === '아파트' ? 'A' : 'R'
     const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
-    const rows = needle
-      ? typed.filter((r) => r.name?.includes(needle) || r.umd?.includes(needle) || r.jibun?.includes(needle))
-      : typed
+    const tests = FILTERS.filter((f) => active.includes(f.key)).map((f) => f.test)
+    const rows = typed.filter((r) =>
+      (!umd || r.umd === umd) &&
+      tests.every((t) => t(r)) &&
+      (!needle || r.name?.includes(needle) || r.umd?.includes(needle) || r.jibun?.includes(needle)))
     // 검색 전에는 위험한 것부터. 매매 사례가 없는 쪽이 먼저 온다.
     const out = [...rows].sort((a, b) => (needle
       ? (b.n_jeonse_24m ?? 0) - (a.n_jeonse_24m ?? 0)
       : riskScore(b) - riskScore(a)))
     return Object.assign(out, { total: typed.length })
-  }, [state, q, housing])
+  }, [state, q, housing, active, umd])
 
   // 조건이 바뀌면 다시 처음부터 보여준다
-  useEffect(() => { setLimit(PAGE) }, [q, housing, lawdCd])
+  useEffect(() => { setLimit(PAGE) }, [q, housing, lawdCd, active, umd])
+  useEffect(() => { setActive([]); setUmd('') }, [lawdCd])
 
   // 목록 끝이 보이면 다음 묶음을 이어 붙인다. 전량은 이미 메모리에 있으므로
   // 네트워크 요청 없이 DOM 노드만 늘어난다.
@@ -173,6 +197,21 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
     io.observe(node)
     return () => io.disconnect()
   }, [limit, list.length])
+
+  const facets = useMemo(() => {
+    if (state.status !== 'ready') return { umds: [], counts: {} }
+    const wantHt = housing === '아파트' ? 'A' : 'R'
+    const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
+    const scoped = umd ? typed.filter((r) => r.umd === umd) : typed
+    return {
+      umds: [...new Set(typed.map((r) => r.umd))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko')),
+      counts: Object.fromEntries(FILTERS.map((f) => [f.key, scoped.filter(f.test).length])),
+    }
+  }, [state, housing, umd])
+
+  const toggle = useCallback((key) => {
+    setActive((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]))
+  }, [])
 
   if (state.status === 'error') {
     return (
@@ -196,6 +235,26 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
       </p>
       <input className="search" type="search" value={q} placeholder="예: 화곡동, 우성테마빌"
              onChange={(e) => setQ(e.target.value)} aria-label="물건 검색" />
+
+      {state.status === 'ready' && (
+        <div className="filters">
+          <select value={umd} onChange={(e) => setUmd(e.target.value)} aria-label="법정동">
+            <option value="">법정동 전체</option>
+            {facets.umds.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          {FILTERS.map((f) => (
+            <button key={f.key} className="chip" title={f.hint}
+                    aria-pressed={active.includes(f.key)}
+                    disabled={!facets.counts[f.key] && !active.includes(f.key)}
+                    onClick={() => toggle(f.key)}>
+              {f.label}<span className="n">{facets.counts[f.key]?.toLocaleString() ?? 0}</span>
+            </button>
+          ))}
+          {(active.length > 0 || umd) && (
+            <button className="chip clear" onClick={() => { setActive([]); setUmd('') }}>초기화</button>
+          )}
+        </div>
+      )}
 
       {state.status === 'loading' && <p className="muted-line">불러오는 중…</p>}
 
@@ -227,7 +286,12 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
               </li>
             ))}
           </ul>
-          {!list.length && <p className="muted-line">검색 결과가 없습니다.</p>}
+          {!list.length && (
+            <p className="muted-line">
+              조건에 맞는 물건이 없습니다.
+              {(active.length > 0 || umd) && ' 필터를 줄여 보세요.'}
+            </p>
+          )}
           {limit < list.length && (
             <>
               <div ref={sentinel} aria-hidden="true" />
