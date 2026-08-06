@@ -4,8 +4,8 @@
 # 개발계정 일일 한도가 보통 1만 건이라 서울 전체 98,575건은 한 번에 못 받는다.
 # --max-calls로 하루치만 받고 bldg_log에 남겨, 다음 실행이 이어받는다.
 #
-# 실측 건당 3초가 넘어서 순차로는 9,000건이 job 타임아웃(330분)을 넘긴다.
-# --workers로 동시에 받는다. 게이트웨이가 조이는 낌새가 보이면 낮출 것.
+# 이 API는 초당 한도가 있다. 워커 6개로 풀었더니 1.1초에 25건이 나가서 429를 맞았다.
+# 속도는 --rate가 잡고 --workers는 응답 대기를 겹치기만 한다. 429를 맞으면 스스로 느려진다.
 
 name: 건축물대장 수집
 
@@ -19,8 +19,11 @@ on:
         description: '이번 실행 최대 호출 수'
         default: '9000'
       workers:
-        description: '동시 호출 수. 게이트웨이가 조이면 낮춘다'
-        default: '6'
+        description: '동시 호출 수. 응답 대기를 겹치는 용도'
+        default: '3'
+      rate:
+        description: '초당 호출 수 상한. 429가 계속되면 낮춘다'
+        default: '2'
       probe:
         description: '진단 모드 — 지번 하나만 호출하고 원 응답 출력'
         type: boolean
@@ -76,7 +79,7 @@ jobs:
         run: |
           python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite \
             --lawd "${{ inputs.lawd }}" --max-calls ${{ inputs.max_calls || 9000 }} \
-            --workers ${{ inputs.workers || 6 }} \
+            --workers ${{ inputs.workers || 3 }} --rate ${{ inputs.rate || 2 }} \
             ${{ inputs.probe && '--probe' || '' }}
 
       # 한도에 걸려 중간에 끊겨도 받은 만큼은 보존해야 다음 실행이 이어받는다.

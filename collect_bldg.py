@@ -160,6 +160,52 @@ SECRET_RE = re.compile(r"(serviceKey=)[^&\s'\")]*")
 MAX_CONSECUTIVE_FAILURES = 25
 
 
+class Throttle:
+    """전역 호출 간격. 워커 수와 무관하게 초당 호출 수를 묶는다.
+
+    이 API는 초당 한도가 있고 넘기면 429를 돌려준다. 워커 6개로 풀어 놨더니
+    1.1초에 25건이 나가서 26번째부터 전부 429였다. 병렬로 빨리 받는 게 아니라
+    일정한 속도로 오래 받아야 하는 API다.
+
+    한도가 문서에 없어서 실측으로 찾아간다. 429를 맞으면 간격을 두 배로 늘리고,
+    성공이 쌓이면 조금씩 되돌린다.
+    """
+
+    def __init__(self, rate: float, ceil: float = 8.0):
+        self.interval = 1.0 / rate
+        self.floor = self.interval        # 처음 지정한 속도보다 빨라지지는 않는다
+        self.ceil = ceil
+        self.lock = threading.Lock()
+        self.next_at = 0.0
+        self.ok_streak = 0
+
+    def wait(self) -> None:
+        with self.lock:
+            start = max(time.monotonic(), self.next_at)
+            self.next_at = start + self.interval
+        delay = start - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+
+    def penalize(self, retry_after: float | None = None) -> float:
+        """429를 맞았다. 간격을 늘리고, 큐에 밀린 호출까지 한동안 멈춘다."""
+        with self.lock:
+            self.interval = min(self.ceil, self.interval * 2)
+            self.next_at = time.monotonic() + (retry_after or self.interval * 5)
+            self.ok_streak = 0
+            return self.interval
+
+    def reward(self) -> float | None:
+        """오래 조용하면 조금 조여 본다. 되돌린 값을 반환(변화 없으면 None)."""
+        with self.lock:
+            self.ok_streak += 1
+            if self.ok_streak < 300 or self.interval <= self.floor:
+                return None
+            self.interval = max(self.floor, self.interval * 0.8)
+            self.ok_streak = 0
+            return self.interval
+
+
 def describe(exc: BaseException, limit: int = 240) -> str:
     """예외 한 줄 요약.
 
@@ -195,7 +241,8 @@ def read_response(text: str) -> tuple[str, str, list[dict]]:
 
 
 def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list[int],
-          *, max_retries: int = 2, timeout: int = 15) -> list[dict]:
+          throttle: Throttle | None = None, *, max_retries: int = 4,
+          timeout: int = 15) -> list[dict]:
     lawd, bjdong, plat_gb, bun, ji, _ = target
     params = {
         "serviceKey": key, "sigunguCd": lawd, "bjdongCd": bjdong,
@@ -207,7 +254,14 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
         # 엔드포인트가 하나 죽어 있으면 다음 것으로 넘어간다
         url = ENDPOINTS[endpoint_idx[0] % len(ENDPOINTS)]
         try:
+            if throttle:
+                throttle.wait()
             res = session.get(url, params=params, timeout=timeout)
+            # 429는 내 잘못이다. 물러섰다가 다시 시도한다.
+            if res.status_code == 429 and throttle:
+                after = res.headers.get("Retry-After")
+                throttle.penalize(float(after) if after and after.isdigit() else None)
+                raise RuntimeError("429 Too Many Requests")
             # raise_for_status를 먼저 하면 403 본문에 담긴 오류 코드를 못 읽는다
             code, msg, items = read_response(res.text)
             if code in FATAL_CODES:
@@ -227,23 +281,22 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
 
 
 def results(plan: list[tuple], key: str, endpoint_idx: list[int],
-            workers: int, sleep: float):
+            workers: int, throttle: Throttle):
     """(target, items, exc)를 계획 순서대로 낸다.
 
     DB 쓰기는 호출부(메인 스레드) 한 곳에 모아 둔다. sqlite 연결을 여러 스레드가
     나눠 쓰면 깨지고, 순서가 뒤섞이면 진행 로그도 읽을 수 없게 된다.
 
-    병렬이 필요한 이유는 이 API가 건당 3초 넘게 걸리기 때문이다. 서울 전체 98,575건을
-    순차로 받으면 하루 한도(9,000건)에 닿기도 전에 job 타임아웃(330분)에 먼저 걸린다.
+    워커는 응답 대기(건당 0.5초쯤)를 겹치는 용도일 뿐이고, 실제 속도는 throttle이
+    잡는다. 워커만 늘리면 초당 20건이 나가서 429를 맞는다 — 실제로 그랬다.
     """
     if workers <= 1:
         session = requests.Session()
         for target in plan:
             try:
-                yield target, fetch(session, key, target, endpoint_idx), None
+                yield target, fetch(session, key, target, endpoint_idx, throttle), None
             except Exception as exc:
                 yield target, None, exc
-            time.sleep(sleep)
         return
 
     local = threading.local()
@@ -252,7 +305,7 @@ def results(plan: list[tuple], key: str, endpoint_idx: list[int],
         if not hasattr(local, "session"):
             local.session = requests.Session()   # 세션은 스레드마다 따로 둔다
         try:
-            return target, fetch(local.session, key, target, endpoint_idx), None
+            return target, fetch(local.session, key, target, endpoint_idx, throttle), None
         except Exception as exc:
             return target, None, exc
 
@@ -289,9 +342,10 @@ def main() -> int:
     parser.add_argument("--rt-db", default="seoul_rt.sqlite", help="실거래가 DB (조회 대상 추출용)")
     parser.add_argument("--db", default="bldg.sqlite")
     parser.add_argument("--lawd", default="", help="자치구 코드 제한 (쉼표 구분)")
-    parser.add_argument("--sleep", type=float, default=0.1, help="순차 모드에서만 쓰는 호출 간격")
-    parser.add_argument("--workers", type=int, default=6,
-                        help="동시 호출 수. 1이면 순차. 게이트웨이가 조이면 낮춘다")
+    parser.add_argument("--rate", type=float, default=2.0,
+                        help="초당 호출 수 상한. 429를 맞으면 여기서 더 느려진다")
+    parser.add_argument("--workers", type=int, default=3,
+                        help="동시 호출 수. 응답 대기를 겹치는 용도일 뿐 속도는 --rate가 잡는다")
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 한도 보호용")
     parser.add_argument("--retry-errors", action="store_true", help="이전에 실패한 지번도 다시 시도")
     parser.add_argument("--probe", action="store_true",
@@ -359,10 +413,11 @@ def main() -> int:
     calls = inserted = empty = errors = streak = 0
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
-    print(f"워커 {args.workers}개로 시작", flush=True)
+    throttle = Throttle(args.rate)
+    print(f"워커 {args.workers}개 · 초당 {args.rate}건 상한으로 시작", flush=True)
 
     try:
-        for target, items, exc in results(plan, key, endpoint_idx, args.workers, args.sleep):
+        for target, items, exc in results(plan, key, endpoint_idx, args.workers, throttle):
             calls += 1
             gu = SEOUL_LAWD_CODES.get(target[0], target[0])
             if isinstance(exc, FatalApiError):
@@ -383,11 +438,14 @@ def main() -> int:
                 if streak >= MAX_CONSECUTIVE_FAILURES:
                     print(f"\n{streak}건 연속 실패로 중단합니다. 마지막 오류:\n  {detail}",
                           file=sys.stderr)
-                    print("접속 자체가 막힌 상태로 보입니다. --probe로 한 건만 쏴서 "
-                          "응답이 오는지 먼저 확인하세요.", file=sys.stderr)
+                    print("429가 계속되면 --rate를 낮추세요. 접속 자체가 안 되는 것 같으면 "
+                          "--probe로 한 건만 쏴서 응답이 오는지 확인하세요.", file=sys.stderr)
                     break
                 continue
             streak = 0
+            eased = throttle.reward()
+            if eased:
+                print(f"  조용해서 간격을 {eased:.2f}초로 되돌립니다", flush=True)
 
             fetched_at = now()
             rows = [to_row(it, target, fetched_at) for it in items]
