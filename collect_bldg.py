@@ -26,8 +26,10 @@ import random
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from xml.etree import ElementTree
 
@@ -203,6 +205,43 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
     raise RuntimeError(f"{max_retries}회 실패: {last}")
 
 
+def results(plan: list[tuple], key: str, endpoint_idx: list[int],
+            workers: int, sleep: float):
+    """(target, items, exc)를 계획 순서대로 낸다.
+
+    DB 쓰기는 호출부(메인 스레드) 한 곳에 모아 둔다. sqlite 연결을 여러 스레드가
+    나눠 쓰면 깨지고, 순서가 뒤섞이면 진행 로그도 읽을 수 없게 된다.
+
+    병렬이 필요한 이유는 이 API가 건당 3초 넘게 걸리기 때문이다. 서울 전체 98,575건을
+    순차로 받으면 하루 한도(9,000건)에 닿기도 전에 job 타임아웃(330분)에 먼저 걸린다.
+    """
+    if workers <= 1:
+        session = requests.Session()
+        for target in plan:
+            try:
+                yield target, fetch(session, key, target, endpoint_idx), None
+            except Exception as exc:
+                yield target, None, exc
+            time.sleep(sleep)
+        return
+
+    local = threading.local()
+
+    def one(target: tuple):
+        if not hasattr(local, "session"):
+            local.session = requests.Session()   # 세션은 스레드마다 따로 둔다
+        try:
+            return target, fetch(local.session, key, target, endpoint_idx), None
+        except Exception as exc:
+            return target, None, exc
+
+    # 통째로 map에 넘기면 계획 전체가 한 번에 큐로 들어간다. 묶음 단위로 흘린다.
+    chunk = workers * 8
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i in range(0, len(plan), chunk):
+            yield from pool.map(one, plan[i:i + chunk])
+
+
 def to_row(item: dict, target: tuple, fetched_at: str) -> tuple:
     lawd, bjdong, plat_gb, bun, ji, umd = target
     park = sum(_to_int(item.get(k)) or 0 for k in
@@ -229,7 +268,9 @@ def main() -> int:
     parser.add_argument("--rt-db", default="seoul_rt.sqlite", help="실거래가 DB (조회 대상 추출용)")
     parser.add_argument("--db", default="bldg.sqlite")
     parser.add_argument("--lawd", default="", help="자치구 코드 제한 (쉼표 구분)")
-    parser.add_argument("--sleep", type=float, default=0.1)
+    parser.add_argument("--sleep", type=float, default=0.1, help="순차 모드에서만 쓰는 호출 간격")
+    parser.add_argument("--workers", type=int, default=6,
+                        help="동시 호출 수. 1이면 순차. 게이트웨이가 조이면 낮춘다")
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 한도 보호용")
     parser.add_argument("--retry-errors", action="store_true", help="이전에 실패한 지번도 다시 시도")
     parser.add_argument("--probe", action="store_true",
@@ -288,33 +329,32 @@ def main() -> int:
     if not plan:
         print("모두 수집 완료된 상태입니다.")
         return 0
+    if args.max_calls and len(plan) > args.max_calls:
+        # 미리 잘라 두면 루프 안에서 중단 조건을 볼 필요가 없다
+        print(f"--max-calls({args.max_calls:,})만큼만 받습니다. 나머지는 다음 실행이 이어받습니다.")
+        plan = plan[:args.max_calls]
 
-    session = requests.Session()
     endpoint_idx = [0]
     calls = inserted = empty = errors = 0
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+    print(f"워커 {args.workers}개로 시작", flush=True)
 
     try:
-        for i, target in enumerate(plan, start=1):
-            if args.max_calls and calls >= args.max_calls:
-                print(f"--max-calls({args.max_calls}) 도달. 재실행하면 이어서 받습니다.")
-                break
+        for target, items, exc in results(plan, key, endpoint_idx, args.workers, args.sleep):
+            calls += 1
             gu = SEOUL_LAWD_CODES.get(target[0], target[0])
-            try:
-                items = fetch(session, key, target, endpoint_idx)
-            except FatalApiError as exc:
+            if isinstance(exc, FatalApiError):
                 print(f"치명적 오류로 중단: {exc}", file=sys.stderr)
                 print("공공데이터포털에서 '국토교통부_건축물대장정보 서비스'(건축HUB) "
                       "활용신청이 되어 있는지 확인하세요.", file=sys.stderr)
                 conn.commit()
                 return 1
-            except Exception as exc:
+            if exc is not None:
                 errors += 1
                 conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
                              (*target[:5], 0, "error", str(exc)[:300], now()))
                 conn.commit()
-                calls += 1
                 if errors <= 5 or errors % 25 == 0:
                     print(f"  실패 {errors}: {gu} {target[3]}-{target[4]} — {str(exc)[:160]}", flush=True)
                 continue
@@ -328,16 +368,14 @@ def main() -> int:
                 empty += 1
             conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
                          (*target[:5], len(rows), "ok" if rows else "empty", None, fetched_at))
-            calls += 1
             # 초반 20건은 매건, 이후 25건마다. 건당 속도와 실패율이 바로 보여야
             # 느린 것인지 재시도로 헛도는 것인지 실행 중에 판단할 수 있다.
             if calls <= 20 or calls % 25 == 0:
                 conn.commit()
                 per = (time.monotonic() - started) / calls
-                print(f"[{i}/{len(plan)}] {gu} {target[5]} {target[3]}-{target[4]} "
+                print(f"[{calls}/{len(plan)}] {gu} {target[5]} {target[3]}-{target[4]} "
                       f"{len(rows)}동 | 누적 {inserted:,}동 "
                       f"빈{empty:,} 실패{errors:,} | 건당 {per:.2f}초", flush=True)
-            time.sleep(args.sleep)
     except KeyboardInterrupt:
         print("\n중단됨. 재실행하면 이어서 받습니다.")
     finally:
