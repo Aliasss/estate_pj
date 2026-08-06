@@ -151,6 +151,27 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     return sorted(set(rows))
 
 
+# 인증키는 쿼리스트링에 실려 나가고, requests/urllib3 예외 메시지는 URL을 통째로
+# 담는다. 그대로 로그에 찍으면 키가 샌다 (첫 실행에서 실제로 13자가 노출됐다).
+SECRET_RE = re.compile(r"(serviceKey=)[^&\s'\")]*")
+
+# 연속 실패가 이만큼 쌓이면 접속 자체가 막힌 것으로 보고 중단한다. 없으면 100%
+# 실패 상태로 5시간을 돌다 타임아웃한다 — 실제로 한 시간을 그렇게 버렸다.
+MAX_CONSECUTIVE_FAILURES = 25
+
+
+def describe(exc: BaseException, limit: int = 240) -> str:
+    """예외 한 줄 요약.
+
+    urllib3 메시지는 URL이 앞에 오고 진짜 원인('Caused by ConnectTimeoutError…')이
+    맨 끝에 온다. 앞만 잘라 쓰면 원인을 영영 못 본다. 양끝을 남긴다.
+    """
+    text = SECRET_RE.sub(r"\1***", str(exc)).replace("\n", " ")
+    if len(text) > limit:
+        text = f"{text[:70]} … {text[-(limit - 73):]}"
+    return f"{type(exc).__name__}: {text}"
+
+
 def read_response(text: str) -> tuple[str, str, list[dict]]:
     """(코드, 메시지, items). 게이트웨이 오류는 JSON으로도 오므로 둘 다 읽는다.
 
@@ -202,7 +223,7 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
             if attempt == 0 and len(ENDPOINTS) > 1:
                 endpoint_idx[0] += 1     # 첫 실패에서 엔드포인트를 바꿔 본다
             time.sleep(min(1.5**attempt, 4) + random.uniform(0, 0.3))
-    raise RuntimeError(f"{max_retries}회 실패: {last}")
+    raise RuntimeError(f"{max_retries}회 실패: {describe(last)}")
 
 
 def results(plan: list[tuple], key: str, endpoint_idx: list[int],
@@ -311,7 +332,7 @@ def main() -> int:
                 print(f"HTTP {res.status_code} · {len(res.content):,}바이트")
                 print(res.text[:1200])
             except Exception as exc:
-                print(f"요청 실패: {type(exc).__name__}: {exc}")
+                print(f"요청 실패: {describe(exc, limit=600)}")
             print()
         return 0
 
@@ -335,7 +356,7 @@ def main() -> int:
         plan = plan[:args.max_calls]
 
     endpoint_idx = [0]
-    calls = inserted = empty = errors = 0
+    calls = inserted = empty = errors = streak = 0
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     print(f"워커 {args.workers}개로 시작", flush=True)
@@ -352,12 +373,21 @@ def main() -> int:
                 return 1
             if exc is not None:
                 errors += 1
+                streak += 1
+                detail = describe(exc)
                 conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
-                             (*target[:5], 0, "error", str(exc)[:300], now()))
+                             (*target[:5], 0, "error", detail[:300], now()))
                 conn.commit()
                 if errors <= 5 or errors % 25 == 0:
-                    print(f"  실패 {errors}: {gu} {target[3]}-{target[4]} — {str(exc)[:160]}", flush=True)
+                    print(f"  실패 {errors}: {gu} {target[3]}-{target[4]} — {detail}", flush=True)
+                if streak >= MAX_CONSECUTIVE_FAILURES:
+                    print(f"\n{streak}건 연속 실패로 중단합니다. 마지막 오류:\n  {detail}",
+                          file=sys.stderr)
+                    print("접속 자체가 막힌 상태로 보입니다. --probe로 한 건만 쏴서 "
+                          "응답이 오는지 먼저 확인하세요.", file=sys.stderr)
+                    break
                 continue
+            streak = 0
 
             fetched_at = now()
             rows = [to_row(it, target, fetched_at) for it in items]
@@ -392,6 +422,10 @@ def main() -> int:
         ):
             print(f"  {strct}: {n:,}")
     conn.close()
+    # 한 건도 못 받았는데 성공으로 끝내면 다음 실행이 같은 실패를 반복한다
+    if calls and not inserted:
+        print("한 건도 적재하지 못했습니다.", file=sys.stderr)
+        return 1
     return 0
 
 
