@@ -155,9 +155,10 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
 # 담는다. 그대로 로그에 찍으면 키가 샌다 (첫 실행에서 실제로 13자가 노출됐다).
 SECRET_RE = re.compile(r"(serviceKey=)[^&\s'\")]*")
 
-# 연속 실패가 이만큼 쌓이면 접속 자체가 막힌 것으로 보고 중단한다. 없으면 100%
-# 실패 상태로 5시간을 돌다 타임아웃한다 — 실제로 한 시간을 그렇게 버렸다.
-MAX_CONSECUTIVE_FAILURES = 25
+# 연속 실패가 이만큼 쌓이면 중단한다. 없으면 100% 실패 상태로 5시간을 돌다
+# 타임아웃한다 — 실제로 한 시간을 그렇게 버렸다. 시작 전 preflight가 한 건을
+# 먼저 확인하므로 여기까지 오는 경우는 도중에 차단당한 때뿐이다.
+MAX_CONSECUTIVE_FAILURES = 15
 
 
 class Throttle:
@@ -272,12 +273,34 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
             return items
         except FatalApiError:
             raise
+        except requests.exceptions.ConnectionError as exc:
+            # 접속 자체가 안 되는 상태에서 네 번 더 두드려 봐야 15초씩 버릴 뿐이다.
+            # 한도를 넘겨 차단당하면 429가 아니라 이 모양으로 온다.
+            last = exc
+            if attempt >= 1:
+                break
+            time.sleep(1)
         except Exception as exc:
             last = exc
             if attempt == 0 and len(ENDPOINTS) > 1:
                 endpoint_idx[0] += 1     # 첫 실패에서 엔드포인트를 바꿔 본다
             time.sleep(min(1.5**attempt, 4) + random.uniform(0, 0.3))
     raise RuntimeError(f"{max_retries}회 실패: {describe(last)}")
+
+
+def preflight(key: str, target: tuple, endpoint_idx: list[int]) -> str | None:
+    """본 수집 전에 한 건만 쏴 본다. 막혀 있으면 오류 설명을, 되면 None을 낸다.
+
+    한도를 넘겨 차단당한 상태에서 그냥 시작하면 25건을 10분에 걸쳐 버린 뒤에야
+    멈춘다. 실제로 그렇게 한 번 버렸다. 15초 만에 알 수 있는 일이다.
+    """
+    try:
+        fetch(requests.Session(), key, target, endpoint_idx, max_retries=1, timeout=20)
+        return None
+    except FatalApiError:
+        raise
+    except Exception as exc:
+        return describe(exc)
 
 
 def results(plan: list[tuple], key: str, endpoint_idx: list[int],
@@ -342,9 +365,9 @@ def main() -> int:
     parser.add_argument("--rt-db", default="seoul_rt.sqlite", help="실거래가 DB (조회 대상 추출용)")
     parser.add_argument("--db", default="bldg.sqlite")
     parser.add_argument("--lawd", default="", help="자치구 코드 제한 (쉼표 구분)")
-    parser.add_argument("--rate", type=float, default=2.0,
+    parser.add_argument("--rate", type=float, default=1.0,
                         help="초당 호출 수 상한. 429를 맞으면 여기서 더 느려진다")
-    parser.add_argument("--workers", type=int, default=3,
+    parser.add_argument("--workers", type=int, default=2,
                         help="동시 호출 수. 응답 대기를 겹치는 용도일 뿐 속도는 --rate가 잡는다")
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 한도 보호용")
     parser.add_argument("--retry-errors", action="store_true", help="이전에 실패한 지번도 다시 시도")
@@ -413,8 +436,15 @@ def main() -> int:
     calls = inserted = empty = errors = streak = 0
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+    blocked = preflight(key, plan[0], endpoint_idx)
+    if blocked:
+        print(f"사전 확인 실패 — 지금은 접속이 안 됩니다:\n  {blocked}", file=sys.stderr)
+        print("한도를 넘기면 한동안 차단됩니다(실측 38분 이상). 시간을 두고 재실행하세요.",
+              file=sys.stderr)
+        conn.close()
+        return 1
     throttle = Throttle(args.rate)
-    print(f"워커 {args.workers}개 · 초당 {args.rate}건 상한으로 시작", flush=True)
+    print(f"사전 확인 통과. 워커 {args.workers}개 · 초당 {args.rate}건 상한으로 시작", flush=True)
 
     try:
         for target, items, exc in results(plan, key, endpoint_idx, args.workers, throttle):
