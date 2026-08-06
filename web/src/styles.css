@@ -230,3 +230,12 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .cond label:focus-within { border-color: var(--series-1); }
 .cond em { font-style: normal; font-size: 13px; color: var(--text-muted); }
 .cond select { appearance: none; }
+
+.gu-picker { margin: 0 0 10px; }
+.gu-picker > summary {
+  font-size: 13px; color: var(--text-secondary); padding: 8px 10px; min-height: 36px;
+  background: var(--surface-0); border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; list-style-position: inside;
+}
+.gu-picker > summary:hover, .gu-picker > summary:focus-visible { color: var(--text-primary); outline: none; }
+.gu-picker[open] > summary { margin-bottom: 8px; }

@@ -68,8 +68,8 @@ export default function Finder({ guNames }) {
   const [needSale, setNeedSale] = useState(false)
   const [sort, setSort] = useState('safe')
   const [limit, setLimit] = useState(PAGE)
-  const [sel, setSel] = useState(null)
-  const [selErr, setSelErr] = useState(null)
+  // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
+  const [open, setOpen] = useState(null)
 
   const cap = budget === '' ? null : Math.round(Number(budget) * 10000)
   const minArea = minPy === '' ? null : Number(minPy) * PYEONG
@@ -113,10 +113,11 @@ export default function Finder({ guNames }) {
 
   // 상세는 구 파일에서 행 번호로 꺼낸다. 한 번 받은 구는 다시 받지 않는다.
   const cache = useRef(new Map())
-  const open = useCallback(async (idx) => {
+  const toggle = useCallback(async (idx, key) => {
+    if (open?.key === key) return setOpen(null)      // 다시 누르면 접는다
     const { col, d } = fin
     const lawd = d.gus[col.g[idx]]
-    setSelErr(null)
+    setOpen({ key, loading: true })
     try {
       if (!cache.current.has(lawd)) {
         const r = await fetch(`${import.meta.env.BASE_URL}data/units/${lawd}.json`)
@@ -125,11 +126,13 @@ export default function Finder({ guNames }) {
       }
       const g = cache.current.get(lawd)
       const row = g.rows[col.i[idx]]
-      setSel({ ...Object.fromEntries(g.cols.map((c, k) => [c, row[k]])), gu: guNames[lawd] })
+      const u = Object.fromEntries(g.cols.map((c, k) => [c, row[k]]))
+      // 그 사이 다른 줄을 눌렀으면 늦게 온 응답으로 덮어쓰지 않는다
+      setOpen((cur) => (cur?.key === key ? { key, u } : cur))
     } catch (e) {
-      setSelErr(e.message)
+      setOpen((cur) => (cur?.key === key ? { key, error: e.message } : cur))
     }
-  }, [fin, guNames])
+  }, [fin, open])
 
   const toggleGu = (lawd) =>
     setGus((cur) => (cur.includes(lawd) ? cur.filter((g) => g !== lawd) : [...cur, lawd]))
@@ -187,15 +190,23 @@ export default function Finder({ guNames }) {
         </label>
       </div>
 
-      <div className="filters" role="group" aria-label="자치구">
-        {d.gus.map((lawd) => (
-          <button key={lawd} className="chip" aria-pressed={gus.includes(lawd)}
-                  onClick={() => toggleGu(lawd)}>{guNames[lawd] ?? lawd}</button>
-        ))}
-        {gus.length > 0 && (
-          <button className="chip clear" onClick={() => setGus([])}>자치구 전체</button>
-        )}
-      </div>
+      {/* 칩 25개를 펼쳐 두면 390px 화면에서 결과가 여섯 줄 아래로 밀린다 */}
+      <details className="gu-picker">
+        <summary>
+          지역 — {gus.length === 0 ? '서울 전체'
+            : gus.length <= 3 ? gus.map((g) => guNames[g] ?? g).join(', ')
+            : `${guNames[gus[0]] ?? gus[0]} 외 ${gus.length - 1}곳`}
+        </summary>
+        <div className="filters" role="group" aria-label="자치구">
+          {d.gus.map((lawd) => (
+            <button key={lawd} className="chip" aria-pressed={gus.includes(lawd)}
+                    onClick={() => toggleGu(lawd)}>{guNames[lawd] ?? lawd}</button>
+          ))}
+          {gus.length > 0 && (
+            <button className="chip clear" onClick={() => setGus([])}>서울 전체</button>
+          )}
+        </div>
+      </details>
 
       <div className="filters">
         <button className="chip" aria-pressed={needSale} onClick={() => setNeedSale((v) => !v)}
@@ -212,13 +223,12 @@ export default function Finder({ guNames }) {
         {sort === 'safe' && ' · 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저, 그다음이 전세가율 여유 순입니다'}
       </p>
 
-      {selErr && <p className="muted-line critical">상세를 불러오지 못했습니다 ({selErr})</p>}
-      {sel && <UnitCard u={sel} onClose={() => setSel(null)} />}
-
       <ul className="unit-list">
-        {hits.slice(0, limit).map((i) => (
-          <li key={`${col.g[i]}-${col.i[i]}`}>
-            <button onClick={() => open(i)}>
+        {hits.slice(0, limit).map((i) => {
+          const key = `${col.g[i]}-${col.i[i]}`
+          return (
+          <li key={key}>
+            <button aria-expanded={open?.key === key} onClick={() => toggle(i, key)}>
               <span className="u-name">{col.name[i] || '(이름 없음)'}</span>
               <span className="u-meta">
                 {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} · {col.ht[i] === 'A' ? '아파트' : '연립·다세대'}
@@ -234,8 +244,14 @@ export default function Finder({ guNames }) {
                 </small>
               </span>
             </button>
+            {open?.key === key && (
+              open.u ? <UnitCard u={open.u} onClose={() => setOpen(null)} />
+              : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>
+              : <p className="muted-line">불러오는 중…</p>
+            )}
           </li>
-        ))}
+          )
+        })}
       </ul>
 
       {!hits.length && <p className="muted-line">조건에 맞는 물건이 없습니다. 예산이나 면적을 넓혀 보세요.</p>}

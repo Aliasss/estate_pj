@@ -144,13 +144,15 @@ const FILTERS = [
 export default function UnitLookup({ lawdCd, guName, housing }) {
   const [state, setState] = useState({ status: 'idle' })
   const [q, setQ] = useState('')
-  const [sel, setSel] = useState(null)
+  // 펼친 물건의 id만 들고 있는다. 상세를 목록 위에 띄우면 아래쪽 물건을 눌렀을 때
+  // 화면 밖에서 열려서 스크롤을 되감아야 한다. 누른 줄 바로 아래에 펼친다.
+  const [selId, setSelId] = useState(null)
   const [limit, setLimit] = useState(PAGE)
   const [active, setActive] = useState([])   // 켜진 필터 키
   const [umd, setUmd] = useState('')         // 법정동
 
   useEffect(() => {
-    setSel(null)
+    setSelId(null)
     setState({ status: 'loading' })
     fetch(`${import.meta.env.BASE_URL}data/units/${lawdCd}.json`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
@@ -258,8 +260,6 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
 
       {state.status === 'loading' && <p className="muted-line">불러오는 중…</p>}
 
-      {sel && <UnitCard u={sel} onClose={() => setSel(null)} />}
-
       {state.status === 'ready' && (
         <>
           {!q && (
@@ -271,7 +271,8 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
           <ul className="unit-list">
             {list.slice(0, limit).map((u) => (
               <li key={u.id}>
-                <button onClick={() => setSel(u)}>
+                <button aria-expanded={selId === u.id}
+                        onClick={() => setSelId((id) => (id === u.id ? null : u.id))}>
                   <span className="u-name">{u.name || '(이름 없음)'}</span>
                   <span className="u-meta">{u.umd} · 전용 {u.area}m²{u.build_year ? ` · ${u.build_year}년` : ''}</span>
                   <span className="u-sig">
@@ -283,6 +284,7 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
                     </small>
                   </span>
                 </button>
+                {selId === u.id && <UnitCard u={u} onClose={() => setSelId(null)} />}
               </li>
             ))}
           </ul>
