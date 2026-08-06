@@ -36,11 +36,10 @@ import requests
 from collect import FATAL_CODES, SUCCESS_CODES, FatalApiError, _clean, _to_float, _to_int
 from lawd_codes import SEOUL_LAWD_CODES
 
-# 건축HUB로 이관되면서 엔드포인트가 바뀌었다. 구버전이 아직 살아 있는 계정도 있어서
-# 순서대로 시도하고, 처음 성공한 쪽을 이후 계속 쓴다.
+# 구버전(BldRgstService_v2)은 폐기됐다 — NO_OPENAPI_SERVICE_ERROR(12)를 돌려준다.
+# 건축HUB만 살아 있다.
 ENDPOINTS = [
     "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo",
-    "https://apis.data.go.kr/1613000/BldRgstService_v2/getBrTitleInfo",
 ]
 
 SCHEMA = """
@@ -150,13 +149,35 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     return sorted(set(rows))
 
 
+def read_response(text: str) -> tuple[str, str, list[dict]]:
+    """(코드, 메시지, items). 게이트웨이 오류는 JSON으로도 오므로 둘 다 읽는다.
+
+    JSON 오류를 XML 파서로만 처리하면 파싱 실패가 되고, 그러면 즉시 중단해야 할
+    인증 오류(30)가 재시도 대상으로 잘못 분류된다.
+    """
+    stripped = text.lstrip()
+    if stripped.startswith("{"):
+        try:
+            head = json.loads(stripped).get("OpenAPI_ServiceResponse", {}).get("cmmMsgHeader", {})
+        except json.JSONDecodeError:
+            raise RuntimeError(f"응답을 해석할 수 없습니다: {text[:200]}")
+        return (_clean(head.get("returnReasonCode")),
+                _clean(head.get("returnAuthMsg") or head.get("errMsg")), [])
+
+    root = ElementTree.fromstring(text)
+    code = _clean(root.findtext(".//returnReasonCode") or root.findtext(".//resultCode") or "")
+    msg = _clean(root.findtext(".//returnAuthMsg") or root.findtext(".//resultMsg") or "")
+    items = [{c.tag: _clean(c.text) for c in item} for item in root.iterfind(".//items/item")]
+    return code, msg, items
+
+
 def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list[int],
           *, max_retries: int = 2, timeout: int = 15) -> list[dict]:
     lawd, bjdong, plat_gb, bun, ji, _ = target
     params = {
         "serviceKey": key, "sigunguCd": lawd, "bjdongCd": bjdong,
         "platGbCd": plat_gb, "bun": bun, "ji": ji,
-        "numOfRows": 100, "pageNo": 1,
+        "numOfRows": 100, "pageNo": 1, "_type": "xml",
     }
     last: Exception | None = None
     for attempt in range(max_retries):
@@ -164,15 +185,14 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
         url = ENDPOINTS[endpoint_idx[0] % len(ENDPOINTS)]
         try:
             res = session.get(url, params=params, timeout=timeout)
-            res.raise_for_status()
-            root = ElementTree.fromstring(res.text)
-            code = _clean(root.findtext(".//returnReasonCode") or root.findtext(".//resultCode") or "")
-            msg = _clean(root.findtext(".//returnAuthMsg") or root.findtext(".//resultMsg") or "")
+            # raise_for_status를 먼저 하면 403 본문에 담긴 오류 코드를 못 읽는다
+            code, msg, items = read_response(res.text)
             if code in FATAL_CODES:
                 raise FatalApiError(f"[{code}] {msg}")
+            res.raise_for_status()
             if code and code not in SUCCESS_CODES:
                 raise RuntimeError(f"API 오류 [{code}] {msg}")
-            return [{c.tag: _clean(c.text) for c in item} for item in root.iterfind(".//items/item")]
+            return items
         except FatalApiError:
             raise
         except Exception as exc:
@@ -245,7 +265,7 @@ def main() -> int:
                 res = session.get(url, timeout=20, params={
                     "serviceKey": key, "sigunguCd": target[0], "bjdongCd": target[1],
                     "platGbCd": target[2], "bun": target[3], "ji": target[4],
-                    "numOfRows": 5, "pageNo": 1,
+                    "numOfRows": 5, "pageNo": 1, "_type": "xml",
                 })
                 print(f"HTTP {res.status_code} · {len(res.content):,}바이트")
                 print(res.text[:1200])
@@ -285,7 +305,8 @@ def main() -> int:
                 items = fetch(session, key, target, endpoint_idx)
             except FatalApiError as exc:
                 print(f"치명적 오류로 중단: {exc}", file=sys.stderr)
-                print("건축물대장 API 활용신청이 되어 있는지 확인하세요.", file=sys.stderr)
+                print("공공데이터포털에서 '국토교통부_건축물대장정보 서비스'(건축HUB) "
+                      "활용신청이 되어 있는지 확인하세요.", file=sys.stderr)
                 conn.commit()
                 return 1
             except Exception as exc:
