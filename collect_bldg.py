@@ -1,0 +1,306 @@
+#!/usr/bin/env python3
+"""건축물대장 표제부 수집.
+
+실거래가만으로는 "이 집이 나에게 맞나"를 답할 수 없다. 건축물대장에는 구조·세대수·
+층수·사용승인일·주차·승강기가 들어 있고, 이것들이 집을 고를 때 실제로 보는 항목이다.
+
+좌표가 필요 없다는 점이 중요하다. 실거래가 payload에 이미 sggCd/umdCd/bonbun/bubun이
+있어서 지번만으로 조인된다. 지오코딩 없이 바로 붙는다.
+
+층간소음에 대해: 건물 단위 실측 데이터는 공개된 것이 없다. 대신 구조(벽식이 취약,
+라멘조가 유리)와 사용승인일(2005년 표준바닥구조 의무화)이 가장 가까운 프록시다.
+추정이라는 사실은 화면에서 반드시 밝혀야 한다.
+
+사용법
+    export MOLIT_SERVICE_KEY="공공데이터포털 인증키"
+    python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite --lawd 11140
+    python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite --max-calls 9500
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import re
+import sqlite3
+import sys
+import time
+import urllib.parse
+from datetime import datetime, timezone
+from xml.etree import ElementTree
+
+import requests
+
+from collect import FATAL_CODES, SUCCESS_CODES, FatalApiError, _clean, _to_float, _to_int
+from lawd_codes import SEOUL_LAWD_CODES
+
+# 건축HUB로 이관되면서 엔드포인트가 바뀌었다. 구버전이 아직 살아 있는 계정도 있어서
+# 순서대로 시도하고, 처음 성공한 쪽을 이후 계속 쓴다.
+ENDPOINTS = [
+    "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo",
+    "https://apis.data.go.kr/1613000/BldRgstService_v2/getBrTitleInfo",
+]
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS buildings (
+    lawd_cd     TEXT NOT NULL,        -- 시군구 5자리
+    bjdong_cd   TEXT NOT NULL,        -- 법정동 5자리
+    plat_gb     TEXT NOT NULL,        -- 0 대지 / 1 산
+    bun         TEXT NOT NULL,
+    ji          TEXT NOT NULL,
+    mgm_key     TEXT NOT NULL,        -- 관리건축물대장PK. 한 지번에 여러 동이 있을 수 있다
+    umd_nm      TEXT,
+    plat_plc    TEXT,                 -- 대지위치
+    road_addr   TEXT,                 -- 도로명주소
+    bld_nm      TEXT,
+    dong_nm     TEXT,
+    main_purps  TEXT,                 -- 주용도
+    strct       TEXT,                 -- 구조. 층간소음 프록시의 핵심
+    use_apr_day TEXT,                 -- 사용승인일 YYYYMMDD
+    grnd_flr    INTEGER,              -- 지상 층수
+    ugrnd_flr   INTEGER,
+    hhld_cnt    INTEGER,              -- 세대수
+    fmly_cnt    INTEGER,              -- 가구수
+    ho_cnt      INTEGER,              -- 호수
+    tot_area    REAL,                 -- 연면적
+    plat_area   REAL,                 -- 대지면적
+    elvt_cnt    INTEGER,              -- 승용 승강기
+    park_cnt    INTEGER,              -- 주차 총계
+    heat_nm     TEXT,                 -- 난방방식
+    eqk_yn      TEXT,                 -- 내진설계 적용 여부
+    payload     TEXT NOT NULL,
+    fetched_at  TEXT NOT NULL,
+    PRIMARY KEY (lawd_cd, bjdong_cd, plat_gb, bun, ji, mgm_key)
+);
+CREATE INDEX IF NOT EXISTS idx_bldg_addr ON buildings (lawd_cd, umd_nm, bun, ji);
+
+CREATE TABLE IF NOT EXISTS bldg_log (
+    lawd_cd    TEXT NOT NULL,
+    bjdong_cd  TEXT NOT NULL,
+    plat_gb    TEXT NOT NULL,
+    bun        TEXT NOT NULL,
+    ji         TEXT NOT NULL,
+    n_rows     INTEGER,
+    status     TEXT NOT NULL,     -- ok / empty / error
+    message    TEXT,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (lawd_cd, bjdong_cd, plat_gb, bun, ji)
+);
+"""
+
+INSERT_SQL = """
+INSERT INTO buildings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at
+"""
+
+
+def parse_jibun(jibun: str | None) -> tuple[str, str, str] | None:
+    """'123-4' -> ('0', '0123', '0004'). '산 12' -> ('1', '0012', '0000')."""
+    text = _clean(jibun)
+    if not text:
+        return None
+    plat_gb = "0"
+    if text.startswith("산"):
+        plat_gb, text = "1", text[1:].strip()
+    parts = text.split("-")
+    nums = [re.sub(r"\D", "", p) for p in parts[:2]]
+    if not nums or not nums[0]:
+        return None
+    bun = nums[0].zfill(4)
+    ji = (nums[1] if len(nums) > 1 and nums[1] else "0").zfill(4)
+    return plat_gb, bun, ji
+
+
+def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
+    """실거래가 DB에서 조회 대상 지번을 뽑고, 법정동코드를 붙인다.
+
+    법정동코드는 아파트 매매 payload의 umdCd에서 얻는다. 아파트가 한 번도 거래되지
+    않은 동(종로구 옛 동네 등)은 매핑이 없어 건너뛴다. 전체의 0.7% 수준이다.
+    """
+    conn = sqlite3.connect(rt_db)
+    umd_cd: dict[tuple[str, str], str] = {}
+    for (payload,) in conn.execute("SELECT payload FROM transactions WHERE source = 'apt_trade'"):
+        d = json.loads(payload)
+        sgg, umd, cd = d.get("sggCd"), _clean(d.get("umdNm")), d.get("umdCd")
+        if sgg and umd and cd:
+            umd_cd[(sgg, umd)] = cd
+
+    rows, skipped = [], 0
+    query = """
+        SELECT DISTINCT lawd_cd, umd_nm, jibun FROM transactions
+        WHERE (cdeal_type IS NULL OR cdeal_type <> 'O') AND jibun IS NOT NULL
+    """
+    params: list = []
+    if lawd_filter:
+        query += f" AND lawd_cd IN ({','.join('?' * len(lawd_filter))})"
+        params = lawd_filter
+    for lawd, umd, jibun in conn.execute(query, params):
+        umd = _clean(umd)
+        cd = umd_cd.get((lawd, umd))
+        parsed = parse_jibun(jibun)
+        if not cd or not parsed:
+            skipped += 1
+            continue
+        rows.append((lawd, cd, *parsed, umd))
+    conn.close()
+    if skipped:
+        print(f"법정동코드 미매핑 또는 지번 파싱 실패로 제외: {skipped:,}건")
+    return sorted(set(rows))
+
+
+def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list[int],
+          *, max_retries: int = 4, timeout: int = 20) -> list[dict]:
+    lawd, bjdong, plat_gb, bun, ji, _ = target
+    params = {
+        "serviceKey": key, "sigunguCd": lawd, "bjdongCd": bjdong,
+        "platGbCd": plat_gb, "bun": bun, "ji": ji,
+        "numOfRows": 100, "pageNo": 1,
+    }
+    last: Exception | None = None
+    for attempt in range(max_retries):
+        # 엔드포인트가 하나 죽어 있으면 다음 것으로 넘어간다
+        url = ENDPOINTS[endpoint_idx[0] % len(ENDPOINTS)]
+        try:
+            res = session.get(url, params=params, timeout=timeout)
+            res.raise_for_status()
+            root = ElementTree.fromstring(res.text)
+            code = _clean(root.findtext(".//returnReasonCode") or root.findtext(".//resultCode") or "")
+            msg = _clean(root.findtext(".//returnAuthMsg") or root.findtext(".//resultMsg") or "")
+            if code in FATAL_CODES:
+                raise FatalApiError(f"[{code}] {msg}")
+            if code and code not in SUCCESS_CODES:
+                raise RuntimeError(f"API 오류 [{code}] {msg}")
+            return [{c.tag: _clean(c.text) for c in item} for item in root.iterfind(".//items/item")]
+        except FatalApiError:
+            raise
+        except Exception as exc:
+            last = exc
+            if attempt == 0 and len(ENDPOINTS) > 1:
+                endpoint_idx[0] += 1     # 첫 실패에서 엔드포인트를 바꿔 본다
+            time.sleep(min(2**attempt, 12) + random.uniform(0, 0.4))
+    raise RuntimeError(f"{max_retries}회 실패: {last}")
+
+
+def to_row(item: dict, target: tuple, fetched_at: str) -> tuple:
+    lawd, bjdong, plat_gb, bun, ji, umd = target
+    park = sum(_to_int(item.get(k)) or 0 for k in
+               ("indrMechUtcnt", "oudrMechUtcnt", "indrAutoUtcnt", "oudrAutoUtcnt"))
+    return (
+        lawd, bjdong, plat_gb, bun, ji,
+        _clean(item.get("mgmBldrgstPk")) or f"{bun}-{ji}",
+        umd,
+        _clean(item.get("platPlc")), _clean(item.get("newPlatPlc")),
+        _clean(item.get("bldNm")), _clean(item.get("dongNm")),
+        _clean(item.get("mainPurpsCdNm")), _clean(item.get("strctCdNm")),
+        _clean(item.get("useAprDay")),
+        _to_int(item.get("grndFlrCnt")), _to_int(item.get("ugrndFlrCnt")),
+        _to_int(item.get("hhldCnt")), _to_int(item.get("fmlyCnt")), _to_int(item.get("hoCnt")),
+        _to_float(item.get("totArea")), _to_float(item.get("platArea")),
+        _to_int(item.get("rideUseElvtCnt")), park or None,
+        _clean(item.get("heatCdNm")), _clean(item.get("rserthqkDsgnApplyYn")),
+        json.dumps(item, ensure_ascii=False, sort_keys=True), fetched_at,
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="건축물대장 표제부 수집")
+    parser.add_argument("--rt-db", default="seoul_rt.sqlite", help="실거래가 DB (조회 대상 추출용)")
+    parser.add_argument("--db", default="bldg.sqlite")
+    parser.add_argument("--lawd", default="", help="자치구 코드 제한 (쉼표 구분)")
+    parser.add_argument("--sleep", type=float, default=0.1)
+    parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 한도 보호용")
+    parser.add_argument("--retry-errors", action="store_true", help="이전에 실패한 지번도 다시 시도")
+    args = parser.parse_args()
+
+    key = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
+    if not key:
+        print("MOLIT_SERVICE_KEY 환경 변수가 없습니다.", file=sys.stderr)
+        return 2
+    if "%" in key:
+        key = urllib.parse.unquote(key)
+
+    lawd_filter = [c.strip() for c in args.lawd.split(",") if c.strip()]
+    for code in lawd_filter:
+        if code not in SEOUL_LAWD_CODES:
+            print(f"알 수 없는 자치구 코드: {code}", file=sys.stderr)
+            return 2
+
+    conn = sqlite3.connect(args.db)
+    conn.executescript(SCHEMA)
+    conn.execute("PRAGMA journal_mode=WAL")
+
+    done_query = "SELECT lawd_cd, bjdong_cd, plat_gb, bun, ji FROM bldg_log"
+    if not args.retry_errors:
+        done_query += " WHERE status <> 'error'"
+    done = {tuple(r) for r in conn.execute(done_query)}
+
+    plan = [t for t in targets(args.rt_db, lawd_filter) if t[:5] not in done]
+    print(f"조회 대상 {len(plan):,}건 (완료 {len(done):,}건)")
+    if not plan:
+        print("모두 수집 완료된 상태입니다.")
+        return 0
+
+    session = requests.Session()
+    endpoint_idx = [0]
+    calls = inserted = empty = errors = 0
+    now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    try:
+        for i, target in enumerate(plan, start=1):
+            if args.max_calls and calls >= args.max_calls:
+                print(f"--max-calls({args.max_calls}) 도달. 재실행하면 이어서 받습니다.")
+                break
+            gu = SEOUL_LAWD_CODES.get(target[0], target[0])
+            try:
+                items = fetch(session, key, target, endpoint_idx)
+            except FatalApiError as exc:
+                print(f"치명적 오류로 중단: {exc}", file=sys.stderr)
+                print("건축물대장 API 활용신청이 되어 있는지 확인하세요.", file=sys.stderr)
+                conn.commit()
+                return 1
+            except Exception as exc:
+                errors += 1
+                conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
+                             (*target[:5], 0, "error", str(exc)[:300], now()))
+                conn.commit()
+                calls += 1
+                continue
+
+            fetched_at = now()
+            rows = [to_row(it, target, fetched_at) for it in items]
+            if rows:
+                conn.executemany(INSERT_SQL, rows)
+                inserted += len(rows)
+            else:
+                empty += 1
+            conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
+                         (*target[:5], len(rows), "ok" if rows else "empty", None, fetched_at))
+            calls += 1
+            if calls % 200 == 0:
+                conn.commit()
+                print(f"[{i}/{len(plan)}] {gu} {target[5]} {target[3]}-{target[4]} "
+                      f"— 누적 {inserted:,}동 / 빈응답 {empty:,} / 실패 {errors:,}")
+            time.sleep(args.sleep)
+    except KeyboardInterrupt:
+        print("\n중단됨. 재실행하면 이어서 받습니다.")
+    finally:
+        conn.commit()
+
+    total = conn.execute("SELECT COUNT(*) FROM buildings").fetchone()[0]
+    print(f"\n완료. 이번 실행 {calls:,}회 호출, {inserted:,}동 적재 "
+          f"(빈응답 {empty:,} / 실패 {errors:,}). DB 총 {total:,}동")
+    if inserted:
+        print("\n구조 분포 상위:")
+        for strct, n in conn.execute(
+            "SELECT strct, COUNT(*) FROM buildings WHERE strct <> '' "
+            "GROUP BY strct ORDER BY 2 DESC LIMIT 6"
+        ):
+            print(f"  {strct}: {n:,}")
+    conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
