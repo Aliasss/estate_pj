@@ -151,7 +151,7 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
 
 
 def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list[int],
-          *, max_retries: int = 4, timeout: int = 20) -> list[dict]:
+          *, max_retries: int = 2, timeout: int = 15) -> list[dict]:
     lawd, bjdong, plat_gb, bun, ji, _ = target
     params = {
         "serviceKey": key, "sigunguCd": lawd, "bjdongCd": bjdong,
@@ -179,7 +179,7 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
             last = exc
             if attempt == 0 and len(ENDPOINTS) > 1:
                 endpoint_idx[0] += 1     # 첫 실패에서 엔드포인트를 바꿔 본다
-            time.sleep(min(2**attempt, 12) + random.uniform(0, 0.4))
+            time.sleep(min(1.5**attempt, 4) + random.uniform(0, 0.3))
     raise RuntimeError(f"{max_retries}회 실패: {last}")
 
 
@@ -212,6 +212,8 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.1)
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 한도 보호용")
     parser.add_argument("--retry-errors", action="store_true", help="이전에 실패한 지번도 다시 시도")
+    parser.add_argument("--probe", action="store_true",
+                        help="지번 하나만 호출하고 원 응답을 그대로 출력한 뒤 종료 (진단용)")
     args = parser.parse_args()
 
     key = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
@@ -226,6 +228,31 @@ def main() -> int:
         if code not in SEOUL_LAWD_CODES:
             print(f"알 수 없는 자치구 코드: {code}", file=sys.stderr)
             return 2
+
+    # 진단 모드. 대량 실행 전에 엔드포인트/파라미터가 맞는지 30초 안에 확인한다.
+    if args.probe:
+        plan = targets(args.rt_db, lawd_filter)
+        if not plan:
+            print("조회 대상이 없습니다.", file=sys.stderr)
+            return 2
+        target = plan[0]
+        print(f"대상: {target[5]} {int(target[3])}-{int(target[4])} "
+              f"(sigunguCd={target[0]} bjdongCd={target[1]} platGbCd={target[2]})\n")
+        session = requests.Session()
+        for url in ENDPOINTS:
+            print(f"--- {url}")
+            try:
+                res = session.get(url, timeout=20, params={
+                    "serviceKey": key, "sigunguCd": target[0], "bjdongCd": target[1],
+                    "platGbCd": target[2], "bun": target[3], "ji": target[4],
+                    "numOfRows": 5, "pageNo": 1,
+                })
+                print(f"HTTP {res.status_code} · {len(res.content):,}바이트")
+                print(res.text[:1200])
+            except Exception as exc:
+                print(f"요청 실패: {type(exc).__name__}: {exc}")
+            print()
+        return 0
 
     conn = sqlite3.connect(args.db)
     conn.executescript(SCHEMA)
@@ -245,6 +272,7 @@ def main() -> int:
     session = requests.Session()
     endpoint_idx = [0]
     calls = inserted = empty = errors = 0
+    started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     try:
@@ -266,6 +294,8 @@ def main() -> int:
                              (*target[:5], 0, "error", str(exc)[:300], now()))
                 conn.commit()
                 calls += 1
+                if errors <= 5 or errors % 25 == 0:
+                    print(f"  실패 {errors}: {gu} {target[3]}-{target[4]} — {str(exc)[:160]}", flush=True)
                 continue
 
             fetched_at = now()
@@ -278,10 +308,14 @@ def main() -> int:
             conn.execute("INSERT OR REPLACE INTO bldg_log VALUES (?,?,?,?,?,?,?,?,?)",
                          (*target[:5], len(rows), "ok" if rows else "empty", None, fetched_at))
             calls += 1
-            if calls % 200 == 0:
+            # 초반 20건은 매건, 이후 25건마다. 건당 속도와 실패율이 바로 보여야
+            # 느린 것인지 재시도로 헛도는 것인지 실행 중에 판단할 수 있다.
+            if calls <= 20 or calls % 25 == 0:
                 conn.commit()
+                per = (time.monotonic() - started) / calls
                 print(f"[{i}/{len(plan)}] {gu} {target[5]} {target[3]}-{target[4]} "
-                      f"— 누적 {inserted:,}동 / 빈응답 {empty:,} / 실패 {errors:,}")
+                      f"{len(rows)}동 | 누적 {inserted:,}동 "
+                      f"빈{empty:,} 실패{errors:,} | 건당 {per:.2f}초", flush=True)
             time.sleep(args.sleep)
     except KeyboardInterrupt:
         print("\n중단됨. 재실행하면 이어서 받습니다.")

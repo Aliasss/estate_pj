@@ -15,6 +15,10 @@ on:
       max_calls:
         description: '이번 실행 최대 호출 수'
         default: '9000'
+      probe:
+        description: '진단 모드 — 지번 하나만 호출하고 원 응답 출력'
+        type: boolean
+        default: false
   schedule:
     # 전체를 다 받을 때까지 매일 새벽에 이어받는다. 다 받으면 즉시 종료된다.
     - cron: '0 18 * * *'
@@ -24,6 +28,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # 이게 없으면 파이썬 stdout이 블록 버퍼링돼서 실행 중 로그가 한 줄도 안 보인다.
+  # 첫 실행에서 47분을 눈감고 돌린 원인이 이것이었다.
+  PYTHONUNBUFFERED: '1'
   MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SNAPSHOT_TAG: data-latest
@@ -62,7 +69,8 @@ jobs:
         continue-on-error: true
         run: |
           python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite \
-            --lawd "${{ inputs.lawd }}" --max-calls ${{ inputs.max_calls || 9000 }}
+            --lawd "${{ inputs.lawd }}" --max-calls ${{ inputs.max_calls || 9000 }} \
+            ${{ inputs.probe && '--probe' || '' }}
 
       # 한도에 걸려 중간에 끊겨도 받은 만큼은 보존해야 다음 실행이 이어받는다.
       - name: 진행분 발행
