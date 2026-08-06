@@ -209,3 +209,24 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .chip[aria-pressed='true'] .n { color: rgb(255 255 255 / 0.75); }
 .chip:disabled { opacity: 0.4; cursor: default; }
 .chip.clear { border-style: dashed; }
+
+/* --- 조건 검색 --- */
+.cond {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; margin: 6px 0 12px;
+}
+.cond label {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  gap: 0 6px; background: var(--surface-0); border: 1px solid var(--border);
+  border-radius: 10px; padding: 7px 10px;
+}
+.cond label > span { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
+.cond input, .cond select {
+  font: inherit; font-size: 15px; font-variant-numeric: tabular-nums;
+  background: transparent; border: 0; padding: 2px 0; min-height: 26px;
+  color: var(--text-primary); width: 100%;
+}
+.cond input:focus-visible, .cond select:focus-visible { outline: none; }
+.cond label:focus-within { border-color: var(--series-1); }
+.cond em { font-style: normal; font-size: 13px; color: var(--text-muted); }
+.cond select { appearance: none; }

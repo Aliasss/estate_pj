@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: '서울 전세 위험도',
-        short_name: '전세위험도',
-        description: '국토교통부 실거래가로 보는 서울 전세보증금 위험 신호',
+        name: '서울 전월세 고르기',
+        short_name: '집 고르기',
+        description: '국토교통부 실거래가로 예산·면적·연식·보증금 안전을 함께 보고 집을 고른다',
         lang: 'ko',
         start_url: '/',
         display: 'standalone',
@@ -34,7 +34,7 @@ export default defineConfig({
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'units',
-              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 45 },
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 45 },
             },
           },
         ],

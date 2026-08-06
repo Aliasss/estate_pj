@@ -19,6 +19,7 @@ aggregate.py가 구 단위 패널(티어 1)을 만든다면, 이 스크립트는
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -60,6 +61,47 @@ def pct(numer: float | None, denom: float | None) -> float | None:
     if numer is None or not denom:
         return None
     return round(numer / denom, 4)
+
+
+# 서울 전체를 한 화면에서 조건 검색하려면 25개 구 파일(10MB)을 다 받아야 한다.
+# 그래서 조건 검색에 실제로 쓰는 열만 추린 단일 파일을 따로 낸다. 세 가지로 줄였다.
+#   - 물건 해시 id 대신 구 파일 안의 행 번호를 쓴다. 해시는 gzip이 못 줄인다.
+#   - 열 단위로 담는다. 같은 종류 값이 붙어 있어야 gzip이 먹는다 (1.45MB -> 1.00MB).
+#   - 법정동은 사전으로 접는다. 건물명은 고유값이 38,872개라 사전이 오히려 손해였다.
+# 상세는 어차피 구 파일에서 다시 읽으므로 여기에 담지 않는다.
+FINDER_COLS = ["i", "ht", "g", "u", "name", "area", "by", "jeonse", "ratio", "stage",
+               "ns", "nj"]
+STAGES = ["A", "B", "B-", "C"]
+
+
+def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) -> None:
+    col = {name: i for i, name in enumerate(cols)}
+    gus = sorted(by_gu)
+    umds: dict[str, int] = {}
+    recs = []
+    for gi, lawd in enumerate(gus):
+        # 행 번호로 상세를 찾으므로 구 파일에 쓴 순서와 반드시 같아야 한다
+        for ri, r in enumerate(by_gu[lawd]):
+            ui = umds.setdefault(r[col["umd"]] or "", len(umds))
+            ratio = r[col["ratio"]]
+            recs.append([
+                ri, r[col["ht"]], gi, ui, r[col["name"]],
+                round(r[col["area"]], 1) if r[col["area"]] else None,
+                r[col["build_year"]], r[col["med_jeonse"]],
+                None if ratio is None else round(ratio, 3),
+                STAGES.index(r[col["stage"]]),
+                r[col["n_sale_24m"]], r[col["n_jeonse_24m"]],
+            ])
+    payload = {"window": window, "gus": gus, "stages": STAGES,
+               "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
+               "cols": FINDER_COLS, "n": len(recs),
+               "columns": [list(c) for c in zip(*recs)]}
+    path = os.path.join(out_dir, "finder.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
+    packed = len(gzip.compress(open(path, "rb").read(), 6))
+    print(f"\nfinder.json  물건 {len(recs):,}개  {os.path.getsize(path) / 1e6:.1f}MB "
+          f"(gzip {packed / 1e6:.2f}MB, 법정동 {len(umds)}개)")
 
 
 def build(conn: sqlite3.Connection, out_dir: str) -> None:
@@ -221,6 +263,8 @@ def build(conn: sqlite3.Connection, out_dir: str) -> None:
 
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         json.dump({"window": [recent_start, complete_end], "gu": index}, fh, ensure_ascii=False)
+
+    write_finder(out_dir, by_gu, COLS, [recent_start, complete_end])
 
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")

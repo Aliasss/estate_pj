@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
+export const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
-const eok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
+export const eok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
 
-const STAGE = {
+export const STAGE = {
   A: { label: '이 건물 실거래 기준', exact: true },
   B: { label: '인근 유사 물건 기준', exact: false },
   'B-': { label: '인근 물건 기준 (연식 미보정)', exact: false },
@@ -49,7 +49,7 @@ function riskScore(u) {
   return r ?? 0
 }
 
-function ratioTone(ratio) {
+export function ratioTone(ratio) {
   if (ratio == null) return 'muted'
   if (ratio >= 1) return 'critical'
   if (ratio >= 0.9) return 'serious'
@@ -57,7 +57,7 @@ function ratioTone(ratio) {
   return 'good'
 }
 
-function UnitCard({ u, onClose }) {
+export function UnitCard({ u, onClose }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   return (

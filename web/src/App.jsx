@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LineChart, RankBars } from './charts.jsx'
+import Finder from './Finder.jsx'
 import UnitLookup from './UnitLookup.jsx'
 
 const PYEONG = 3.305785
@@ -13,7 +14,7 @@ export default function App() {
   const [err, setErr] = useState(null)
   const [housing, setHousing] = useState('연립다세대')
   const [gu, setGu] = useState('11500')       // 강서구
-  const [tab, setTab] = useState('market')
+  const [tab, setTab] = useState('find')
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/tier1.json`)
@@ -60,8 +61,10 @@ export default function App() {
     const guName = rank.find((r) => r.key === gu)?.label
       ?? data.gu.find((g) => g.lawd_cd === gu)?.sgg_nm ?? gu
 
+    const guNames = Object.fromEntries(data.gu.map((g) => [g.lawd_cd, g.sgg_nm]))
+
     return {
-      rank, guName, lastSolid,
+      rank, guName, guNames, lastSolid,
       ppp: [
         { name: '매매 평단가', short: '매매', color: 'var(--series-1)', values: byYm('median_sale_ppp') },
         { name: '전세 평단가', short: '전세', color: 'var(--series-2)', values: byYm('median_jeonse_ppp') },
@@ -87,26 +90,30 @@ export default function App() {
   return (
     <main className="app">
       <header>
-        <h1>서울 전세 위험도</h1>
-        <p>국토교통부 실거래가 · {data.months[0]}~{data.months.at(-1)} · 전용면적 기준 평단가</p>
+        <h1>서울 전월세 고르기</h1>
+        <p>국토교통부 실거래가 · {data.months[0]}~{data.months.at(-1)} · 전용면적 기준</p>
       </header>
 
-      <div className="controls">
-        <div className="seg" role="group" aria-label="주택 유형">
-          {['연립다세대', '아파트'].map((t) => (
-            <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
-          ))}
-        </div>
-        <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="자치구">
-          {data.gu.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
-        </select>
-      </div>
-
       <div className="seg tabs" role="tablist" aria-label="화면">
-        <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>자치구 흐름</button>
-        <button role="tab" aria-pressed={tab === 'unit'} onClick={() => setTab('unit')}>물건 조회</button>
+        <button role="tab" aria-pressed={tab === 'find'} onClick={() => setTab('find')}>조건 검색</button>
+        <button role="tab" aria-pressed={tab === 'unit'} onClick={() => setTab('unit')}>자치구별 물건</button>
+        <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>시세 흐름</button>
       </div>
 
+      {tab !== 'find' && (
+        <div className="controls">
+          <div className="seg" role="group" aria-label="주택 유형">
+            {['연립다세대', '아파트'].map((t) => (
+              <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
+            ))}
+          </div>
+          <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="자치구">
+            {data.gu.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
+          </select>
+        </div>
+      )}
+
+      {tab === 'find' && <Finder guNames={view.guNames} />}
       {tab === 'unit' && <UnitLookup lawdCd={gu} guName={view.guName} housing={housing} />}
 
       {tab === 'market' && <>
