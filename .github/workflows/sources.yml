@@ -14,11 +14,14 @@ env:
   # 아직 없으면 해당 후보는 건너뛴다. 있으면 같이 확인한다.
   VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
   JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
+  SEOUL_OPENAPI_KEY: ${{ secrets.SEOUL_OPENAPI_KEY }}
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,3 +29,12 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python probe_sources.py
+
+      # 키가 들어오면 여기서 바로 지하철을 굽는다. 없으면 조용히 건너뛴다.
+      - name: 지하철역 수집 (SEOUL_OPENAPI_KEY 있을 때만)
+        if: ${{ env.SEOUL_OPENAPI_KEY != '' }}
+        run: |
+          python collect_subway.py --out subway.json
+          gh release upload data-latest subway.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
