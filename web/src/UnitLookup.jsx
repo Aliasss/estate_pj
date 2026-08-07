@@ -103,7 +103,7 @@ function BuildingFacts({ u }) {
   )
 }
 
-export function UnitCard({ u, onClose }) {
+export function UnitCard({ u, onClose, onMap }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   return (
@@ -164,6 +164,9 @@ export function UnitCard({ u, onClose }) {
       )}
 
       <BuildingFacts u={u} />
+
+      {/* 좌표가 있는 물건에서만 낸다. 눌렀는데 아무 데도 안 가면 안 만든 것만 못하다. */}
+      {onMap && <button className="more" onClick={onMap}>지도에서 위치 보기</button>}
     </div>
   )
 }

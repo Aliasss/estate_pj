@@ -140,6 +140,18 @@ export default function Finder({ guNames }) {
     return out
   }, [view, fin, hits])
 
+  // 지도에서 짚어 줄 물건. 목록에서 펼친 것과 같은 물건이다.
+  const picked = useMemo(() => {
+    if (fin.status !== 'ready' || !open?.key) return null
+    const { col } = fin
+    const idx = hits.find((i) => `${col.g[i]}-${col.i[i]}` === open.key)
+    if (idx == null || col.lat[idx] == null) return null
+    return {
+      lat: col.lat[idx], lon: col.lon[idx], tone: ratioTone(col.ratio[idx]),
+      label: `${col.name[idx] || '(이름 없음)'} · ${eok(col.jeonse[idx])}`,
+    }
+  }, [fin, open, hits])
+
   // 목록 끝이 보이면 이어 붙인다. 전량이 이미 메모리에 있어 네트워크는 타지 않는다.
   const sentinel = useRef(null)
   useEffect(() => {
@@ -277,7 +289,7 @@ export default function Finder({ guNames }) {
 
       {view === 'map' && (
         <>
-          <MapView points={pins} stations={stationPins}
+          <MapView points={pins} stations={stationPins} selected={picked}
                    onPick={(p) => { setView('list'); toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`) }}
                    note={pins.length ? `좌표 ${pct0(geoCoverage)} 확보` : '파란 점은 지하철역'} />
           {!pins.length && (
@@ -312,7 +324,10 @@ export default function Finder({ guNames }) {
               </span>
             </button>
             {open?.key === key && (
-              open.u ? <UnitCard u={open.u} onClose={() => setOpen(null)} />
+              open.u ? (
+                <UnitCard u={open.u} onClose={() => setOpen(null)}
+                          onMap={col.lat[i] != null ? () => setView('map') : null} />
+              )
               : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>
               : <p className="muted-line">불러오는 중…</p>
             )}

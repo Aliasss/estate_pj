@@ -24,11 +24,12 @@ const TONE = {
   muted: '#8f8e84',
 }
 
-export default function MapView({ points, stations, onPick, note }) {
+export default function MapView({ points, stations, selected, onPick, note }) {
   const holder = useRef(null)
   const map = useRef(null)
   const layer = useRef(null)
   const stnLayer = useRef(null)
+  const pickLayer = useRef(null)
 
   // 지도는 한 번만 만든다. 조건이 바뀔 때마다 다시 만들면 보던 위치가 튄다.
   useEffect(() => {
@@ -42,6 +43,8 @@ export default function MapView({ points, stations, onPick, note }) {
     }).addTo(map.current)
     layer.current = L.layerGroup().addTo(map.current)
     stnLayer.current = L.layerGroup().addTo(map.current)
+    // 고른 물건은 맨 위 레이어에 따로 그린다. 3,000개 점 사이에 섞이면 못 찾는다.
+    pickLayer.current = L.layerGroup().addTo(map.current)
     // 컨테이너가 늦게 자리를 잡으면 타일이 반쪽만 그려진다
     setTimeout(() => map.current?.invalidateSize(), 0)
     // 조건 입력칸이 위에 길게 깔려 있어서, 지도를 켜면 화면 밖에서 열린다.
@@ -69,6 +72,24 @@ export default function MapView({ points, stations, onPick, note }) {
       map.current.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 })
     }
   }, [shown, onPick])
+
+
+  // 목록에서 고른 물건을 지도에서 짚어 준다. 색만 바꾸면 작은 점 사이에서 안 보여서
+  // 테두리 원을 하나 더 두르고 지도를 그쪽으로 옮긴다.
+  useEffect(() => {
+    if (!pickLayer.current) return
+    pickLayer.current.clearLayers()
+    if (!selected) return
+    L.circleMarker([selected.lat, selected.lon], {
+      radius: 11, weight: 3, color: '#0b0b0b', opacity: 0.9, fill: false,
+    }).addTo(pickLayer.current)
+    L.circleMarker([selected.lat, selected.lon], {
+      radius: 6, weight: 2, color: '#fff', fillColor: TONE[selected.tone] ?? TONE.muted,
+      fillOpacity: 1,
+    }).bindTooltip(selected.label, { direction: 'top', permanent: true })
+      .addTo(pickLayer.current)
+    map.current.panTo([selected.lat, selected.lon], { animate: true })
+  }, [selected])
 
   // 역은 조건과 무관하게 늘 같은 자리라 따로 그린다. 통근 판단의 기준점이다.
   useEffect(() => {
