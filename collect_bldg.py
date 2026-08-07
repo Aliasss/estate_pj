@@ -35,7 +35,8 @@ from xml.etree import ElementTree
 
 import requests
 
-from collect import FATAL_CODES, SUCCESS_CODES, FatalApiError, _clean, _to_float, _to_int
+from collect import (FATAL_CODES, QUOTA_CODE, SUCCESS_CODES, FatalApiError,
+                     QuotaExhausted, _clean, _to_float, _to_int)
 from lawd_codes import SEOUL_LAWD_CODES
 
 # 구버전(BldRgstService_v2)은 폐기됐다 — NO_OPENAPI_SERVICE_ERROR(12)를 돌려준다.
@@ -267,11 +268,13 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
             code, msg, items = read_response(res.text)
             if code in FATAL_CODES:
                 raise FatalApiError(f"[{code}] {msg}")
+            if code == QUOTA_CODE:
+                raise QuotaExhausted(f"[{code}] {msg}")
             res.raise_for_status()
             if code and code not in SUCCESS_CODES:
                 raise RuntimeError(f"API 오류 [{code}] {msg}")
             return items
-        except FatalApiError:
+        except (FatalApiError, QuotaExhausted):
             raise
         except requests.exceptions.ConnectionError as exc:
             # 접속 자체가 안 되는 상태에서 네 번 더 두드려 봐야 15초씩 버릴 뿐이다.
@@ -297,7 +300,7 @@ def preflight(key: str, target: tuple, endpoint_idx: list[int]) -> str | None:
     try:
         fetch(requests.Session(), key, target, endpoint_idx, max_retries=1, timeout=20)
         return None
-    except FatalApiError:
+    except (FatalApiError, QuotaExhausted):
         raise
     except Exception as exc:
         return describe(exc)
@@ -434,6 +437,7 @@ def main() -> int:
 
     endpoint_idx = [0]
     calls = inserted = empty = errors = streak = 0
+    quota_hit = False
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     blocked = preflight(key, plan[0], endpoint_idx)
@@ -450,6 +454,11 @@ def main() -> int:
         for target, items, exc in results(plan, key, endpoint_idx, args.workers, throttle):
             calls += 1
             gu = SEOUL_LAWD_CODES.get(target[0], target[0])
+            if isinstance(exc, QuotaExhausted):
+                # 한도를 다 쓴 것은 실패가 아니다. 여기까지 저장하고 정상 종료한다.
+                print(f"\n오늘 한도를 다 썼습니다 ({exc}). 다음 실행이 이어받습니다.", flush=True)
+                quota_hit = True
+                break
             if isinstance(exc, FatalApiError):
                 print(f"치명적 오류로 중단: {exc}", file=sys.stderr)
                 print("공공데이터포털에서 '국토교통부_건축물대장정보 서비스'(건축HUB) "

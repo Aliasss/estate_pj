@@ -88,16 +88,25 @@ SOURCES = {
 }
 
 SUCCESS_CODES = {"00", "000"}
-# 재시도해도 소용없는 인증/할당량 오류. 즉시 중단한다.
+# 설정을 고치기 전에는 몇 번을 더 불러도 똑같은 오류. 즉시 중단한다.
 FATAL_CODES = {
-    "04",  # HTTP ERROR
-    "12",  # NO_OPENAPI_SERVICE_ERROR
+    "12",  # NO_OPENAPI_SERVICE_ERROR — 폐기된 엔드포인트
     "20",  # SERVICE_ACCESS_DENIED_ERROR
-    "22",  # LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR
-    "30",  # SERVICE_KEY_IS_NOT_REGISTERED_ERROR
+    "30",  # SERVICE_KEY_IS_NOT_REGISTERED_ERROR — 활용신청 안 됨
     "31",  # DEADLINE_HAS_EXPIRED_ERROR
     "32",  # UNREGISTERED_IP_ERROR
 }
+# 게이트웨이가 잠깐 흔들린 것. 재시도하면 된다.
+# 04를 치명적으로 분류해 뒀다가, 3,271동을 실패 0으로 받던 실행이
+# 이 한 건에 통째로 중단됐다. 인증 문제가 아니라 일시적 오류다.
+TRANSIENT_CODES = {
+    "01",  # APPLICATION_ERROR
+    "02",  # DB_ERROR
+    "04",  # HTTP_ERROR
+    "05",  # SERVICETIME_OUT
+}
+# 오늘 몫을 다 썼다. 실패가 아니라 정상 종료로 다뤄야 다음 실행이 이어받는다.
+QUOTA_CODE = "22"  # LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR
 
 # 정규화 컬럼 <- API 필드 별칭. 소스마다 태그명이 달라서 순서대로 훑는다.
 FIELD_ALIASES = {
@@ -166,7 +175,11 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 
 
 class FatalApiError(RuntimeError):
-    """인증키·할당량 등 재시도가 무의미한 오류."""
+    """설정을 고치기 전에는 재시도가 무의미한 오류 (인증키·엔드포인트·IP)."""
+
+
+class QuotaExhausted(RuntimeError):
+    """오늘 몫을 다 썼다. 실패가 아니라 여기까지 받았다는 뜻이다."""
 
 
 # --------------------------------------------------------------------------- 파싱
