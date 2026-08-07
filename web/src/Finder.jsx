@@ -50,6 +50,12 @@ function useFinder() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         const col = Object.fromEntries(d.cols.map((c, i) => [c, d.columns[i]]))
+        // 데이터는 워크플로가 따로 굽는다. 코드가 먼저 배포되면 아직 없는 열을 읽게 되는데,
+        // 그대로 두면 col.lat.reduce에서 화면 전체가 죽는다. 없는 열은 비어 있는 것으로 본다.
+        const blank = new Array(d.n).fill(null)
+        for (const c of ['elvt', 'apr', 'lat', 'lon', 'stn', 'walk']) {
+          if (!col[c]) col[c] = blank
+        }
         setState({ status: 'ready', d, col })
       })
       .catch((e) => setState({ status: 'error', message: e.message }))
@@ -270,16 +276,18 @@ export default function Finder({ guNames }) {
       </div>
 
       {view === 'map' && (
-        pins.length ? (
+        <>
           <MapView points={pins} stations={stationPins}
                    onPick={(p) => { setView('list'); toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`) }}
-                   note={`좌표 ${pct0(geoCoverage)} 확보`} />
-        ) : (
-          <p className="warnline">
-            <strong>아직 지도에 찍을 좌표가 없습니다.</strong> 물건 주소를 좌표로 바꾸는 작업이
-            진행 중입니다({pct0(geoCoverage)} 완료). 끝나면 조건에 맞는 물건이 여기 뜹니다.
-          </p>
-        )
+                   note={pins.length ? `좌표 ${pct0(geoCoverage)} 확보` : '파란 점은 지하철역'} />
+          {!pins.length && (
+            <p className="warnline">
+              <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이 남았습니다
+              (48,226건). 지금 보이는 파란 점은 지하철역 654개이고, 좌표가 붙으면 조건에 맞는
+              물건이 그 위에 뜹니다.
+            </p>
+          )}
+        </>
       )}
 
       {view === 'list' && <ul className="unit-list">
