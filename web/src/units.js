@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
- * 물건 데이터 접근 — 화면 두 곳이 같은 파일을 쓰므로 여기 모아 둔다.
+ * 물건 데이터 접근. 화면 두 곳이 같은 파일을 쓰므로 여기 모아 둔다.
  *
  * finder.json  서울 전체 요약(열 단위, gzip 1MB). 검색과 조건 걸기에 쓴다.
  * {구}.json    상세 전량. 리포트를 열 때만 그 구 것을 받는다.

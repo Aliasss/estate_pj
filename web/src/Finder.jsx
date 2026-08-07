@@ -4,7 +4,7 @@ import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 import { useFinder, ym } from './units.js'
 
 /**
- * 조건 검색 — 서울 전체에서 내 조건에 맞는 집을 추린다.
+ * 조건 검색. 서울 전체에서 내 조건에 맞는 집을 추린다.
  *
  * 물건 조회 탭이 "이 구에서 위험한 게 뭐냐"를 본다면 여기는 반대 방향이다.
  * 예산·면적·연식·지역을 먼저 걸고, 남은 것 중에서 순서를 매긴다.
@@ -37,13 +37,13 @@ const RISKS = [
     hint: '근거 단계와 무관하게 90% 이상',
     test: (c, i) => c.ratio[i] >= 0.9 && c.ratio[i] < RATIO_BROKEN },
   { key: 'newvilla', label: '신축 빌라 · 매매 0건',
-    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상 — 빌라 중 1%. 전세사기 물건에서 반복된 패턴',
+    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상. 빌라 중 1%로, 전세사기 물건에서 반복된 패턴',
     test: (c, i) => c.ht[i] === 'R' && !c.ns[i] && (c.apr[i] ?? c.by[i]) >= 2018 && c.nj[i] >= 5 },
   { key: 'nosale', label: '매매 0건',
     hint: '최근 2년 매매 신고 없음. 빌라에서는 열에 일곱이라 기준선에 가깝고, 아파트에서는 열에 셋',
     test: (c, i) => !c.ns[i] },
   { key: 'reverse', label: '역전세',
-    hint: '갱신 계약에서 보증금이 5% 이상 내려감 — 집주인이 돈을 돌려주고 있다는 뜻',
+    hint: '갱신 계약에서 보증금이 5% 이상 내려감. 집주인이 돈을 돌려주고 있다는 뜻',
     test: (c, i) => c.hike[i] != null && c.hike[i] <= -0.05 },
 ]
 
@@ -133,7 +133,7 @@ export default function Finder({ guNames }) {
 
   useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
-  // 지도에 찍을 점. 좌표가 없는 물건은 뺀다 — 지오코딩이 끝나기 전까지는 대부분이 그렇다.
+  // 지도에 찍을 점. 좌표가 없는 물건은 뺀다. 지오코딩이 끝나기 전까지는 대부분이 그렇다.
   const pins = useMemo(() => {
     if (view !== 'map' || fin.status !== 'ready') return []
     const { col } = fin
@@ -223,7 +223,7 @@ export default function Finder({ guNames }) {
       <h2>동네 살펴보기</h2>
       <p className="sub">
         <strong>매물 목록이 아닙니다.</strong> {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이 있었던
-        건물 {d.n.toLocaleString()}개입니다 — 지금 계약 가능한 방인지는 알 수 없습니다.
+        건물 {d.n.toLocaleString()}개입니다. 지금 계약 가능한 방인지는 알 수 없습니다.
         시세와 분포를 보는 용도입니다.
       </p>
 
@@ -259,7 +259,7 @@ export default function Finder({ guNames }) {
       {/* 칩 25개를 펼쳐 두면 390px 화면에서 결과가 여섯 줄 아래로 밀린다 */}
       <details className="gu-picker">
         <summary>
-          지역 — {gus.length === 0 ? '서울 전체'
+          지역 · {gus.length === 0 ? '서울 전체'
             : gus.length <= 3 ? gus.map((g) => guNames[g] ?? g).join(', ')
             : `${guNames[gus[0]] ?? gus[0]} 외 ${gus.length - 1}곳`}
         </summary>

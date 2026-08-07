@@ -15,7 +15,7 @@ function niceTicks(min, max, count = 4) {
 
 /**
  * 시계열 꺾은선. 여러 계열은 같은 단위일 때만 한 축에 올린다.
- * 축이 둘 필요한 지표는 차트를 나눈다 — 이중 축은 쓰지 않는다.
+ * 축이 둘 필요한 지표는 차트를 나눈다. 이중 축은 쓰지 않는다.
  */
 export function LineChart({ months, series, format, provisional = [], height = 190 }) {
   const [hover, setHover] = useState(null)

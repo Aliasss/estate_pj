@@ -35,7 +35,7 @@ function verdict(u) {
     // 빌라에서 매매 0건은 열에 일곱이다. 여기에 빨간불을 켜면 정보가 아니라 벽지가 된다.
     return villa
       ? { tone: 'muted', head: '이 건물 최근 2년 매매 0건',
-          body: '빌라에서는 흔한 일입니다 — 열에 일곱이 그렇습니다. 이 집이 위험하다는 '
+          body: '빌라에서는 흔한 일입니다. 열에 일곱이 그렇습니다. 이 집이 위험하다는 '
             + '뜻이 아니라, 담보 가치를 실거래로 확인해 드릴 수 없다는 뜻입니다. '
             + '아래 확인 항목을 직접 보셔야 합니다.' }
       : { tone: 'serious', head: '이 건물 최근 2년 매매 0건',
@@ -96,11 +96,11 @@ export function ratioTone(ratio) {
  * 점수를 매기지 않고 무엇을 보고 하는 말인지를 그대로 낸다.
  */
 function quietNote(u) {
-  if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조 — 차음에 가장 불리한 구조입니다' }
+  if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조입니다. 차음에 가장 불리한 구조예요' }
   if (!u.apr) return null
   return u.apr >= 2005
-    ? { tone: 'good', text: `${u.apr}년 준공 — 표준바닥구조 의무화(2005) 이후입니다` }
-    : { tone: 'muted', text: `${u.apr}년 준공 — 표준바닥구조 의무화(2005) 이전입니다` }
+    ? { tone: 'good', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이후입니다` }
+    : { tone: 'muted', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이전입니다` }
 }
 
 const ym = (s) => `${String(s).slice(2, 4)}.${String(s).slice(4, 6)}`
@@ -178,7 +178,7 @@ function Siblings({ u, onPick }) {
 /**
  * 전세와 월세 중 어느 쪽이 유리한가. 같은 건물에 둘 다 있으면 바로 견줄 수 있다.
  * 전월세전환율 = 연 월세 ÷ (전세보증금 − 월세보증금). 이 값이 예금 금리보다 높으면
- * 전세가 유리하고, 낮으면 월세가 유리하다 — 다만 전세는 보증금을 떼일 위험을 같이 진다.
+ * 전세가 유리하고, 낮으면 월세가 유리하다. 다만 전세는 보증금을 떼일 위험을 같이 진다.
  */
 function Wolse({ deals, jeonse }) {
   const rows = deals?.w
@@ -190,8 +190,8 @@ function Wolse({ deals, jeonse }) {
   const rate = rates.sort((a, b) => a - b)[Math.floor(rates.length / 2)]
   return (
     <p className="warnline">
-      <strong>전월세 전환율 {(rate * 100).toFixed(1)}%</strong> — 이 건물 월세 계약
-      {rows.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
+      <strong>전월세 전환율 {(rate * 100).toFixed(1)}%</strong>.{' '}
+      이 건물 월세 계약 {rows.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
       받을 수 있다면 월세가 유리하고, 아니면 전세가 유리합니다.{' '}
       다만 전세는 <strong className="serious">보증금을 떼일 위험</strong>을 같이 집니다.
     </p>
@@ -223,7 +223,7 @@ function BuildingFacts({ u }) {
       </ul>
       {note && (
         <p className="warnline">
-          <strong className={note.tone}>층간소음 추정</strong> — {note.text}.{' '}
+          <strong className={note.tone}>층간소음 추정</strong>: {note.text}.{' '}
           실측 소음 자료가 아니라 구조와 준공연도로 미루어 본 것입니다.
         </p>
       )}
@@ -283,7 +283,7 @@ export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
       {/* 직전 2년과 견준 추세. 데이터에 있으면서 화면에 없던 값이다. */}
       {u.ratio_prev != null && u.ratio != null && !ratioBroken(u.ratio) && (
         <p className="muted-line">
-          직전 2년 전세가율은 {pct0(u.ratio_prev)}였습니다 —{' '}
+          직전 2년 전세가율은 {pct0(u.ratio_prev)}였고,{' '}
           <strong className={u.ratio > u.ratio_prev + 0.03 ? 'serious' : ''}>
             {u.ratio > u.ratio_prev + 0.03 ? `${Math.round((u.ratio - u.ratio_prev) * 100)}%p 올랐습니다`
               : u.ratio < u.ratio_prev - 0.03 ? `${Math.round((u.ratio_prev - u.ratio) * 100)}%p 내렸습니다`

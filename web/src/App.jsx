@@ -32,7 +32,7 @@ export default function App() {
     const lastSolid = solid.at(-1)
     const recent12 = solid.slice(-12)
 
-    // 구별 랭킹 — 잠정 구간을 뺀 최근 12개월 중위 전세가율
+    // 구별 랭킹. 잠정 구간을 뺀 최근 12개월 중위 전세가율
     const byGu = new Map()
     for (const r of data.ratio) {
       if (r.housing_type !== housing || !recent12.includes(r.ym) || r.jeonse_ratio_ppp == null) continue
@@ -126,7 +126,7 @@ export default function App() {
 
       {tab === 'market' && <>
       <section className="card">
-        <h2>자치구별 전세가율 — {housing}</h2>
+        <h2>자치구별 전세가율 ({housing})</h2>
         <p className="sub">최근 12개월({view.lastSolid} 기준) 중위값. 전세 보증금 ÷ 매매가, 평단가 기준. 눌러서 선택</p>
         <RankBars items={view.rank} format={pct0} selected={gu} onSelect={setGu} />
       </section>
@@ -144,7 +144,7 @@ export default function App() {
 
       <section className="card">
         <h2>{view.guName} 전세가율 추이</h2>
-        <p className="sub">높을수록 보증금이 매매가에 가깝다 — 집값이 내려가면 반환 여력이 먼저 사라진다</p>
+        <p className="sub">높을수록 보증금이 매매가에 가깝다. 집값이 내려가면 반환 여력이 먼저 사라진다</p>
         <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={160}
                    format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pct }} />
       </section>
