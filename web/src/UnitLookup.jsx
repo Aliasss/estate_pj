@@ -18,17 +18,41 @@ export const STAGE = {
  * 연립다세대에서는 첫째 축이 사실상 위험 그 자체라 화면 맨 위에 온다.
  */
 function verdict(u) {
-  if (!u.n_sale_24m) {
-    return { tone: 'critical', head: '이 건물 최근 2년 매매 0건',
-      body: u.n_sale_all ? `2021년 이후로는 ${u.n_sale_all}건 있었습니다.`
-                         : '5년 내내 매매 신고가 없습니다. 담보 가치를 실거래로 확인할 방법이 없습니다.' }
+  const villa = u.ht === 'R'
+  const year = u.apr ?? u.build_year
+  const young = year >= 2018
+
+  // 신축인데 매매가 한 건도 없고 전세만 여럿. 빌라 65,670개 중 687개(1.0%)뿐이고,
+  // 전세사기 물건에서 반복적으로 나온 모양이다. 71%짜리 기준선과 섞으면 안 된다.
+  if (villa && !u.n_sale_24m && young && u.n_jeonse_24m >= 5) {
+    return { tone: 'critical', head: '신축인데 매매가 없고 전세만 여럿입니다',
+      body: `${year}년 준공, 최근 2년 전세 ${u.n_jeonse_24m}건, 매매 0건. `
+        + '빌라 중 1%만 이 모양입니다. 시세를 확인할 길이 없는 상태에서 보증금만 '
+        + '들어오는 구조라, 전세사기 물건에서 반복적으로 나타난 패턴입니다.' }
   }
+
+  if (!u.n_sale_24m) {
+    // 빌라에서 매매 0건은 열에 일곱이다. 여기에 빨간불을 켜면 정보가 아니라 벽지가 된다.
+    return villa
+      ? { tone: 'muted', head: '이 건물 최근 2년 매매 0건',
+          body: '빌라에서는 흔한 일입니다 — 열에 일곱이 그렇습니다. 이 집이 위험하다는 '
+            + '뜻이 아니라, 담보 가치를 실거래로 확인해 드릴 수 없다는 뜻입니다. '
+            + '아래 확인 항목을 직접 보셔야 합니다.' }
+      : { tone: 'serious', head: '이 건물 최근 2년 매매 0건',
+          body: '아파트에서는 열에 셋뿐인 경우입니다. '
+            + (u.n_sale_all ? `2021년 이후로는 ${u.n_sale_all}건 있었습니다.`
+                            : '5년 내내 매매 신고가 없습니다.') }
+  }
+
   if (u.n_sale_24m < 3) {
     return { tone: 'serious', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-      body: '표본이 얇아 아래 전세가율은 한두 건에 좌우됩니다.' }
+      body: '표본이 얇아 아래 전세가율은 그 한두 건에 좌우됩니다. '
+        + '그 거래가 지분 거래나 특수관계인 거래였다면 값이 통째로 흔들립니다.' }
   }
+
   return { tone: 'good', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-    body: '실거래로 가격을 확인할 수 있는 물건입니다.' }
+    body: villa ? '빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
+                : '실거래로 가격을 확인할 수 있는 물건입니다.' }
 }
 
 /**
@@ -169,7 +193,10 @@ export function UnitCard({ u, onClose, onMap }) {
       {!ratioBroken(u.ratio) && !st.exact && u.ratio != null && (
         <p className="warnline">
           이 건물의 매매 사례가 없어 <strong>같은 동의 비슷한 물건{u.stage === 'B' ? '·연식' : ''}</strong>과
-          비교한 참고치입니다. 개별 물건의 실제 담보 가치와 다를 수 있습니다.
+          비교한 참고치입니다. 같은 방식으로 계산한 값을 실제 거래가 있는 물건 10,416개에서
+          대조해 보니, <strong>열 중 여덟은 오차 10%p 이내</strong>였지만
+          <strong className="serious"> 마흔 중 하나는 위험한 물건을 안전하다고</strong> 말했습니다.
+          {u.stage === 'B-' && ' 이 물건은 연식을 맞추지 못해 그보다 더 거칠게 잡은 값입니다.'}
         </p>
       )}
       {u.direct_share > 0 && (
