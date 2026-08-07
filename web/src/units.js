@@ -10,6 +10,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /** 없는 열은 비어 있는 것으로 본다. 코드가 데이터보다 먼저 배포되면 그렇게 된다. */
 const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk']
 
+/**
+ * 비어 있으면 안 되는 열. 이 중 하나라도 빠지면 검색·판정이 undefined 위에서
+ * 돌아간다. 조용히 이상한 화면을 그리느니 에러 화면으로 떨어뜨려 새 데이터를
+ * 받게 하는 편이 낫다.
+ */
+const REQUIRED = ['i', 'ht', 'g', 'u', 'name', 'area', 'by', 'jeonse', 'ratio', 'stage', 'ns', 'nj']
+
 /** "202406" -> "2024년 6월". 창을 화면에 그대로 뿌리면 여덟 자리 숫자가 보인다. */
 export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '—')
 
@@ -20,6 +27,10 @@ export function useFinder() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
         const col = Object.fromEntries(d.cols.map((c, i) => [c, d.columns[i]]))
+        const missing = REQUIRED.filter((c) => !col[c])
+        if (missing.length) {
+          throw new Error(`데이터에 필수 열이 없습니다: ${missing.join(', ')}`)
+        }
         const blank = new Array(d.n).fill(null)
         for (const c of FILL) if (!col[c]) col[c] = blank
         // 검색은 키 입력마다 전수 스캔이다. 행마다 replace로 새 문자열을 만들면
