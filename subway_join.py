@@ -84,25 +84,28 @@ class Nearest:
         conn.close()
 
     def lookup(self, lawd: str, umd: str, jibun: str | None) -> dict:
+        """좌표와 최근접역. 지도는 좌표만 있으면 그릴 수 있으므로 둘을 따로 낸다 —
+        역이 멀어 통근 계산을 못 하는 물건도 지도에는 찍혀야 한다."""
         if not self.ready:
             return {}
         point = self.coords.get((lawd, (umd or "").strip(), (jibun or "").strip()))
         if not point:
             self.miss += 1
             return {}
+        here = {"lat": round(point[0], 5), "lon": round(point[1], 5)}
         found = self.stations.nearest(*point)
         if not found:
             self.miss += 1
-            return {}
+            return here
         idx, meters = found
         minutes = walk_minutes(meters)
         if minutes > MAX_WALK_MIN:
             # 역이 너무 멀다. 역 번호를 남기면 앱이 통근 시간을 계산해 버리는데
             # 걸어서 40분 걸리는 역을 기준으로 낸 값은 답이 아니라 잡음이다.
             self.far += 1
-            return {}
+            return here
         self.hit += 1
-        return {"stn": idx, "walk": minutes}
+        return {**here, "stn": idx, "walk": minutes}
 
     def report(self) -> str:
         if not self.ready:

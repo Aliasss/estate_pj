@@ -95,6 +95,18 @@ jobs:
             echo "건축물대장 없음. 해당 열 없이 생성합니다."
           fi
 
+      # 좌표·지하철도 릴리스에서 받아 온다. 없으면 해당 열만 비고 나머지는 그대로 나온다.
+      - name: 좌표·지하철 복원
+        continue-on-error: true
+        run: |
+          if gh release download "$SNAPSHOT_TAG" --pattern 'geo.sqlite.gz' --clobber; then
+            gunzip -f geo.sqlite.gz
+            python -c "import sqlite3;c=sqlite3.connect('geo.sqlite');print('좌표', c.execute(\"SELECT COUNT(*) FROM coords WHERE status='ok'\").fetchone()[0], '건')"
+          else
+            echo "좌표 없음."
+          fi
+          gh release download "$SNAPSHOT_TAG" --pattern 'subway.json' --clobber || echo "지하철 없음."
+
       - name: 집계 패널 생성
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
 
@@ -102,7 +114,8 @@ jobs:
       # 릴리스 자산으로 올리고 Vercel 빌드가 받아 정적 파일로 굽는다.
       - name: 물건 단위 패널 발행
         run: |
-          python build_units.py --db seoul_rt.sqlite --out units --bldg bldg.sqlite
+          python build_units.py --db seoul_rt.sqlite --out units \
+            --bldg bldg.sqlite --geo geo.sqlite --subway subway.json
           tar -czf units.tar.gz -C units .
           ls -lh units.tar.gz
           gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber

@@ -8,3 +8,6 @@ units/
 web/public/data/
 web/node_modules/
 web/dist/
+subway.json
+geo.sqlite
+bldg.sqlite

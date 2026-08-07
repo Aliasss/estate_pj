@@ -28,6 +28,7 @@ import statistics as st
 from collections import Counter, defaultdict
 
 from bldg_join import Registry
+from subway_join import Nearest
 from match_probe import area_key, norm_jibun, norm_name
 
 AREA_BAND = 0.5      # 실측으로 고른 값
@@ -71,7 +72,7 @@ def pct(numer: float | None, denom: float | None) -> float | None:
 #   - 법정동은 사전으로 접는다. 건물명은 고유값이 38,872개라 사전이 오히려 손해였다.
 # 상세는 어차피 구 파일에서 다시 읽으므로 여기에 담지 않는다.
 FINDER_COLS = ["i", "ht", "g", "u", "name", "area", "by", "jeonse", "ratio", "stage",
-               "ns", "nj", "elvt", "apr"]
+               "ns", "nj", "elvt", "apr", "lat", "lon", "stn", "walk"]
 STAGES = ["A", "B", "B-", "C"]
 
 
@@ -94,6 +95,7 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) 
                 r[col["n_sale_24m"]], r[col["n_jeonse_24m"]],
                 # 건축물대장이 아직 안 붙은 물건은 None. 열 단위라 gzip이 거의 다 먹는다.
                 r[col["elvt"]], r[col["apr"]],
+                r[col["lat"]], r[col["lon"]], r[col["stn"]], r[col["walk"]],
             ])
     payload = {"window": window, "gus": gus, "stages": STAGES,
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
@@ -107,7 +109,8 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) 
           f"(gzip {packed / 1e6:.2f}MB, 법정동 {len(umds)}개)")
 
 
-def build(conn: sqlite3.Connection, out_dir: str, registry: Registry) -> None:
+def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
+          nearest: Nearest) -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
     complete_end = shift_ym(end, -LAG_MONTHS)          # 마지막 완성 월
     recent_start = shift_ym(complete_end, -(RECENT_MONTHS - 1))
@@ -205,8 +208,11 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry) -> None:
             "n_jeonse_24m", "n_wolse_24m", "med_jeonse",
             "ratio", "stage", "n_comps", "ratio_prev", "renew_hike",
             # 건축물대장. 아직 안 받은 지번은 전부 None으로 나간다.
-            "apr", "strct", "hhld", "flr", "elvt", "park", "n_dong"]
-    BLDG_COLS = COLS[-7:]
+            "apr", "strct", "hhld", "flr", "elvt", "park", "n_dong",
+            # 좌표·최근접역. 지오코딩이 안 된 물건은 전부 None으로 나간다.
+            "lat", "lon", "stn", "walk"]
+    BLDG_COLS = COLS[-11:-4]
+    GEO_COLS = COLS[-4:]
 
     by_gu: dict[str, list[list]] = defaultdict(list)
     stage_count = Counter()
@@ -241,6 +247,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry) -> None:
         hike = hikes.get(key)
         name = names[key].most_common(1)[0][0] if names[key] else ""
         bldg = registry.lookup(lawd, umd, info["jibun"], name)
+        geo = nearest.lookup(lawd, umd, info["jibun"])
         by_gu[lawd].append([
             unit_id(key),
             "A" if ht == "아파트" else "R",
@@ -254,6 +261,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry) -> None:
             ratio, stage, n_comps, ratio_prev,
             round(st.median(hike), 4) if hike else None,
             *(bldg.get(c) for c in BLDG_COLS),
+            *(geo.get(c) for c in GEO_COLS),
         ])
 
     os.makedirs(out_dir, exist_ok=True)
@@ -276,6 +284,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry) -> None:
     write_finder(out_dir, by_gu, COLS, [recent_start, complete_end])
 
     print(registry.report())
+    print(nearest.report())
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")
     print("\n폴백 단계 분포 (최근 전세가 있는 물건 기준):")
@@ -292,13 +301,19 @@ def main() -> int:
     parser.add_argument("--db", default="/workspace/seoul_rt.sqlite")
     parser.add_argument("--out", default="web/data/units")
     parser.add_argument("--bldg", default="", help="건축물대장 DB. 없으면 해당 열은 비워 둔다")
+    parser.add_argument("--geo", default="", help="좌표 DB (geocode.py 결과)")
+    parser.add_argument("--subway", default="", help="지하철 subway.json")
     args = parser.parse_args()
 
     bldg = args.bldg if args.bldg and os.path.exists(args.bldg) else None
     if args.bldg and not bldg:
         print(f"건축물대장 DB가 없습니다: {args.bldg} — 해당 열 없이 생성합니다")
+    geo = args.geo if args.geo and os.path.exists(args.geo) else None
+    sub = args.subway if args.subway and os.path.exists(args.subway) else None
+    if args.geo and not geo:
+        print(f"좌표 DB가 없습니다: {args.geo} — 지도·통근 열 없이 생성합니다")
     conn = sqlite3.connect(args.db)
-    build(conn, args.out, Registry(bldg))
+    build(conn, args.out, Registry(bldg), Nearest(geo, sub))
     conn.close()
     return 0
 

@@ -21,8 +21,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(here, '../..')
 const outDir = path.resolve(here, '../public/data')
 
-const UNITS_URL =
-  'https://github.com/Aliasss/estate_pj/releases/download/data-latest/units.tar.gz'
+const RELEASE = 'https://github.com/Aliasss/estate_pj/releases/download/data-latest'
+const UNITS_URL = `${RELEASE}/units.tar.gz`
 
 /** 쉼표를 품은 따옴표 필드까지 처리하는 최소 CSV 파서. */
 function parseCsv(text) {
@@ -107,5 +107,25 @@ async function buildTier2() {
   console.log('units/     릴리스에서 내려받음')
 }
 
+/** 지하철역·노선. 41KB라 프리캐시에 넣어도 부담이 없다. */
+async function buildSubway() {
+  const local = path.join(repo, 'subway.json')
+  const dest = path.join(outDir, 'subway.json')
+  if (existsSync(local)) {
+    await cp(local, dest)
+    console.log('subway.json 로컬 사용')
+    return
+  }
+  const res = await fetch(`${RELEASE}/subway.json`)
+  if (!res.ok) {
+    console.warn(`subway.json  릴리스에 없습니다 (HTTP ${res.status}). 지도에 역 없이 빌드합니다.`)
+    return
+  }
+  const text = await res.text()
+  await writeFile(dest, text)
+  console.log(`subway.json  역 ${JSON.parse(text).stations.length}개`)
+}
+
 await buildTier1()
 await buildTier2()
+await buildSubway()

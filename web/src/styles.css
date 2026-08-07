@@ -249,3 +249,17 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .facts li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
 .facts span { color: var(--text-muted); }
 .facts b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* --- 지도 --- */
+.mapwrap { margin: 0 0 8px; }
+.map {
+  height: 62vh; min-height: 320px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-0);
+}
+/* 라이트 지도 위에 다크 UI가 겹치면 눈이 아프다. 다크에서는 타일을 살짝 눌러 둔다. */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .leaflet-tile { filter: brightness(0.78) saturate(0.85); }
+}
+:root[data-theme='dark'] .leaflet-tile { filter: brightness(0.78) saturate(0.85); }
+.leaflet-container { font: inherit; font-size: 12px; }
+.mapwrap figcaption { margin-top: 6px; }

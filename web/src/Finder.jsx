@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import MapView from './MapView.jsx'
 import { UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 
 /**
@@ -56,10 +57,24 @@ function useFinder() {
   return state
 }
 
+/** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
+function useSubway() {
+  const [stations, setStations] = useState([])
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}data/subway.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setStations(
+        d.stations.map((name, i) => ({ name, lat: d.coords[i][0], lon: d.coords[i][1] }))))
+      .catch(() => {})          // 역 자료가 없어도 지도는 떠야 한다
+  }, [])
+  return stations
+}
+
 const PAGE = 60
 
 export default function Finder({ guNames }) {
   const fin = useFinder()
+  const stationPins = useSubway()
   const [budget, setBudget] = useState('')       // 억
   const [minPy, setMinPy] = useState('')         // 평
   const [minYear, setMinYear] = useState(0)
@@ -68,6 +83,7 @@ export default function Finder({ guNames }) {
   const [needSale, setNeedSale] = useState(false)
   const [needElvt, setNeedElvt] = useState(false)
   const [sort, setSort] = useState('safe')
+  const [view, setView] = useState('list')   // list | map
   const [limit, setLimit] = useState(PAGE)
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
   const [open, setOpen] = useState(null)
@@ -101,6 +117,22 @@ export default function Finder({ guNames }) {
   }, [fin, cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
 
   useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
+
+  // 지도에 찍을 점. 좌표가 없는 물건은 뺀다 — 지오코딩이 끝나기 전까지는 대부분이 그렇다.
+  const pins = useMemo(() => {
+    if (view !== 'map' || fin.status !== 'ready') return []
+    const { col } = fin
+    const out = []
+    for (const i of hits) {
+      if (col.lat[i] == null) continue
+      out.push({
+        i, lat: col.lat[i], lon: col.lon[i],
+        tone: ratioTone(col.ratio[i]),
+        label: `${col.name[i] || '(이름 없음)'} · ${eok(col.jeonse[i])}`,
+      })
+    }
+    return out
+  }, [view, fin, hits])
 
   // 목록 끝이 보이면 이어 붙인다. 전량이 이미 메모리에 있어 네트워크는 타지 않는다.
   const sentinel = useRef(null)
@@ -158,6 +190,7 @@ export default function Finder({ guNames }) {
   const { col, d } = fin
   // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
   const coverage = col.elvt.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
+  const geoCoverage = col.lat.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
   return (
     <section className="card">
       <h2>조건 검색</h2>
@@ -231,7 +264,25 @@ export default function Finder({ guNames }) {
         {sort === 'safe' && ' · 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저, 그다음이 전세가율 여유 순입니다'}
       </p>
 
-      <ul className="unit-list">
+      <div className="seg" role="group" aria-label="보기" style={{ marginBottom: 10 }}>
+        <button aria-pressed={view === 'list'} onClick={() => setView('list')}>목록</button>
+        <button aria-pressed={view === 'map'} onClick={() => setView('map')}>지도</button>
+      </div>
+
+      {view === 'map' && (
+        pins.length ? (
+          <MapView points={pins} stations={stationPins}
+                   onPick={(p) => { setView('list'); toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`) }}
+                   note={`좌표 ${pct0(geoCoverage)} 확보`} />
+        ) : (
+          <p className="warnline">
+            <strong>아직 지도에 찍을 좌표가 없습니다.</strong> 물건 주소를 좌표로 바꾸는 작업이
+            진행 중입니다({pct0(geoCoverage)} 완료). 끝나면 조건에 맞는 물건이 여기 뜹니다.
+          </p>
+        )
+      )}
+
+      {view === 'list' && <ul className="unit-list">
         {hits.slice(0, limit).map((i) => {
           const key = `${col.g[i]}-${col.i[i]}`
           return (
@@ -260,10 +311,10 @@ export default function Finder({ guNames }) {
           </li>
           )
         })}
-      </ul>
+      </ul>}
 
       {!hits.length && <p className="muted-line">조건에 맞는 물건이 없습니다. 예산이나 면적을 넓혀 보세요.</p>}
-      {limit < hits.length && (
+      {view === 'list' && limit < hits.length && (
         <>
           <div ref={sentinel} aria-hidden="true" />
           <button className="more" onClick={() => setLimit((n) => n + PAGE)}>
