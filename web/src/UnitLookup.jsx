@@ -103,6 +103,50 @@ function quietNote(u) {
     : { tone: 'muted', text: `${u.apr}년 준공 — 표준바닥구조 의무화(2005) 이전입니다` }
 }
 
+const ym = (s) => `${String(s).slice(2, 4)}.${String(s).slice(4, 6)}`
+/** 층은 반지하 여부를 알려준다. 침수·채광·보증보험 모두 여기서 갈린다. */
+const floorText = (f) => (f == null ? '—' : f <= 0 ? '반지하' : `${f}층`)
+
+/**
+ * 개별 거래 내역. 중위값만 보여주면 그 값이 어디서 왔는지 알 수 없다.
+ * "2.5억"보다 "26.03에 2.6억 3층, 25.11에 2.4억 반지하"가 판단에 훨씬 가깝고,
+ * 중위값을 믿을 근거도 된다.
+ */
+function Deals({ deals }) {
+  if (!deals) return null
+  const groups = [
+    ['j', '전세', (r) => [eok(r[1]), floorText(r[2]), r[3] === '갱신' ? '갱신' : '']],
+    ['s', '매매', (r) => [eok(r[1]), floorText(r[2]), '']],
+    ['w', '월세', (r) => [`${eok(r[1])} / ${r[2]}만`, floorText(r[3]), '']],
+  ].filter(([k]) => deals[k]?.length)
+  if (!groups.length) return null
+  return (
+    <>
+      <h3 className="facts-h">최근 거래</h3>
+      {groups.map(([k, label, fmt]) => (
+        <div key={k} className="deals">
+          <h4>{label} <small>{deals[k].length}건</small></h4>
+          <table>
+            <tbody>
+              {deals[k].map((r, i) => {
+                const [amount, floor, tag] = fmt(r)
+                return (
+                  <tr key={i}>
+                    <td className="d-ym">{ym(r[0])}</td>
+                    <td className="d-amt">{amount}</td>
+                    <td className={floor === '반지하' ? 'serious' : ''}>{floor}</td>
+                    <td className="d-tag">{tag}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </>
+  )
+}
+
 /** 건축물대장. 수집이 끝나기 전까지는 없는 물건이 더 많아서 상태를 분명히 밝힌다. */
 function BuildingFacts({ u }) {
   const has = u.apr != null || u.hhld != null || u.elvt != null
@@ -182,6 +226,18 @@ export function UnitCard({ u, onClose, onMap }) {
         </div>
       </dl>
 
+      {/* 직전 2년과 견준 추세. 데이터에 있으면서 화면에 없던 값이다. */}
+      {u.ratio_prev != null && u.ratio != null && !ratioBroken(u.ratio) && (
+        <p className="muted-line">
+          직전 2년 전세가율은 {pct0(u.ratio_prev)}였습니다 —{' '}
+          <strong className={u.ratio > u.ratio_prev + 0.03 ? 'serious' : ''}>
+            {u.ratio > u.ratio_prev + 0.03 ? `${Math.round((u.ratio - u.ratio_prev) * 100)}%p 올랐습니다`
+              : u.ratio < u.ratio_prev - 0.03 ? `${Math.round((u.ratio_prev - u.ratio) * 100)}%p 내렸습니다`
+              : '큰 변화 없습니다'}
+          </strong>.
+        </p>
+      )}
+
       {ratioBroken(u.ratio) && (
         <p className="warnline">
           <strong className="serious">비교 기준이 정상이 아닙니다.</strong> 계산하면
@@ -209,6 +265,7 @@ export function UnitCard({ u, onClose, onMap }) {
         <p className="muted-line">최근 2년 월세 계약 {u.n_wolse_24m}건 (전세 {u.n_jeonse_24m}건)</p>
       )}
 
+      <Deals deals={u.deals} />
       <BuildingFacts u={u} />
 
       {/* 좌표가 있는 물건에서만 낸다. 눌렀는데 아무 데도 안 가면 안 만든 것만 못하다. */}

@@ -111,6 +111,24 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) 
           f"(gzip {packed / 1e6:.2f}MB, 법정동 {len(umds)}개)")
 
 
+# 물건 하나에 다 싣지 않는다. 최근 것만 보면 되고, 전량을 넣으면 구 파일이 두 배가 된다.
+DEAL_CAPS = {"j": 10, "s": 8, "w": 6}
+
+
+def trim_deals(d: dict | None) -> dict | None:
+    """최신순으로 잘라 낸다. 빈 종류는 키 자체를 빼서 용량을 아낀다."""
+    if not d:
+        return None
+    out = {}
+    for kind, cap in DEAL_CAPS.items():
+        # 날짜로만 정렬한다. 튜플 통째로 비교하면 층이 비어 있는 행에서 None과 문자열을
+        # 견주게 되어 깨진다.
+        rows = sorted(d.get(kind, ()), key=lambda r: r[0], reverse=True)[:cap]
+        if rows:
+            out[kind] = [list(r) for r in rows]
+    return out or None
+
+
 def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
           nearest: Nearest) -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
@@ -119,6 +137,10 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     prev_start = shift_ym(recent_start, -RECENT_MONTHS)
     print(f"수집 최종 {end} / 완성 구간 ~{complete_end}")
     print(f"최근 창 {recent_start}~{complete_end}, 직전 창 {prev_start}~{shift_ym(recent_start, -1)}\n")
+
+    # 개별 거래 내역. "중위 2.5억"보다 "2026-03에 2.6억 3층"이 판단에 훨씬 가깝고,
+    # 중위값을 믿을 근거도 된다. 층은 반지하 여부까지 알려주므로 꼭 같이 낸다.
+    deals: dict[tuple, dict[str, list]] = defaultdict(lambda: {"j": [], "s": [], "w": []})
 
     # 물건별 누적기. 키는 (housing_type, lawd_cd, umd, jibun_norm, name_norm, area_band)
     sale_recent: dict[tuple, list[int]] = defaultdict(list)
@@ -138,14 +160,14 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         """
         SELECT housing_type, deal_type, lawd_cd, sgg_nm, umd_nm, jibun, building_name,
                exclu_use_ar, build_year, deal_ymd, deal_amount, deposit, monthly_rent,
-               dealing_gbn
+               dealing_gbn, floor, contract_type
         FROM transactions
         WHERE cdeal_type IS NULL OR cdeal_type <> 'O'
         """
     )
     seen = 0
     for (ht, dt, lawd, sgg, umd, jibun, bname, area, byear, ymd,
-         amount, deposit, rent, gbn) in cur:
+         amount, deposit, rent, gbn, floor, ctype) in cur:
         seen += 1
         if seen % 500_000 == 0:
             print(f"  {seen:,}행 처리")
@@ -166,6 +188,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             sale_all[key].append(amount)
             if ymd >= recent_start:
                 sale_recent[key].append(amount)
+                deals[key]["s"].append((ymd, amount, floor))
                 umd_sale_b[b_key].append(amount)
                 umd_sale_bm[bm_key].append(amount)
                 if gbn and "직거래" in gbn:
@@ -174,10 +197,12 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             if (rent or 0) == 0:
                 if ymd >= recent_start:
                     jeonse_recent[key].append(deposit)
+                    deals[key]["j"].append((ymd, deposit, floor, ctype))
                 elif ymd >= prev_start:
                     jeonse_prev[key].append(deposit)
             elif ymd >= recent_start:
                 wolse_recent[key] += 1
+                deals[key]["w"].append((ymd, deposit, rent, floor))
     print(f"  {seen:,}행 처리 완료\n")
 
     # 갱신 계약 보증금 증액폭. payload는 갱신 건만 스트리밍으로 읽는다.
@@ -212,9 +237,11 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             # 건축물대장. 아직 안 받은 지번은 전부 None으로 나간다.
             "apr", "strct", "hhld", "flr", "elvt", "park", "n_dong",
             # 좌표·최근접역. 지오코딩이 안 된 물건은 전부 None으로 나간다.
-            "lat", "lon", "stn", "walk"]
-    BLDG_COLS = COLS[-11:-4]
-    GEO_COLS = COLS[-4:]
+            "lat", "lon", "stn", "walk",
+            # 개별 거래 내역. 최신순으로 잘라서 낸다.
+            "deals"]
+    BLDG_COLS = COLS[-12:-5]
+    GEO_COLS = COLS[-5:-1]
 
     by_gu: dict[str, list[list]] = defaultdict(list)
     stage_count = Counter()
@@ -264,6 +291,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             round(st.median(hike), 4) if hike else None,
             *(bldg.get(c) for c in BLDG_COLS),
             *(geo.get(c) for c in GEO_COLS),
+            trim_deals(deals.get(key)),
         ])
 
     os.makedirs(out_dir, exist_ok=True)
