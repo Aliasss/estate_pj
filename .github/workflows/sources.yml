@@ -53,8 +53,18 @@ jobs:
         run: |
           gh release download data-latest --pattern 'units.tar.gz' --clobber
           mkdir -p units && tar -xzf units.tar.gz -C units
-          gh release download data-latest --pattern 'geo.sqlite.gz' --clobber || true
-          [ -f geo.sqlite.gz ] && gunzip -f geo.sqlite.gz || true
+          # "에셋이 정말 없음"과 "다운로드 실패"를 구분한다. 일시 오류를 처음부터로
+          # 삼키면 며칠치 좌표 진행분이 이번 실행분으로 덮여 갈려 나간다.
+          assets=$(gh release view data-latest --json assets --jq '.assets[].name')
+          if echo "$assets" | grep -qx 'geo.sqlite.gz'; then
+            # 에셋이 분명히 있다. 여기서 실패하면 일시 오류이므로 중단한다.
+            gh release download data-latest --pattern 'geo.sqlite.gz' --clobber
+            gunzip -f geo.sqlite.gz
+            sqlite3 geo.sqlite "SELECT COUNT(*) FROM coords" > .rows_before
+          else
+            echo "이전 진행분 없음. 처음부터 받습니다."
+            echo 0 > .rows_before
+          fi
           python geocode.py --units units --db geo.sqlite \
             --max-calls ${{ inputs.geo_calls || 30000 }} --rate 8 --workers 4
 
@@ -63,6 +73,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 행 수 가드: 복원 시점보다 줄어든 DB로 진행분을 덮어쓰지 않는다.
+          # 복원이 실패했으면 .rows_before가 없고, 그때도 발행하지 않는다.
+          if [ ! -f .rows_before ]; then
+            echo "복원 기준(.rows_before)이 없습니다. 복원 단계가 깨진 채 왔으므로 발행하지 않습니다."
+            exit 1
+          fi
+          before=$(cat .rows_before)
+          after=$(sqlite3 geo.sqlite "SELECT COUNT(*) FROM coords")
+          if [ "$after" -lt "$before" ]; then
+            echo "coords 행 수가 ${before} -> ${after}로 줄었습니다. 발행을 거부합니다."
+            exit 1
+          fi
+          echo "행 수 가드 통과: ${before} -> ${after}"
           python -c "import sqlite3;c=sqlite3.connect('geo.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
           gzip -kf geo.sqlite
           ls -lh geo.sqlite.gz

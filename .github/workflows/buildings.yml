@@ -66,13 +66,20 @@ jobs:
           gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber
           gunzip -f seoul_rt.sqlite.gz
 
+      # "에셋이 정말 없음"과 "다운로드 실패"를 구분한다. 일시 오류를 '처음부터'로
+      # 삼키면 며칠치 진행분이 이번 실행의 하루치로 덮여 갈려 나간다.
       - name: 건축물대장 진행분 복원
         run: |
-          if gh release download "$SNAPSHOT_TAG" --pattern 'bldg.sqlite.gz' --clobber; then
+          assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name')
+          if echo "$assets" | grep -qx 'bldg.sqlite.gz'; then
+            # 에셋이 분명히 있다. 여기서 실패하면 일시 오류이므로 중단한다.
+            gh release download "$SNAPSHOT_TAG" --pattern 'bldg.sqlite.gz' --clobber
             gunzip -f bldg.sqlite.gz
             python -c "import sqlite3;c=sqlite3.connect('bldg.sqlite');print('복원:', c.execute('SELECT COUNT(*) FROM buildings').fetchone()[0], '동')"
+            sqlite3 bldg.sqlite "SELECT COUNT(*) FROM buildings" > .rows_before
           else
             echo "이전 진행분 없음. 처음부터 받습니다."
+            echo 0 > .rows_before
           fi
 
       - name: 건축물대장 수집
@@ -88,6 +95,18 @@ jobs:
       - name: 진행분 발행
         if: always() && hashFiles('bldg.sqlite') != ''
         run: |
+          # 행 수 가드: 복원 시점보다 줄어든 DB로 진행분을 덮어쓰지 않는다.
+          if [ ! -f .rows_before ]; then
+            echo "복원 기준(.rows_before)이 없습니다. 복원 단계가 깨진 채 왔으므로 발행하지 않습니다."
+            exit 1
+          fi
+          before=$(cat .rows_before)
+          after=$(sqlite3 bldg.sqlite "SELECT COUNT(*) FROM buildings")
+          if [ "$after" -lt "$before" ]; then
+            echo "buildings 행 수가 ${before} -> ${after}로 줄었습니다. 발행을 거부합니다."
+            exit 1
+          fi
+          echo "행 수 가드 통과: ${before} -> ${after}"
           python -c "import sqlite3;c=sqlite3.connect('bldg.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
           gzip -kf bldg.sqlite
           ls -lh bldg.sqlite.gz

@@ -54,14 +54,32 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
-      # 이전 실행이 남긴 원본을 받아온다. 없으면(최초 실행) 빈 상태로 시작한다.
+      # 이전 실행이 남긴 원본을 받아온다. "에셋이 정말 없음"(최초 실행)과
+      # "다운로드 실패"(GitHub API 일시 오류)를 구분한다. 후자를 처음부터 수집으로
+      # 삼키면 5년치 스냅샷이 한 달치로 조용히 갈려 나간다.
       - name: 직전 스냅샷 복원
         run: |
-          if gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber; then
-            gunzip -f seoul_rt.sqlite.gz
-            python -c "import sqlite3;c=sqlite3.connect('seoul_rt.sqlite');print('복원됨:', c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0], '건');c.close()"
+          if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
+            if echo "$assets" | grep -qx 'seoul_rt.sqlite.gz'; then
+              # 에셋이 분명히 있다. 여기서 실패하면 일시 오류이므로 중단한다.
+              gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber
+              gunzip -f seoul_rt.sqlite.gz
+              python -c "import sqlite3;c=sqlite3.connect('seoul_rt.sqlite');print('복원됨:', c.execute('SELECT COUNT(*) FROM transactions').fetchone()[0], '건');c.close()"
+            else
+              echo "릴리스는 있지만 seoul_rt.sqlite.gz 에셋이 없음. 처음부터 수집합니다."
+            fi
+          elif echo "$assets" | grep -qiE 'not found|404'; then
+            echo "이전 스냅샷 없음(최초 실행). 5년치를 처음부터 수집합니다 (40분~1시간)."
           else
-            echo "이전 스냅샷 없음. 5년치를 처음부터 수집합니다 (40분~1시간)."
+            echo "릴리스 확인 자체가 실패했습니다. 일시 오류를 '처음부터'로 오판하지 않도록 중단합니다."
+            echo "$assets"
+            exit 1
+          fi
+          # 발행 스텝의 행 수 가드 기준. 복원이 없으면 0에서 시작한다.
+          if [ -f seoul_rt.sqlite ]; then
+            sqlite3 seoul_rt.sqlite "SELECT COUNT(*) FROM transactions" > .rows_before
+          else
+            echo 0 > .rows_before
           fi
 
       - name: 실거래가 수집
@@ -75,6 +93,19 @@ jobs:
       - name: 원본 스냅샷 발행
         if: ${{ always() && !inputs.skip_collect && hashFiles('seoul_rt.sqlite') != '' }}
         run: |
+          # 행 수 가드: 복원 시점보다 줄어든 DB로 스냅샷을 덮어쓰지 않는다.
+          # 스냅샷은 다음 실행의 이어받기 기반이라, 한 번 줄면 되돌릴 길이 없다.
+          if [ ! -f .rows_before ]; then
+            echo "복원 기준(.rows_before)이 없습니다. 복원 단계가 깨진 채 왔으므로 발행하지 않습니다."
+            exit 1
+          fi
+          before=$(cat .rows_before)
+          after=$(sqlite3 seoul_rt.sqlite "SELECT COUNT(*) FROM transactions")
+          if [ "$after" -lt "$before" ]; then
+            echo "transactions 행 수가 ${before} -> ${after}로 줄었습니다. 발행을 거부합니다."
+            exit 1
+          fi
+          echo "행 수 가드 통과: ${before} -> ${after}"
           # WAL을 본체에 합쳐야 파일 하나로 온전해진다.
           python -c "import sqlite3;c=sqlite3.connect('seoul_rt.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
           gzip -kf seoul_rt.sqlite
@@ -84,28 +115,48 @@ jobs:
               --notes "국토교통부 실거래가 원본 SQLite. 매 수집 실행마다 갱신된다. gunzip 후 sqlite3로 열면 된다."
           gh release upload "$SNAPSHOT_TAG" seoul_rt.sqlite.gz --clobber
 
-      # 건축물대장은 buildings.yml이 매일 조금씩 채운다. 없으면 해당 열만 비고 나머지는 그대로 나온다.
+      # 건축물대장은 buildings.yml이 매일 조금씩 채운다. 에셋이 정말 없으면 해당 열만
+      # 비고 나머지는 그대로 나온다. 있는데 못 받은 것은 일시 오류이므로, 열이 빈 채
+      # 조용히 발행되지 않도록 중단한다.
       - name: 건축물대장 복원
-        continue-on-error: true
         run: |
-          if gh release download "$SNAPSHOT_TAG" --pattern 'bldg.sqlite.gz' --clobber; then
+          if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
+            if echo "$assets" | grep -qiE 'not found|404'; then
+              echo "릴리스 없음(최초 실행). 건축물대장 없이 생성합니다."
+              exit 0
+            fi
+            echo "릴리스 확인 실패:"; echo "$assets"; exit 1
+          fi
+          if echo "$assets" | grep -qx 'bldg.sqlite.gz'; then
+            gh release download "$SNAPSHOT_TAG" --pattern 'bldg.sqlite.gz' --clobber
             gunzip -f bldg.sqlite.gz
             python -c "import sqlite3;c=sqlite3.connect('bldg.sqlite');print('건축물대장', c.execute('SELECT COUNT(*) FROM buildings').fetchone()[0], '동')"
           else
             echo "건축물대장 없음. 해당 열 없이 생성합니다."
           fi
 
-      # 좌표·지하철도 릴리스에서 받아 온다. 없으면 해당 열만 비고 나머지는 그대로 나온다.
+      # 좌표·지하철도 릴리스에서 받아 온다. 위와 같은 규율: 정말 없을 때만 비운다.
       - name: 좌표·지하철 복원
-        continue-on-error: true
         run: |
-          if gh release download "$SNAPSHOT_TAG" --pattern 'geo.sqlite.gz' --clobber; then
+          if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
+            if echo "$assets" | grep -qiE 'not found|404'; then
+              echo "릴리스 없음(최초 실행). 좌표·지하철 없이 생성합니다."
+              exit 0
+            fi
+            echo "릴리스 확인 실패:"; echo "$assets"; exit 1
+          fi
+          if echo "$assets" | grep -qx 'geo.sqlite.gz'; then
+            gh release download "$SNAPSHOT_TAG" --pattern 'geo.sqlite.gz' --clobber
             gunzip -f geo.sqlite.gz
             python -c "import sqlite3;c=sqlite3.connect('geo.sqlite');print('좌표', c.execute(\"SELECT COUNT(*) FROM coords WHERE status='ok'\").fetchone()[0], '건')"
           else
             echo "좌표 없음."
           fi
-          gh release download "$SNAPSHOT_TAG" --pattern 'subway.json' --clobber || echo "지하철 없음."
+          if echo "$assets" | grep -qx 'subway.json'; then
+            gh release download "$SNAPSHOT_TAG" --pattern 'subway.json' --clobber
+          else
+            echo "지하철 없음."
+          fi
 
       - name: 집계 패널 생성
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
