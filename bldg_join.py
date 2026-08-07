@@ -88,7 +88,9 @@ def pick(cands: list[dict], name: str | None) -> dict | None:
     resid = [b for b in homes if (b["hhld_cnt"] or 0) > 0] or homes
 
     def total(rows, field):
-        vals = [r[field] for r in rows if r[field]]
+        # 0을 버리면 안 된다. "승강기 0대"(실제 없음)와 "값 없음"(자료 없음)은 다른 말이고,
+        # 그걸 뭉개면 경희궁자이 21층이 "승강기 없음"으로 나간다.
+        vals = [r[field] for r in rows if r[field] is not None]
         return sum(vals) if vals else None
 
     def best(rows, field, fn):
@@ -102,11 +104,22 @@ def pick(cands: list[dict], name: str | None) -> dict | None:
         "strct": strcts.most_common(1)[0][0] if strcts else None,
         "hhld_cnt": total(resid, "hhld_cnt"),
         "grnd_flr": best(resid, "grnd_flr", max),
-        "elvt_cnt": total(resid, "elvt_cnt") or 0,
+        "elvt_cnt": total(resid, "elvt_cnt"),
         "park_cnt": best(cands, "park_cnt", max),
         "tot_area": total(resid, "tot_area"),
         "n_dong": len(resid),
     }
+
+
+def _sane_park(park: int | None, hhld: int | None) -> int | None:
+    """주차는 표제부에서 동마다 공용값이 반복되거나 한 동에만 실리는 식으로 들쭉날쭉하다.
+    세대수 대비 터무니없는 값(919세대에 11대, 54세대에 세대당 3대 초과)은 자료 오류로
+    보고 내보내지 않는다. 틀린 숫자보다 빈칸이 낫다."""
+    if park is None:
+        return None
+    if hhld and (park < hhld * 0.05 or park > hhld * 3):
+        return None
+    return park
 
 
 def features(b: dict | None) -> dict:
@@ -120,9 +133,9 @@ def features(b: dict | None) -> dict:
         "strct": struct_code(b["strct"]),
         "hhld": b["hhld_cnt"] or None,
         "flr": b["grnd_flr"] or None,
-        # 0은 결측이 아니라 '없음'이다. 공동주택 3,325동 중 79%가 승강기 0이다.
-        "elvt": b["elvt_cnt"] if b["elvt_cnt"] is not None else None,
-        "park": b["park_cnt"] if b["park_cnt"] is not None else None,
+        # None은 자료 없음이고 0은 실제 없음이다. 화면은 None이면 항목을 아예 뺀다.
+        "elvt": b["elvt_cnt"],
+        "park": _sane_park(b["park_cnt"], b["hhld_cnt"]),
         # 세대당 연면적은 공용면적이 섞여 전용면적과 어긋난다. 단지 규모를 대신 낸다.
         "n_dong": b["n_dong"] if b.get("n_dong", 1) > 1 else None,
     }

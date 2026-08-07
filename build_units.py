@@ -25,6 +25,7 @@ import json
 import os
 import sqlite3
 import statistics as st
+import time
 from collections import Counter, defaultdict
 
 from bldg_join import Registry
@@ -77,7 +78,8 @@ FINDER_COLS = ["i", "ht", "g", "u", "jibun", "name", "area", "by", "jeonse", "ra
 STAGES = ["A", "B", "B-", "C"]
 
 
-def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) -> None:
+def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
+                 build_id: str) -> None:
     col = {name: i for i, name in enumerate(cols)}
     gus = sorted(by_gu)
     umds: dict[str, int] = {}
@@ -99,7 +101,7 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) 
                 r[col["elvt"]], r[col["apr"]],
                 r[col["lat"]], r[col["lon"]], r[col["stn"]], r[col["walk"]],
             ])
-    payload = {"window": window, "gus": gus, "stages": STAGES,
+    payload = {"build": build_id, "window": window, "gus": gus, "stages": STAGES,
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
                "cols": FINDER_COLS, "n": len(recs),
                "columns": [list(c) for c in zip(*recs)]}
@@ -144,6 +146,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
 
     # 물건별 누적기. 키는 (housing_type, lawd_cd, umd, jibun_norm, name_norm, area_band)
     sale_recent: dict[tuple, list[int]] = defaultdict(list)
+    sale_prev: dict[tuple, list[int]] = defaultdict(list)
     sale_all: dict[tuple, list[int]] = defaultdict(list)
     sale_direct: dict[tuple, int] = Counter()
     jeonse_recent: dict[tuple, list[int]] = defaultdict(list)
@@ -193,6 +196,8 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
                 umd_sale_bm[bm_key].append(amount)
                 if gbn and "직거래" in gbn:
                     sale_direct[key] += 1
+            elif ymd >= prev_start:
+                sale_prev[key].append(amount)
         elif dt == "전월세" and deposit:
             if (rent or 0) == 0:
                 if ymd >= recent_start:
@@ -213,17 +218,31 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
                deal_ymd, deposit, payload
         FROM transactions
         WHERE deal_type = '전월세' AND contract_type = '갱신'
+          AND (monthly_rent IS NULL OR monthly_rent = 0)
           AND (cdeal_type IS NULL OR cdeal_type <> 'O')
         """
     ):
         if ymd < recent_start or ymd > complete_end or not deposit:
             continue
-        pre = (json.loads(payload).get("preDeposit") or "").replace(",", "").strip()
+        # 전세→전세 갱신만 쓴다. 직전 계약이 월세였으면(preMonthlyRent) 보증금 증감은
+        # 전월세 전환이지 시세 변동이 아니다. 이게 섞이면 "역전세" 판정의 15.9%가
+        # 근거 없는 값이 된다. 세입자가 전세를 월세로 바꾼 걸 집주인이 돈을 돌려주는
+        # 걸로 읽는 셈이라 방향까지 반대다.
+        p = json.loads(payload)
+        pre_rent = str(p.get("preMonthlyRent") or "0").replace(",", "").strip()
+        if pre_rent not in ("", "0"):
+            continue
+        pre = (p.get("preDeposit") or "").replace(",", "").strip()
         if not pre.isdigit() or int(pre) <= 0:
+            continue
+        h = deposit / int(pre) - 1
+        # 자릿수가 깨진 preDeposit이 +9449.0 같은 값을 만든 적 있다. 갱신에서 보증금이
+        # 반 토막 아래로 내리거나 두 배 넘게 오르는 건 시세가 아니라 입력 오류다.
+        if not (-0.5 <= h <= 1.0):
             continue
         key = (ht, lawd, (umd or "").strip(), norm_jibun(jibun), norm_name(bname),
                area_key(area, AREA_BAND))
-        hikes[key].append(deposit / int(pre) - 1)
+        hikes[key].append(h)
 
     # B단계 비교군 중위값. 표본 3건 미만은 비교군으로 쓰기에 너무 얇다.
     MIN_COMPS = 3
@@ -269,9 +288,12 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             ratio, stage, n_comps = None, "C", 0
         stage_count[(ht, stage)] += 1
 
-        # 직전 24개월 전세가율(같은 단계 기준)로 추세를 본다
+        # 직전 24개월 전세가율. 분자와 분모 모두 직전 창 값이어야 한다. 현재 창 매매가로
+        # 나누면 집값이 오른 구간에서 "전세가율이 올랐다"가 과다 발생한다. 화면 문턱이
+        # 3%p인데 그 왜곡만 10%p쯤 됐다. 직전 창에 매매가 없으면 억지로 만들지 않는다.
         med_j_prev = median(jeonse_prev.get(key, []))
-        ratio_prev = pct(med_j_prev, med_s) if (med_s and med_j_prev) else None
+        med_s_prev = median(sale_prev.get(key, []))
+        ratio_prev = pct(med_j_prev, med_s_prev) if (med_s_prev and med_j_prev) else None
 
         hike = hikes.get(key)
         name = names[key].most_common(1)[0][0] if names[key] else ""
@@ -295,13 +317,17 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         ])
 
     os.makedirs(out_dir, exist_ok=True)
+    # 같은 실행에서 나온 파일들끼리만 섞이도록 세대 표식을 박는다. finder.json의 행 번호는
+    # 빌드마다 밀리므로, 서비스워커가 구버전 finder와 신버전 구 파일을 섞으면 클릭한 것과
+    # 다른 물건의 상세가 뜬다. 표식이 어긋나면 프런트가 finder를 다시 받는다.
+    build_id = f"{complete_end}-{int(time.time())}"
     index = []
     total_bytes = 0
     for lawd, rows in sorted(by_gu.items()):
         rows.sort(key=lambda r: (r[2], r[1]))
         path = os.path.join(out_dir, f"{lawd}.json")
-        payload = {"lawd_cd": lawd, "window": [recent_start, complete_end],
-                   "cols": COLS, "rows": rows}
+        payload = {"build": build_id, "lawd_cd": lawd,
+                   "window": [recent_start, complete_end], "cols": COLS, "rows": rows}
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
         size = os.path.getsize(path)
@@ -311,7 +337,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         json.dump({"window": [recent_start, complete_end], "gu": index}, fh, ensure_ascii=False)
 
-    write_finder(out_dir, by_gu, COLS, [recent_start, complete_end])
+    write_finder(out_dir, by_gu, COLS, [recent_start, complete_end], build_id)
 
     print(registry.report())
     print(nearest.report())
