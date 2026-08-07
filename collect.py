@@ -331,10 +331,13 @@ def fetch_month(
                 code, message, items, total = parse_response(response.text)
                 if code in FATAL_CODES:
                     raise FatalApiError(f"[{code}] {message}")
+                # 한도 소진은 몇 번을 다시 불러도 같은 답이다. 재시도로 태우지 않고 올린다.
+                if code == QUOTA_CODE:
+                    raise QuotaExhausted(f"[{code}] {message}")
                 if code and code not in SUCCESS_CODES:
                     raise RuntimeError(f"API 오류 [{code}] {message}")
                 break
-            except FatalApiError:
+            except (FatalApiError, QuotaExhausted):
                 raise
             except Exception as exc:  # 네트워크 오류 / 일시적 5xx / 파싱 실패
                 last_error = exc
@@ -483,6 +486,8 @@ def main() -> int:
     session = requests.Session()
     inserted_total = 0
     calls = 0
+    errors = 0
+    quota_hit = False
 
     try:
         for index, (source, code, ym) in enumerate(plan, start=1):
@@ -503,8 +508,15 @@ def main() -> int:
                     sleep=args.sleep,
                 )
             except FatalApiError as exc:
+                # 여기서 return하면 finally가 커밋한다. close는 생략해도 커밋된 데이터는 안전하다.
                 print(f"{prefix} 치명적 오류로 중단: {scrub(exc)}", file=sys.stderr)
                 return 1
+            except QuotaExhausted as exc:
+                # 오늘 몫을 다 썼다. 실패가 아니라 여기까지 받았다는 뜻이다.
+                # 받은 구간은 fetch_log에 ok로 남았으므로 다음 실행이 이어받는다.
+                print(f"\n{prefix} 일일 한도 소진 ({scrub(exc)}). 여기서 멈춥니다.", flush=True)
+                quota_hit = True
+                break
             except Exception as exc:
                 print(f"{prefix} 실패: {scrub(exc)}", file=sys.stderr)
                 # fetch_log는 공개 릴리스로 올라가는 seoul_rt.sqlite 안의 테이블이다.
@@ -516,6 +528,7 @@ def main() -> int:
                 )
                 conn.commit()
                 calls += 1
+                errors += 1
                 continue
 
             rows = build_rows(items, source, code, ym)
@@ -535,9 +548,32 @@ def main() -> int:
         print("\n중단됨. 재실행하면 받은 구간은 건너뜁니다.")
     finally:
         conn.commit()
-        conn.close()
 
-    print(f"완료. 이번 실행에서 {inserted_total:,}건 적재, API 호출 {calls}회")
+    # 절단 탐지: API가 말한 totalCount와 실제 적재 행 수가 다른데 ok로 남았다면
+    # 조용히 덜 받은 것이다. 조용히 틀린 숫자가 장애보다 위험하다.
+    truncated = conn.execute(
+        "SELECT COUNT(*) FROM fetch_log WHERE status='ok' AND total_count <> row_count"
+    ).fetchone()[0]
+    conn.close()
+
+    print(f"완료. 이번 실행에서 {inserted_total:,}건 적재, API 호출 {calls}회 (오류 구간 {errors}개)")
+
+    # 성공/실패 회계. collect_bldg.py 끝의 규율과 같다:
+    # 틀린 초록불은 없느니만 못하다.
+    if truncated:
+        print(f"경고: totalCount와 적재 행 수가 다른 ok 구간이 {truncated}개 있습니다. "
+              "조용한 절단입니다. 해당 구간을 --force로 재수집하세요.", file=sys.stderr)
+        return 1
+    if quota_hit:
+        print("일일 한도 소진. 받은 만큼은 저장됐고, 다음 실행이 이어받습니다.")
+        return 0
+    if calls and not inserted_total:
+        print("호출은 있었는데 한 건도 적재하지 못했습니다.", file=sys.stderr)
+        return 1
+    if calls and errors > calls * 0.20:
+        print(f"오류 구간이 {errors}/{calls}개 ({errors / calls:.0%})로 20%를 넘습니다. "
+              "결과를 신뢰할 수 없어 실패로 종료합니다.", file=sys.stderr)
+        return 1
     return 0
 
 
