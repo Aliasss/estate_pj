@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
+import { useFinder } from './units.js'
 
 /**
  * 조건 검색 — 서울 전체에서 내 조건에 맞는 집을 추린다.
@@ -23,6 +24,26 @@ const YEAR_OPTS = [
   { v: 2020, label: '2020년 이후' },
 ]
 
+/**
+ * 위험 신호로 좁히기. "우리 동네에서 매매 사례가 없는 빌라"처럼 목록을 훑는 것보다
+ * 조건으로 자르는 게 실제 쓰임에 가깝다. 판단 보류(비교 기준이 깨진 값)는 위험이
+ * 아니라 모름이므로 어느 쪽에도 넣지 않는다.
+ */
+const RISKS = [
+  { key: 'confirmed', label: '확인된 깡통',
+    hint: '그 건물 매매 3건 이상 기준으로 보증금이 매매가를 넘음',
+    test: (c, i) => c.stage[i] === 0 && c.ns[i] >= 3 && c.ratio[i] >= 1 && c.ratio[i] < RATIO_BROKEN },
+  { key: 'high', label: '전세가율 90%↑',
+    hint: '근거 단계와 무관하게 90% 이상',
+    test: (c, i) => c.ratio[i] >= 0.9 && c.ratio[i] < RATIO_BROKEN },
+  { key: 'nosale', label: '매매 0건',
+    hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치를 실거래로 확인할 수 없음',
+    test: (c, i) => !c.ns[i] },
+  { key: 'reverse', label: '역전세',
+    hint: '갱신 계약에서 보증금이 5% 이상 내려감 — 집주인이 돈을 돌려주고 있다는 뜻',
+    test: (c, i) => c.hike[i] != null && c.hike[i] <= -0.05 },
+]
+
 const SORTS = [
   { key: 'safe', label: '안전한 순' },
   { key: 'new', label: '최근 준공 순' },
@@ -43,26 +64,6 @@ function safety(ratio, stage, ns) {
   if (ratio == null || ratio >= RATIO_BROKEN) return evidence
   const room = Math.max(0, Math.min(1, (1.05 - ratio) / 0.55))
   return evidence + 60 * room
-}
-
-function useFinder() {
-  const [state, setState] = useState({ status: 'loading' })
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/units/finder.json`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d) => {
-        const col = Object.fromEntries(d.cols.map((c, i) => [c, d.columns[i]]))
-        // 데이터는 워크플로가 따로 굽는다. 코드가 먼저 배포되면 아직 없는 열을 읽게 되는데,
-        // 그대로 두면 col.lat.reduce에서 화면 전체가 죽는다. 없는 열은 비어 있는 것으로 본다.
-        const blank = new Array(d.n).fill(null)
-        for (const c of ['elvt', 'apr', 'lat', 'lon', 'stn', 'walk']) {
-          if (!col[c]) col[c] = blank
-        }
-        setState({ status: 'ready', d, col })
-      })
-      .catch((e) => setState({ status: 'error', message: e.message }))
-  }, [])
-  return state
 }
 
 /** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
@@ -90,6 +91,7 @@ export default function Finder({ guNames }) {
   const [gus, setGus] = useState([])             // 선택한 lawd_cd, 비면 전체
   const [needSale, setNeedSale] = useState(false)
   const [needElvt, setNeedElvt] = useState(false)
+  const [risk, setRisk] = useState([])       // 켜진 위험 필터
   const [sort, setSort] = useState('safe')
   const [view, setView] = useState('list')   // list | map
   const [limit, setLimit] = useState(PAGE)
@@ -103,6 +105,7 @@ export default function Finder({ guNames }) {
     if (fin.status !== 'ready') return []
     const { col, d } = fin
     const guSet = gus.length ? new Set(gus.map((g) => d.gus.indexOf(g))) : null
+    const tests = RISKS.filter((r) => risk.includes(r.key)).map((r) => r.test)
     const out = []
     for (let i = 0; i < d.n; i++) {
       if (ht && col.ht[i] !== ht) continue
@@ -112,6 +115,7 @@ export default function Finder({ guNames }) {
       if (minYear && !(col.by[i] >= minYear)) continue
       if (needSale && !col.ns[i]) continue
       if (needElvt && !col.elvt[i]) continue
+      if (tests.length && !tests.every((t) => t(col, i))) continue
       out.push(i)
     }
     const key = {
@@ -122,9 +126,9 @@ export default function Finder({ guNames }) {
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
+  }, [fin, cap, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
-  useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
+  useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
   // 지도에 찍을 점. 좌표가 없는 물건은 뺀다 — 지오코딩이 끝나기 전까지는 대부분이 그렇다.
   const pins = useMemo(() => {
@@ -194,17 +198,17 @@ export default function Finder({ guNames }) {
   if (fin.status === 'error') {
     return (
       <section className="card">
-        <h2>조건 검색</h2>
+        <h2>동네 살펴보기</h2>
         <p className="sub">
           {fin.message === 'HTTP 404'
-            ? '조건 검색 데이터가 아직 배포에 포함되지 않았습니다. 수집 워크플로가 한 번 더 돌면 붙습니다.'
+            ? '데이터가 아직 배포에 포함되지 않았습니다. 수집 워크플로가 한 번 더 돌면 붙습니다.'
             : `불러오지 못했습니다 (${fin.message})`}
         </p>
       </section>
     )
   }
   if (fin.status !== 'ready') {
-    return <section className="card"><h2>조건 검색</h2><p className="sub">서울 전체 물건을 불러오는 중…</p></section>
+    return <section className="card"><h2>동네 살펴보기</h2><p className="sub">서울 전체 물건을 불러오는 중…</p></section>
   }
 
   const { col, d } = fin
@@ -213,9 +217,11 @@ export default function Finder({ guNames }) {
   const geoCoverage = col.lat.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
   return (
     <section className="card">
-      <h2>조건 검색</h2>
+      <h2>동네 살펴보기</h2>
       <p className="sub">
-        서울 전체 {d.n.toLocaleString()}개 · {d.window[0]}~{d.window[1]} 전세 계약이 있던 물건
+        <strong>매물 목록이 아닙니다.</strong> {d.window[0]}~{d.window[1]}에 전세 계약이 있었던
+        건물 {d.n.toLocaleString()}개입니다 — 지금 계약 가능한 방인지는 알 수 없습니다.
+        시세와 분포를 보는 용도입니다.
       </p>
 
       <div className="cond">
@@ -274,6 +280,14 @@ export default function Finder({ guNames }) {
                 title="건축물대장에 승강기가 등록된 물건만. 대장을 아직 안 받은 물건은 함께 걸러집니다">
           엘리베이터
         </button>
+        {RISKS.map((r) => (
+          <button key={r.key} className="chip" title={r.hint}
+                  aria-pressed={risk.includes(r.key)}
+                  onClick={() => setRisk((cur) => cur.includes(r.key)
+                    ? cur.filter((k) => k !== r.key) : [...cur, r.key])}>
+            {r.label}
+          </button>
+        ))}
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="정렬">
           {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>

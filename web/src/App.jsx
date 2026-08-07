@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
-import UnitLookup from './UnitLookup.jsx'
+import Verify from './Verify.jsx'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -14,7 +14,7 @@ export default function App() {
   const [err, setErr] = useState(null)
   const [housing, setHousing] = useState('연립다세대')
   const [gu, setGu] = useState('11500')       // 강서구
-  const [tab, setTab] = useState('find')
+  const [tab, setTab] = useState('verify')
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/tier1.json`)
@@ -90,17 +90,17 @@ export default function App() {
   return (
     <main className="app">
       <header>
-        <h1>서울 전월세 고르기</h1>
+        <h1>전세 계약 전 확인</h1>
         <p>국토교통부 실거래가 · {data.months[0]}~{data.months.at(-1)} · 전용면적 기준</p>
       </header>
 
       <div className="seg tabs" role="tablist" aria-label="화면">
-        <button role="tab" aria-pressed={tab === 'find'} onClick={() => setTab('find')}>조건 검색</button>
-        <button role="tab" aria-pressed={tab === 'unit'} onClick={() => setTab('unit')}>자치구별 물건</button>
+        <button role="tab" aria-pressed={tab === 'verify'} onClick={() => setTab('verify')}>계약 전 확인</button>
+        <button role="tab" aria-pressed={tab === 'find'} onClick={() => setTab('find')}>동네 살펴보기</button>
         <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>시세 흐름</button>
       </div>
 
-      {tab !== 'find' && (
+      {tab === 'market' && (
         <div className="controls">
           <div className="seg" role="group" aria-label="주택 유형">
             {['연립다세대', '아파트'].map((t) => (
@@ -113,8 +113,8 @@ export default function App() {
         </div>
       )}
 
+      {tab === 'verify' && <Verify guNames={view.guNames} />}
       {tab === 'find' && <Finder guNames={view.guNames} />}
-      {tab === 'unit' && <UnitLookup lawdCd={gu} guName={view.guName} housing={housing} />}
 
       {tab === 'market' && <>
       <section className="card">

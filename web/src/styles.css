@@ -263,3 +263,25 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 :root[data-theme='dark'] .leaflet-tile { filter: brightness(0.78) saturate(0.85); }
 .leaflet-container { font: inherit; font-size: 12px; }
 .mapwrap figcaption { margin-top: 6px; }
+
+/* --- 계약 전 확인 --- */
+.share { display: flex; gap: 6px; margin: 4px 0 6px; }
+.share input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 8px 10px; min-height: 38px;
+  background: var(--surface-0); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.share button {
+  font: inherit; font-size: 13px; padding: 8px 14px; min-height: 38px; cursor: pointer;
+  white-space: nowrap; background: var(--surface-0); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.share button:hover, .share button:focus-visible { color: var(--text-primary); outline: none; }
+.checklist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
+.checklist li { display: grid; gap: 2px; padding-left: 14px; position: relative; }
+.checklist li::before {
+  content: ''; position: absolute; left: 0; top: 7px;
+  width: 6px; height: 6px; border-radius: 2px; background: var(--warning);
+}
+.checklist b { font-size: 13px; }
+.checklist span { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }

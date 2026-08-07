@@ -71,8 +71,9 @@ def pct(numer: float | None, denom: float | None) -> float | None:
 #   - 열 단위로 담는다. 같은 종류 값이 붙어 있어야 gzip이 먹는다 (1.45MB -> 1.00MB).
 #   - 법정동은 사전으로 접는다. 건물명은 고유값이 38,872개라 사전이 오히려 손해였다.
 # 상세는 어차피 구 파일에서 다시 읽으므로 여기에 담지 않는다.
-FINDER_COLS = ["i", "ht", "g", "u", "name", "area", "by", "jeonse", "ratio", "stage",
-               "ns", "nj", "elvt", "apr", "lat", "lon", "stn", "walk"]
+# jibun이 들어 있어야 "화곡동 123-45"로 찾을 수 있다. 검증하러 온 사람은 주소를 들고 온다.
+FINDER_COLS = ["i", "ht", "g", "u", "jibun", "name", "area", "by", "jeonse", "ratio",
+               "stage", "ns", "nj", "hike", "elvt", "apr", "lat", "lon", "stn", "walk"]
 STAGES = ["A", "B", "B-", "C"]
 
 
@@ -87,12 +88,13 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str]) 
             ui = umds.setdefault(r[col["umd"]] or "", len(umds))
             ratio = r[col["ratio"]]
             recs.append([
-                ri, r[col["ht"]], gi, ui, r[col["name"]],
+                ri, r[col["ht"]], gi, ui, r[col["jibun"]], r[col["name"]],
                 round(r[col["area"]], 1) if r[col["area"]] else None,
                 r[col["build_year"]], r[col["med_jeonse"]],
                 None if ratio is None else round(ratio, 3),
                 STAGES.index(r[col["stage"]]),
                 r[col["n_sale_24m"]], r[col["n_jeonse_24m"]],
+                r[col["renew_hike"]],
                 # 건축물대장이 아직 안 붙은 물건은 None. 열 단위라 gzip이 거의 다 먹는다.
                 r[col["elvt"]], r[col["apr"]],
                 r[col["lat"]], r[col["lon"]], r[col["stn"]], r[col["walk"]],
