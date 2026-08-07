@@ -24,6 +24,10 @@ const outDir = path.resolve(here, '../public/data')
 const RELEASE = 'https://github.com/Aliasss/estate_pj/releases/download/data-latest'
 const UNITS_URL = `${RELEASE}/units.tar.gz`
 
+// 프로덕션에서 데이터 없이 빌드가 통과하면 빈 사이트가 진짜 배포를 덮는다.
+// 로컬·프리뷰는 데이터 없이도 돌아가야 하니 경고로 남긴다.
+const isProduction = process.env.VERCEL_ENV === 'production'
+
 /** 쉼표를 품은 따옴표 필드까지 처리하는 최소 CSV 파서. */
 function parseCsv(text) {
   const rows = []
@@ -95,7 +99,11 @@ async function buildTier2() {
 
   const res = await fetch(UNITS_URL)
   if (!res.ok) {
-    // 데이터 없이도 빌드는 통과시키되, 앱이 티어 2 화면을 감추도록 빈 인덱스를 남긴다.
+    if (isProduction) {
+      throw new Error(`units.tar.gz 릴리스를 받지 못했습니다 (HTTP ${res.status}). ` +
+        '프로덕션은 빈 사이트를 내보내지 않습니다. 재배포로 다시 시도하세요.')
+    }
+    // 로컬·프리뷰는 데이터 없이도 빌드를 통과시키되, 앱이 티어 2 화면을 감추도록 빈 인덱스를 남긴다.
     console.warn(`units/     릴리스를 받지 못했습니다 (HTTP ${res.status}). 티어 2 없이 빌드합니다.`)
     await writeFile(path.join(dest, 'index.json'), JSON.stringify({ gu: [] }))
     return
@@ -118,6 +126,10 @@ async function buildSubway() {
   }
   const res = await fetch(`${RELEASE}/subway.json`)
   if (!res.ok) {
+    if (isProduction) {
+      throw new Error(`subway.json 릴리스를 받지 못했습니다 (HTTP ${res.status}). ` +
+        '프로덕션은 역 없는 지도를 내보내지 않습니다.')
+    }
     console.warn(`subway.json  릴리스에 없습니다 (HTTP ${res.status}). 지도에 역 없이 빌드합니다.`)
     return
   }
