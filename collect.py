@@ -40,6 +40,7 @@ from xml.etree import ElementTree
 import requests
 
 from lawd_codes import SEOUL_LAWD_CODES
+from scrub import scrub
 
 API_BASE = "https://apis.data.go.kr/1613000"
 
@@ -338,10 +339,11 @@ def fetch_month(
             except Exception as exc:  # 네트워크 오류 / 일시적 5xx / 파싱 실패
                 last_error = exc
                 backoff = min(2**attempt, 30) + random.uniform(0, 0.5)
-                print(f"      재시도 {attempt + 1}/{max_retries} ({exc}) -> {backoff:.1f}s 대기")
+                # requests 예외 메시지는 실패한 URL(인증키 포함)을 통째로 담는다. 가리고 찍는다.
+                print(f"      재시도 {attempt + 1}/{max_retries} ({scrub(exc)}) -> {backoff:.1f}s 대기")
                 time.sleep(backoff)
         else:
-            raise RuntimeError(f"{max_retries}회 재시도 실패: {last_error}")
+            raise RuntimeError(f"{max_retries}회 재시도 실패: {scrub(last_error)}")
 
         collected.extend(items)
         if not items or len(collected) >= total or len(items) < rows_per_page:
@@ -501,13 +503,15 @@ def main() -> int:
                     sleep=args.sleep,
                 )
             except FatalApiError as exc:
-                print(f"{prefix} 치명적 오류로 중단: {exc}", file=sys.stderr)
+                print(f"{prefix} 치명적 오류로 중단: {scrub(exc)}", file=sys.stderr)
                 return 1
             except Exception as exc:
-                print(f"{prefix} 실패: {exc}", file=sys.stderr)
+                print(f"{prefix} 실패: {scrub(exc)}", file=sys.stderr)
+                # fetch_log는 공개 릴리스로 올라가는 seoul_rt.sqlite 안의 테이블이다.
+                # 여기서 키가 새면 로그가 아니라 배포물에 박제된다.
                 conn.execute(
                     "INSERT OR REPLACE INTO fetch_log VALUES (?,?,?,?,?,?,?,?)",
-                    (source.key, code, ym, None, 0, "error", str(exc)[:500],
+                    (source.key, code, ym, None, 0, "error", scrub(exc)[:500],
                      datetime.now(timezone.utc).isoformat(timespec="seconds")),
                 )
                 conn.commit()

@@ -30,8 +30,9 @@ from datetime import datetime, timezone
 
 import requests
 
-from collect_bldg import MAX_CONSECUTIVE_FAILURES, Throttle, describe, results
+from collect_bldg import MAX_CONSECUTIVE_FAILURES, Throttle, results
 from lawd_codes import SEOUL_LAWD_CODES
+from scrub import describe
 
 ENDPOINT = "https://api.vworld.kr/req/address"
 

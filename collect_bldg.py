@@ -38,6 +38,7 @@ import requests
 from collect import (FATAL_CODES, QUOTA_CODE, SUCCESS_CODES, FatalApiError,
                      QuotaExhausted, _clean, _to_float, _to_int)
 from lawd_codes import SEOUL_LAWD_CODES
+from scrub import describe, scrub
 
 # 구버전(BldRgstService_v2)은 폐기됐다 — NO_OPENAPI_SERVICE_ERROR(12)를 돌려준다.
 # 건축HUB만 살아 있다.
@@ -152,9 +153,8 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     return sorted(set(rows))
 
 
-# 인증키는 쿼리스트링에 실려 나가고, requests/urllib3 예외 메시지는 URL을 통째로
-# 담는다. 그대로 로그에 찍으면 키가 샌다 (첫 실행에서 실제로 13자가 노출됐다).
-SECRET_RE = re.compile(r"(serviceKey=)[^&\s'\")]*")
+# 인증키 가리기(SECRET_RE·describe)는 scrub.py에 있다. 여기 있던 패턴은
+# serviceKey=만 잡아서 key=(VWorld)·confmKey=(juso)를 놓쳤다.
 
 # 연속 실패가 이만큼 쌓이면 중단한다. 없으면 100% 실패 상태로 5시간을 돌다
 # 타임아웃한다 — 실제로 한 시간을 그렇게 버렸다. 시작 전 preflight가 한 건을
@@ -206,18 +206,6 @@ class Throttle:
             self.interval = max(self.floor, self.interval * 0.8)
             self.ok_streak = 0
             return self.interval
-
-
-def describe(exc: BaseException, limit: int = 240) -> str:
-    """예외 한 줄 요약.
-
-    urllib3 메시지는 URL이 앞에 오고 진짜 원인('Caused by ConnectTimeoutError…')이
-    맨 끝에 온다. 앞만 잘라 쓰면 원인을 영영 못 본다. 양끝을 남긴다.
-    """
-    text = SECRET_RE.sub(r"\1***", str(exc)).replace("\n", " ")
-    if len(text) > limit:
-        text = f"{text[:70]} … {text[-(limit - 73):]}"
-    return f"{type(exc).__name__}: {text}"
 
 
 def read_response(text: str) -> tuple[str, str, list[dict]]:
@@ -410,7 +398,9 @@ def main() -> int:
                     "numOfRows": 5, "pageNo": 1, "_type": "xml",
                 })
                 print(f"HTTP {res.status_code} · {len(res.content):,}바이트")
-                print(res.text[:1200])
+                # 인증키를 되비쳐 주는 응답이 있다. 자르기 전에 가려야
+                # 키가 절단면에 걸쳐도 안 샌다.
+                print(scrub(res.text)[:1200])
             except Exception as exc:
                 print(f"요청 실패: {describe(exc, limit=600)}")
             print()

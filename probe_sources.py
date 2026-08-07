@@ -30,7 +30,9 @@ import urllib.parse
 import requests
 
 # 인증키가 응답 본문에 되비쳐 나오는 API가 있다. 쿼리 형태와 경로 형태를 모두 가린다.
-QUERY_KEY_RE = re.compile(r"((?:serviceKey|confmKey|key)=)[^&\s'\"<]+", re.I)
+# 쿼리 형태 패턴은 수집기 셋과 함께 scrub.py에 있다. 따로 살면 어긋난다.
+from scrub import SECRET_RE as QUERY_KEY_RE
+
 PATH_KEY_RE = re.compile(r"(openapi\.seoul\.go\.kr:\d+/)[A-Za-z0-9]{16,}")
 
 # (이름, URL, 파라미터, 키를 어디에 넣나)
