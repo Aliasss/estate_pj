@@ -109,11 +109,16 @@ def build(master: list[dict], lines: list[dict]) -> dict:
         if name in index and code:
             by_line[norm_line(r.get("LINE_NUM"))].append((code, name))
 
+    # STATION_CD는 노선 안에서 역 순서를 담고 있다. 다만 지선이 있는 노선에서는
+    # 코드가 건너뛴다 — 경의중앙선을 코드순으로 그냥 이으면 서울역(지선 종점)과
+    # 지평(본선 종점)이 이웃이 돼서, 실제로는 두 시간 걸리는 구간이 한 정거장이 된다.
+    # 그래서 코드가 정확히 1 차이일 때만 잇는다. 가짜 지름길을 만드는 것보다
+    # 실제 구간을 몇 개 놓치는 편이 낫다.
     edges: set[tuple[int, int]] = set()
-    for line, items in by_line.items():
-        ordered = [n for _, n in sorted(set(items))]
-        for a, b in zip(ordered, ordered[1:]):
-            if a != b:
+    for items in by_line.values():
+        ordered = sorted({(int(c), n) for c, n in items if c.isdigit()})
+        for (ca, a), (cb, b) in zip(ordered, ordered[1:]):
+            if a != b and cb - ca == 1:
                 edges.add(tuple(sorted((index[a], index[b]))))
 
     coords = [[round(sum(p[0] for p in pts[n]) / len(pts[n]), 6),
@@ -133,15 +138,22 @@ def sanity(data: dict) -> None:
     for a, b in data["edges"]:
         adj[a].add(b)
         adj[b].add(a)
-    seen, stack = {0}, [0]
-    while stack:
-        cur = stack.pop()
-        for nxt in adj[cur] - seen:
-            seen.add(nxt)
-            stack.append(nxt)
+    # 가장 큰 덩어리를 찾는다. 0번 역에서 출발하면 그 역이 외톨이일 때 1개가 나온다.
+    unvisited, biggest = set(range(n)), set()
+    while unvisited:
+        start = unvisited.pop()
+        comp, stack = {start}, [start]
+        while stack:
+            cur = stack.pop()
+            for nxt in adj[cur] - comp:
+                comp.add(nxt)
+                stack.append(nxt)
+        unvisited -= comp
+        biggest = max(biggest, comp, key=len)
+    seen = biggest
     lone = [data["stations"][i] for i in range(n) if not adj[i]]
     print(f"\n역 {n:,}개 · 구간 {len(data['edges']):,}개")
-    print(f"한 덩어리로 이어진 역 {len(seen):,}개 ({len(seen) / n:.0%})")
+    print(f"가장 큰 덩어리 {len(seen):,}개 역 ({len(seen) / n:.0%})")
     if lone:
         print(f"이웃이 없는 역 {len(lone)}개: {', '.join(lone[:8])}")
     # 눈으로 확인할 표본

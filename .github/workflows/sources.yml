@@ -7,6 +7,10 @@ name: 자료원 정찰
 
 on:
   workflow_dispatch:
+    inputs:
+      geo_calls:
+        description: '이번 실행 지오코딩 최대 건수'
+        default: '30000'
 
 env:
   PYTHONUNBUFFERED: '1'
@@ -38,3 +42,28 @@ jobs:
           gh release upload data-latest subway.json --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 지오코딩은 48,226건이라 하루에 다 못 받을 수 있다. 진행분을 릴리스에 남겨
+      # 다음 실행이 이어받는다. 건축물대장과 같은 방식이다.
+      - name: 좌표 수집 (VWORLD_KEY 있을 때만)
+        if: ${{ env.VWORLD_KEY != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download data-latest --pattern 'units.tar.gz' --clobber
+          mkdir -p units && tar -xzf units.tar.gz -C units
+          gh release download data-latest --pattern 'geo.sqlite.gz' --clobber || true
+          [ -f geo.sqlite.gz ] && gunzip -f geo.sqlite.gz || true
+          python geocode.py --units units --db geo.sqlite \
+            --max-calls ${{ inputs.geo_calls || 30000 }} --rate 8 --workers 4
+
+      - name: 좌표 진행분 발행
+        if: ${{ always() && env.VWORLD_KEY != '' && hashFiles('geo.sqlite') != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -c "import sqlite3;c=sqlite3.connect('geo.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
+          gzip -kf geo.sqlite
+          ls -lh geo.sqlite.gz
+          gh release upload data-latest geo.sqlite.gz --clobber
