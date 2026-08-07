@@ -104,6 +104,19 @@ export default function Finder({ guNames }) {
   const cap = budget === '' ? null : Math.round(Number(budget) * 10000)
   const minArea = minPy === '' ? null : Number(minPy) * PYEONG
 
+  // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
+  // 렌더마다 8만 행을 두 번 훑지 않도록 데이터가 바뀔 때만 센다.
+  const { coverage, geoCoverage } = useMemo(() => {
+    if (fin.status !== 'ready') return { coverage: 0, geoCoverage: 0 }
+    const { col, d } = fin
+    let e = 0, g = 0
+    for (let i = 0; i < d.n; i++) {
+      if (col.elvt[i] != null) e++
+      if (col.lat[i] != null) g++
+    }
+    return { coverage: e / d.n, geoCoverage: g / d.n }
+  }, [fin])
+
   const hits = useMemo(() => {
     if (fin.status !== 'ready') return []
     const { col, d } = fin
@@ -122,7 +135,9 @@ export default function Finder({ guNames }) {
       out.push(i)
     }
     const key = {
-      safe: (i) => safety(col.ratio[i], col.stage[i], col.ns[i]),
+      // 안전 점수는 상위 3천여 개가 100점 동점이라, 2차 키(매매 표본 두께)가 없으면
+      // 첫 페이지가 파일 순서(구 -> 가나다)로 나온다. 표본 많은 순이 설명과 맞는 순서다.
+      safe: (i) => safety(col.ratio[i], col.stage[i], col.ns[i]) * 1e4 + Math.min(col.ns[i] ?? 0, 999) * 10 + Math.min(col.nj[i] ?? 0, 9) ,
       new: (i) => col.by[i] ?? -1,
       big: (i) => col.area[i] ?? -1,
       cheap: (i) => -(col.jeonse[i] ?? Infinity),
@@ -186,6 +201,10 @@ export default function Finder({ guNames }) {
         cache.current.set(lawd, await r.json())
       }
       const g = cache.current.get(lawd)
+      // 행 번호는 빌드마다 밀린다. 세대가 어긋난 파일 조합이면 다른 물건이 뜬다.
+      if (d.build && g.build && g.build !== d.build) {
+        throw new Error('데이터가 갱신되었습니다. 화면을 새로고침해 주세요')
+      }
       const row = g.rows[col.i[idx]]
       const u = Object.fromEntries(g.cols.map((c, k) => [c, row[k]]))
       // 그 사이 다른 줄을 눌렀으면 늦게 온 응답으로 덮어쓰지 않는다
@@ -215,9 +234,6 @@ export default function Finder({ guNames }) {
   }
 
   const { col, d } = fin
-  // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
-  const coverage = col.elvt.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
-  const geoCoverage = col.lat.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
   return (
     <section className="card">
       <h2>동네 살펴보기</h2>
@@ -279,10 +295,14 @@ export default function Finder({ guNames }) {
                 title="이 건물의 최근 2년 매매 신고가 있어 담보 가치를 실거래로 확인할 수 있는 물건만">
           매매 사례 있는 것만
         </button>
-        <button className="chip" aria-pressed={needElvt} onClick={() => setNeedElvt((v) => !v)}
-                title="건축물대장에 승강기가 등록된 물건만. 대장을 아직 안 받은 물건은 함께 걸러집니다">
-          엘리베이터
-        </button>
+        {/* 대장이 2%뿐일 때 이 칩을 켜면 83,895개가 792개로 줄어든다. 승강기가 없어서가
+            아니라 대장을 안 받아서다. 데이터가 차기 전에는 눌러서 실망할 버튼을 안 보여 준다. */}
+        {coverage >= 0.3 && (
+          <button className="chip" aria-pressed={needElvt} onClick={() => setNeedElvt((v) => !v)}
+                  title="건축물대장에 승강기가 등록된 물건만. 대장을 아직 안 받은 물건은 함께 걸러집니다">
+            엘리베이터
+          </button>
+        )}
         {RISKS.map((r) => (
           <button key={r.key} className="chip" title={r.hint}
                   aria-pressed={risk.includes(r.key)}
@@ -301,10 +321,14 @@ export default function Finder({ guNames }) {
         {sort === 'safe' && ' · 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저, 그다음이 전세가율 여유 순입니다'}
       </p>
 
-      <div className="seg" role="group" aria-label="보기" style={{ marginBottom: 10 }}>
-        <button aria-pressed={view === 'list'} onClick={() => setView('list')}>목록</button>
-        <button aria-pressed={view === 'map'} onClick={() => setView('map')}>지도</button>
-      </div>
+      {/* 좌표 0%에서 지도 탭은 "물건 핀 0개"만 보여 준다. 만든 것만 못한 화면이라
+          좌표가 붙기 시작하면 자동으로 나타나게 한다. MapView 코드는 그대로 산다. */}
+      {geoCoverage >= 0.3 && (
+        <div className="seg" role="group" aria-label="보기" style={{ marginBottom: 10 }}>
+          <button aria-pressed={view === 'list'} onClick={() => setView('list')}>목록</button>
+          <button aria-pressed={view === 'map'} onClick={() => setView('map')}>지도</button>
+        </div>
+      )}
 
       {view === 'map' && (
         <>
@@ -313,9 +337,9 @@ export default function Finder({ guNames }) {
                    note={pins.length ? `좌표 ${pct0(geoCoverage)} 확보` : '파란 점은 지하철역'} />
           {!pins.length && (
             <p className="warnline">
-              <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이 남았습니다
-              (48,226건). 지금 보이는 파란 점은 지하철역 654개이고, 좌표가 붙으면 조건에 맞는
-              물건이 그 위에 뜹니다.
+              <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이
+              남았습니다 ({d.n.toLocaleString()}건). 파란 점은 지하철역이고, 좌표가 붙으면
+              조건에 맞는 물건이 그 위에 뜹니다.
             </p>
           )}
         </>
@@ -369,7 +393,7 @@ export default function Finder({ guNames }) {
       <p className="warnline">
         <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
         대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 서울 전체를
-        채우는 데 열흘쯤 걸립니다. 엘리베이터 조건을 켜면 아직 안 받은 물건도 같이 걸러집니다.
+        채우는 데 열흘쯤 걸립니다.
         <br /><br />
         <strong>통근 시간은 아직 없습니다.</strong> 물건 좌표와 지하철역 자료를 붙이는 중이고,
         붙으면 목적지 역을 골라 통근 시간으로 거를 수 있게 할 참입니다.

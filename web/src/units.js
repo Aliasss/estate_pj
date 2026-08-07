@@ -22,7 +22,11 @@ export function useFinder() {
         const col = Object.fromEntries(d.cols.map((c, i) => [c, d.columns[i]]))
         const blank = new Array(d.n).fill(null)
         for (const c of FILL) if (!col[c]) col[c] = blank
-        setState({ status: 'ready', d, col })
+        // 검색은 키 입력마다 전수 스캔이다. 행마다 replace로 새 문자열을 만들면
+        // 저사양 폰에서 키 하나에 100ms를 넘긴다. 공백 뗀 이름을 한 번만 만들어 둔다.
+        const flat = new Array(d.n)
+        for (let i = 0; i < d.n; i++) flat[i] = (col.name[i] || '').replace(/\s+/g, '')
+        setState({ status: 'ready', d, col, flat })
       })
       .catch((e) => setState({ status: 'error', message: e.message }))
   }, [])
@@ -45,8 +49,14 @@ export function useUnitLoader() {
     return cache.current.get(lawd)
   }, [])
 
-  const byRow = useCallback(async (lawd, row) => {
+  const byRow = useCallback(async (lawd, row, build) => {
     const g = await load(lawd)
+    // 행 번호는 빌드마다 밀린다. 서비스워커가 구버전 finder와 신버전 구 파일을 섞으면
+    // 클릭한 것과 다른 물건의 상세가 뜨는데, 예외도 안 나서 아무도 모른다. 세대 표식이
+    // 어긋나면 다른 물건을 보여주느니 멈추고 새로고침을 청한다.
+    if (build && g.build && g.build !== build) {
+      throw new Error('데이터가 갱신되었습니다. 화면을 새로고침해 주세요')
+    }
     return withSiblings(g, toObject(g, g.rows[row]))
   }, [load])
 
@@ -85,22 +95,41 @@ function withSiblings(g, u) {
 /**
  * 서울 전체에서 주소·건물명으로 찾는다.
  *
- * 검증하러 온 사람은 주소를 들고 온다. 자치구를 먼저 고르라고 하면 "성북구가
- * 맞나 강북구가 맞나"부터 막힌다. 8만 3천 건 전수 훑기는 5ms 안쪽이라 그냥 다 본다.
+ * 검증하러 온 사람은 계약서에 적힌 주소를 통째로 들고 온다. "서울시 강서구 화곡동
+ * 123-45"에서 시·구는 매칭 필드에 없으므로 떼되, 구 이름은 버리지 않고 범위를
+ * 좁히는 데 쓴다. 구 이름 한 단어 때문에 검색이 통째로 죽으면 진입점이 막힌 것이다.
+ *
+ * 반드시 전수를 훑은 뒤에 자른다. 앞에서 끊고 정렬하면 파일 순서상 앞에 몰린
+ * 무명 빌라들이 결과를 차지한다. 실측: "화곡동" 검색이 실제 상위 40개와 0개 겹쳤다.
  */
-export function search(fin, query, limit = 40) {
-  const q = query.trim().replace(/\s+/g, '')
-  if (q.length < 2) return []
-  const { col, d } = fin
-  const out = []
-  for (let i = 0; i < d.n && out.length < limit * 4; i++) {
-    const name = col.name[i] || ''
-    const umd = d.umds[col.u[i]] || ''
-    if (name.replace(/\s+/g, '').includes(q) || (umd + (col.jibun?.[i] ?? '')).includes(q)) {
-      out.push(i)
+export function search(fin, query, limit = 40, guNames = null) {
+  const raw = query.trim()
+  const { col, d, flat } = fin
+
+  let gi = null
+  const kept = []
+  for (const t of raw.split(/\s+/)) {
+    if (/^서울(특별시|시)?$/.test(t)) continue
+    if (guNames && /구$/.test(t)) {
+      const hit = Object.entries(guNames).find(([, n]) => n === t)
+      if (hit) { gi = d.gus.indexOf(hit[0]); continue }
     }
+    kept.push(t)
+  }
+  const q = kept.join('').replace(/\s+/g, '')
+  // 구 이름만 넣은 경우("강서구")는 그 구에서 전세가 많은 순으로 보여 준다
+  if (q.length < 2 && gi == null) return { idx: [], total: 0 }
+
+  const out = []
+  for (let i = 0; i < d.n; i++) {
+    if (gi != null && col.g[i] !== gi) continue
+    if (q.length >= 2) {
+      const umd = d.umds[col.u[i]] || ''
+      if (!flat[i].includes(q) && !(umd + (col.jibun?.[i] ?? '')).includes(q)) continue
+    }
+    out.push(i)
   }
   // 같은 건물의 평형이 여럿이면 전세 계약이 많은 것부터. 사람들이 실제로 사는 평형이다.
   out.sort((a, b) => (col.nj[b] ?? 0) - (col.nj[a] ?? 0))
-  return out.slice(0, limit)
+  return { idx: out.slice(0, limit), total: out.length }
 }

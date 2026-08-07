@@ -384,3 +384,26 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .law-table td:not(:first-child), .law-table th:not(:first-child) {
   text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+
+/* 판정 바로 아래 행동 블록. 숫자를 읽고 끝나지 않게, 다음 걸음을 그 자리에 둔다. */
+.todo {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin: 10px 0; font-size: 13px;
+}
+.todo > b { display: block; margin-bottom: 6px; font-size: 13.5px; }
+.todo ol { margin: 0; padding-left: 20px; }
+.todo li { margin-bottom: 7px; line-height: 1.65; color: var(--text-secondary); }
+.todo a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.todo > p { margin: 8px 0 0; font-weight: 600; color: var(--critical); font-size: 12.5px; }
+
+/* 검색 0건 안내. 조작 실수 안내가 아니라 판정이다. */
+.nohit {
+  border: 1px solid var(--border); border-left: 3px solid var(--warning);
+  border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 13px;
+}
+.nohit > p { margin: 0 0 8px; line-height: 1.65; }
+.nohit > p:last-child { margin-bottom: 0; }
+.nohit a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; }
+
+.checklist a { display: block; margin-top: 2px; font-size: 11.5px; color: var(--series-1);
+               text-decoration: underline; text-underline-offset: 2px; }

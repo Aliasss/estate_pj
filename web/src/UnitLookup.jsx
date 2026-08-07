@@ -139,9 +139,11 @@ export function ratioTone(ratio) {
 function quietNote(u) {
   if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조입니다. 차음에 가장 불리한 구조예요' }
   if (!u.apr) return null
-  return u.apr >= 2005
-    ? { tone: 'good', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이후입니다` }
-    : { tone: 'muted', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이전입니다` }
+  // 의무화(2005.7)는 사업계획승인 기준이고 준공은 그보다 2~3년 늦다. 2005~2008년
+  // 준공은 이전 설계일 수 있어 초록을 켜지 않는다.
+  if (u.apr >= 2008) return { tone: 'good', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이후 설계입니다` }
+  if (u.apr >= 2005) return { tone: 'muted', text: `${u.apr}년 준공. 의무화(2005) 직후라 이전 설계일 수 있습니다` }
+  return { tone: 'muted', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이전입니다` }
 }
 
 const ym = (s) => `${String(s).slice(2, 4)}.${String(s).slice(4, 6)}`
@@ -228,11 +230,15 @@ function Wolse({ deals, jeonse }) {
     .map(([, dep, rent]) => (jeonse > dep ? (rent * 12) / (jeonse - dep) : null))
     .filter((r) => r != null && r > 0 && r < 0.3)
   if (!rates.length) return null
-  const rate = rates.sort((a, b) => a - b)[Math.floor(rates.length / 2)]
+  // 표본 수는 필터를 통과한 건수로 말한다. 6건을 받아 1건만 살아남았는데
+  // "6건에서 계산"이라고 쓰면 근거를 부풀리는 말이 된다.
+  rates.sort((a, b) => a - b)
+  const mid = rates.length >> 1
+  const rate = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2
   return (
     <p className="warnline">
       <strong>전월세 전환율 {(rate * 100).toFixed(1)}%</strong>.{' '}
-      이 건물 월세 계약 {rows.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
+      이 건물 월세 계약 {rates.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
       받을 수 있다면 월세가 유리하고, 아니면 전세가 유리합니다.{' '}
       다만 전세는 <strong className="serious">보증금을 떼일 위험</strong>을 같이 집니다.
     </p>
@@ -272,6 +278,37 @@ function BuildingFacts({ u }) {
   )
 }
 
+/**
+ * 판정 다음에 할 일. 숫자를 보여주고 끝나면 읽고 끝난다. 이 앱이 답하지 못하는
+ * 부분(등기부·보증보험)으로 가는 문이 판정 바로 아래에 있어야 한다.
+ */
+function Actions({ tone, u }) {
+  const urgent = tone === 'critical' || tone === 'serious'
+  return (
+    <div className="todo">
+      <b>{urgent ? '계약 전에 반드시' : '계약 전에 확인'}</b>
+      <ol>
+        <li>
+          등기부등본 을구에서 근저당 잔액을 확인하세요. 선순위 채권과 내 보증금
+          {u.med_sale ? `(${eok(u.med_jeonse)})의 합이 매매가 ${eok(u.med_sale)}을 넘으면 경매에서 못 받습니다`
+                      : '의 합이 집값을 넘으면 경매에서 못 받습니다'}.{' '}
+          <a href="https://www.iros.go.kr" target="_blank" rel="noopener noreferrer">인터넷등기소 ↗</a>
+        </li>
+        <li>
+          보증보험 가입 가능 여부를 계약 전에 확인하고, 안 되면 계약을 해제한다는
+          특약을 넣으세요. 거절 자체가 신호입니다.{' '}
+          <a href="https://www.khug.or.kr" target="_blank" rel="noopener noreferrer">HUG ↗</a>
+        </li>
+        <li>
+          건축물대장에서 위반건축물 표기를 확인하세요. 위반이면 보증보험이 안 됩니다.{' '}
+          <a href="https://www.gov.kr" target="_blank" rel="noopener noreferrer">정부24 ↗</a>
+        </li>
+      </ol>
+      {urgent && <p>위 확인이 끝나기 전에는 계약금을 보내지 마세요.</p>}
+    </div>
+  )
+}
+
 export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
@@ -289,6 +326,8 @@ export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
         <span>{v.body}</span>
       </div>
 
+      <Actions tone={v.tone} u={u} />
+
       <dl className="metrics">
         <div>
           <dt>전세가율</dt>
@@ -304,7 +343,7 @@ export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
           <dd>{eok(u.med_jeonse)}</dd>
           <small>
             최근 2년 {u.n_jeonse_24m}건
-            {rank && ` · ${rank.umd} 비슷한 평형 중 ${rank.pct}%`}
+            {rank && ` · ${rank.umd} 비슷한 평형 ${rank.n}건 중 비싼 쪽에서 ${rank.pct}%`}
           </small>
         </div>
         <div>
@@ -378,12 +417,14 @@ const PAGE = 80
  * ("우리 동네에서 매매 사례 없는 빌라").
  */
 const FILTERS = [
+  // 판단 보류(비교 기준이 깨진 값, RATIO_BROKEN)는 위험이 아니라 모름이므로 세지 않는다.
+  // 동네 살펴보기 탭과 같은 정의여야 한다. 두 탭의 숫자가 다르면 어느 쪽도 못 믿게 된다.
   { key: 'confirmed', label: '확인된 깡통',
     hint: '그 건물 매매 3건 이상 기준으로 보증금이 매매가를 넘음',
-    test: (u) => u.stage === 'A' && u.n_sale_24m >= 3 && u.ratio >= 1 },
+    test: (u) => u.stage === 'A' && u.n_sale_24m >= 3 && u.ratio >= 1 && u.ratio < RATIO_BROKEN },
   { key: 'high', label: '전세가율 90%↑',
     hint: '근거 단계와 무관하게 90% 이상',
-    test: (u) => u.ratio >= 0.9 },
+    test: (u) => u.ratio >= 0.9 && u.ratio < RATIO_BROKEN },
   { key: 'nosale', label: '매매 0건',
     hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치 검증 불가',
     test: (u) => !u.n_sale_24m },

@@ -11,6 +11,9 @@ const eok = (manwon) => (manwon == null ? '—' : `${(manwon / 10000).toFixed(2)
 const manwon = (v) => (v == null ? '—' : `${Math.round(v).toLocaleString()}만`)
 /** tier1의 월은 "2026-07" 꼴이다. 화면에는 한글로 읽히게 둔다. */
 const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '—')
+// 구 단위에도 면적 믹스가 깨진 달이 있다 (2022-09 영등포 아파트 168.9%). 물건 단위와
+// 같은 기준으로, 정상 범위를 벗어난 값은 차트와 표에 내지 않는다.
+const sane = (r) => (r != null && r < 1.5 ? r : null)
 
 export default function App() {
   const [data, setData] = useState(null)
@@ -35,7 +38,7 @@ export default function App() {
     // 구별 랭킹. 잠정 구간을 뺀 최근 12개월 중위 전세가율
     const byGu = new Map()
     for (const r of data.ratio) {
-      if (r.housing_type !== housing || !recent12.includes(r.ym) || r.jeonse_ratio_ppp == null) continue
+      if (r.housing_type !== housing || !recent12.includes(r.ym) || sane(r.jeonse_ratio_ppp) == null) continue
       if (!byGu.has(r.lawd_cd)) byGu.set(r.lawd_cd, { sgg: r.sgg_nm, vals: [] })
       byGu.get(r.lawd_cd).vals.push(r.jeonse_ratio_ppp)
     }
@@ -55,7 +58,7 @@ export default function App() {
     // 평단가는 jeonse_ratio에서 가져온다. monthly_panel의 '전월세'에는 월세 보증금이
     // 섞여 있어 전세가율 차트와 숫자가 어긋난다.
     const guRatio = data.ratio.filter((r) => r.lawd_cd === gu && r.housing_type === housing)
-    const ratios = new Map(guRatio.map((r) => [r.ym, r.jeonse_ratio_ppp]))
+    const ratios = new Map(guRatio.map((r) => [r.ym, sane(r.jeonse_ratio_ppp)]))
     const byYm = (field) => {
       const m = new Map(guRatio.map((r) => [r.ym, r[field]]))
       return data.months.map((ym) => m.get(ym) ?? null)
