@@ -185,11 +185,9 @@ export default function Verify({ guNames }) {
       {fin.status === 'ready' && !open && (
         q.trim().length < 2 ? (
           <p className="muted-line">
-            서울 전체 {d.n.toLocaleString()}개 물건 · {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이
-            있었던 건물입니다. 자치구를 고르실 필요 없습니다.
-            <br />
-            신고 기한이 계약일로부터 30일이라 최근 두 달치는 아직 절반도 안 들어옵니다. 그 구간을
-            빼고 24개월을 셉니다.
+            위 기간에 전세 계약이 있었던 서울 전체 {d.n.toLocaleString()}개 건물을 담고 있습니다.
+            자치구를 고르실 필요 없습니다. 신고 기한이 계약일로부터 30일이라 최근 두 달치는
+            아직 절반도 안 들어와서, 그 구간은 빼고 셉니다.
           </p>
         ) : hits.idx.length ? (
           <>

@@ -5,8 +5,8 @@
   --surface-1: #ffffff;
   --border: #e3e6ec;
   --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #7c7a74;
+  --text-secondary: #414b63;
+  --text-muted: #5f6880;
   --series-1: #2a78d6;   /* 매매 */
   --series-2: #eb6834;   /* 전세 */
   --grid: #e9ebf0;
@@ -33,8 +33,8 @@
     --surface-1: #1a1a19;
     --border: #34342f;
     --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8e84;
+    --text-secondary: #c9cdd6;
+    --text-muted: #9aa1ae;
     --series-1: #3987e5;
     --series-2: #d95926;
     --grid: #2a2a26;
@@ -56,8 +56,8 @@
   --surface-1: #1a1a19;
   --border: #34342f;
   --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #8f8e84;
+  --text-secondary: #c9cdd6;
+  --text-muted: #9aa1ae;
   --series-1: #3987e5;
   --series-2: #d95926;
   --grid: #2a2a26;
@@ -89,14 +89,13 @@ body {
 /* 남색 히어로. 컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
 .hero {
   margin: -16px -16px 16px;
-  padding: 34px 20px 52px;
+  padding: 30px 20px 46px;
   background: linear-gradient(165deg, #2b3a63 0%, var(--brand) 55%, var(--brand-deep) 100%);
   border-radius: 0 0 28px 28px;
   color: var(--on-brand);
 }
 .hero-hi { margin: 0 0 3px; font-size: 13px; color: var(--on-brand-dim); }
 .hero h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; line-height: 1.2; color: #fff; }
-.hero-sub { margin: 9px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--on-brand-dim); }
 .hero + .card { margin-top: -30px; box-shadow: var(--shadow-float); }
 
 .controls {
@@ -122,9 +121,9 @@ select {
   box-shadow: var(--shadow-card);
 }
 .card h2 { font-size: 14px; margin: 0 0 2px; letter-spacing: -0.01em; }
-.card .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+.card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 10px; }
 
-.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin: 0 0 6px; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-secondary); margin: 0 0 6px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; }
 
@@ -157,12 +156,12 @@ svg { display: block; width: 100%; height: auto; overflow: visible; touch-action
 .fill { display: block; background: var(--bar); height: 100%; min-width: 3px; border-radius: 0 4px 4px 0; }
 
 .note {
-  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+  font-size: 13px; color: var(--text-muted); line-height: 1.6;
   border-top: 1px solid var(--border); padding-top: 12px; margin-top: 20px;
 }
 .note strong { color: var(--text-secondary); font-weight: 600; }
 
-table.data { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 8px; }
 table.data th, table.data td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 table.data th:first-child, table.data td:first-child { text-align: left; }
 table.data th { color: var(--text-muted); font-weight: 500; }
@@ -185,10 +184,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 }
 .unit-list button:hover, .unit-list button:focus-visible { background: var(--surface-0); outline: none; }
 .u-name { font-size: 14px; font-weight: 600; }
-.u-meta { grid-column: 1; font-size: 12px; color: var(--text-muted); }
+.u-meta { grid-column: 1; font-size: 12.5px; color: var(--text-muted); }
 .u-sig { grid-column: 2; grid-row: 1 / 3; text-align: right; }
 .u-sig em { display: block; font-style: normal; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.u-sig small { display: block; font-size: 11px; color: var(--text-muted); }
+.u-sig small { display: block; font-size: 11.5px; color: var(--text-muted); }
 
 .unit-detail {
   position: relative; background: var(--surface-0); margin: 10px 0 14px;
@@ -211,10 +210,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .verdict.good { border-left-color: var(--good); }
 
 .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; margin: 14px 0 6px; }
-.metrics dt { font-size: 12px; color: var(--text-muted); }
+.metrics dt { font-size: 12.5px; color: var(--text-muted); }
 .metrics dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .metrics dd.big { font-size: 24px; letter-spacing: -0.02em; }
-.metrics small { font-size: 11px; color: var(--text-muted); }
+.metrics small { font-size: 11.5px; color: var(--text-muted); }
 /* 상태색은 아이콘/라벨과 함께 쓴다. 색만으로 의미를 나르지 않는다. */
 .critical { color: var(--critical); }
 .serious { color: var(--warning); }
@@ -226,7 +225,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   font-size: 12px; color: var(--text-secondary); background: var(--surface-1);
   border-radius: 9px; padding: 8px 10px; margin: 8px 0 0; line-height: 1.55;
 }
-.muted-line { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+.muted-line { font-size: 13px; color: var(--text-muted); margin: 8px 0 0; }
 .more {
   width: 100%; margin-top: 10px; padding: 12px; min-height: 46px;
   background: var(--brand); color: var(--on-brand); border: 0; border-radius: 14px;
@@ -258,7 +257,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   gap: 0 6px; background: var(--surface-0); border: 1px solid var(--border);
   border-radius: 10px; padding: 7px 10px;
 }
-.cond label > span { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
+.cond label > span { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); }
 .cond input, .cond select {
   font: inherit; font-size: 15px; font-variant-numeric: tabular-nums;
   background: transparent; border: 0; padding: 2px 0; min-height: 26px;
@@ -336,7 +335,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .deals tr:last-child td { border-bottom: 0; }
 .d-ym { color: var(--text-muted); width: 46px; }
 .d-amt { font-weight: 600; color: var(--text-primary); text-align: right; width: 78px; }
-.d-tag { color: var(--text-muted); text-align: right; font-size: 11px; }
+.d-tag { color: var(--text-muted); text-align: right; font-size: 11.5px; }
 
 /* --- 같은 건물 다른 평형 --- */
 .facts-h small { font-weight: 400; color: var(--text-muted); font-size: 11px; margin-left: 4px; }
@@ -350,10 +349,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .sibs button:hover:not(:disabled) { background: var(--surface-1); }
 .sibs button:disabled { cursor: default; }
 .sibs span { font-size: 13px; }
-.sibs span small { color: var(--text-muted); font-size: 11px; }
+.sibs span small { color: var(--text-muted); font-size: 11.5px; }
 .sibs b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .sibs em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.sibs > li > button > small { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
+.sibs > li > button > small { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); }
 
 /* ── 법·제도 ─────────────────────────────────────────────────────────
    글이 길다. 여덟 절을 다 펼쳐 두면 스크롤에 파묻히므로 접어 두고,
@@ -387,7 +386,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   background: var(--surface-0); border: 1px solid var(--border); color: var(--text-muted);
 }
 .law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: #fff; }
-.law-lead { margin: 5px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--text-muted); }
+.law-lead { margin: 5px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-muted); }
 .law-body { margin-top: 12px; }
 .law-body h4 {
   margin: 16px 0 6px; font-size: 13.5px; font-weight: 650; color: var(--text-primary);
@@ -405,10 +404,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 
 /* 조문 번호. 본문과 같은 크기면 눈이 걸리고, 없으면 근거를 확인할 수 없다. */
 .law-cite {
-  font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
+  font-size: 12px; color: var(--text-muted); white-space: nowrap;
 }
 .law-src {
-  margin: 14px 0 0; font-size: 11.5px; line-height: 1.75; color: var(--text-muted);
+  margin: 14px 0 0; font-size: 12px; line-height: 1.75; color: var(--text-muted);
   border-top: 1px dashed var(--border); padding-top: 9px;
 }
 .law-src a, .note a, .law-body a { color: var(--series-1); text-decoration: underline;
@@ -438,7 +437,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .nohit > p:last-child { margin-bottom: 0; }
 .nohit a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; }
 
-.checklist a { display: block; margin-top: 2px; font-size: 11.5px; color: var(--series-1);
+.checklist a { display: block; margin-top: 3px; font-size: 12px; color: var(--series-1);
                text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── 하단 탭바. 엄지가 닿는 곳에 두고, 화면 위 탭 줄을 없앴다 ── */

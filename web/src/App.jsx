@@ -127,10 +127,6 @@ export default function App() {
       <header className="hero">
         <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
         <h1>내 집 내놔</h1>
-        <p className="hero-sub">
-          국토교통부 실거래가 {ymDot(data.months[0])}~{ymDot(data.months.at(-1))} 신고분 ·
-          전용면적 기준 · 마지막 {data.provisional.length}개월은 잠정
-        </p>
       </header>
 
       {tab === 'market' && (
@@ -153,7 +149,7 @@ export default function App() {
       {tab === 'market' && <>
       <section className="card">
         <h2>자치구별 전세가율 ({housing})</h2>
-        <p className="sub">최근 12개월({view.lastSolid} 기준) 중위값. 전세 보증금 ÷ 매매가, 평단가 기준. 눌러서 선택</p>
+        <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값. 전세 보증금 ÷ 매매가, 평단가 기준. 눌러서 선택</p>
         <RankBars items={view.rank} format={pct0} selected={gu} onSelect={setGu} />
       </section>
 
