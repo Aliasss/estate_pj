@@ -93,7 +93,7 @@ export default function App() {
   return (
     <main className="app">
       <header>
-        <h1>전세 계약 전 확인</h1>
+        <h1>내 집 내놔</h1>
         <p>
           국토교통부 실거래가 {ymDot(data.months[0])}~{ymDot(data.months.at(-1))} 신고분 ·
           전용면적 기준 · 마지막 {data.provisional.length}개월은 잠정
