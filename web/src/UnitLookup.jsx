@@ -147,6 +147,57 @@ function Deals({ deals }) {
   )
 }
 
+/**
+ * 같은 건물의 다른 평형. 물건이 면적대로 쪼개져 있어서 "이 건물 전체"가 안 보였다.
+ * 옆 평형이 얼마에 나가는지는 이 집 보증금이 정상인지 판단하는 데 바로 쓰인다.
+ */
+function Siblings({ u, onPick }) {
+  const sibs = u.siblings
+  if (!sibs?.length) return null
+  return (
+    <>
+      <h3 className="facts-h">같은 건물 다른 평형 <small>{sibs.length}개</small></h3>
+      <ul className="sibs">
+        {sibs.map((s) => (
+          <li key={s.id}>
+            <button onClick={() => onPick?.(s.id)} disabled={!onPick}>
+              <span>전용 {s.area}m² <small>({(s.area / 3.305785).toFixed(1)}평)</small></span>
+              <b>{eok(s.jeonse)}</b>
+              <em className={ratioBroken(s.ratio) ? 'muted' : ratioTone(s.ratio)}>
+                {s.ratio == null ? '—' : ratioBroken(s.ratio) ? '보류' : pct0(s.ratio)}
+              </em>
+              <small>전세 {s.nj}건</small>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+/**
+ * 전세와 월세 중 어느 쪽이 유리한가. 같은 건물에 둘 다 있으면 바로 견줄 수 있다.
+ * 전월세전환율 = 연 월세 ÷ (전세보증금 − 월세보증금). 이 값이 예금 금리보다 높으면
+ * 전세가 유리하고, 낮으면 월세가 유리하다 — 다만 전세는 보증금을 떼일 위험을 같이 진다.
+ */
+function Wolse({ deals, jeonse }) {
+  const rows = deals?.w
+  if (!rows?.length || !jeonse) return null
+  const rates = rows
+    .map(([, dep, rent]) => (jeonse > dep ? (rent * 12) / (jeonse - dep) : null))
+    .filter((r) => r != null && r > 0 && r < 0.3)
+  if (!rates.length) return null
+  const rate = rates.sort((a, b) => a - b)[Math.floor(rates.length / 2)]
+  return (
+    <p className="warnline">
+      <strong>전월세 전환율 {(rate * 100).toFixed(1)}%</strong> — 이 건물 월세 계약
+      {rows.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
+      받을 수 있다면 월세가 유리하고, 아니면 전세가 유리합니다.{' '}
+      다만 전세는 <strong className="serious">보증금을 떼일 위험</strong>을 같이 집니다.
+    </p>
+  )
+}
+
 /** 건축물대장. 수집이 끝나기 전까지는 없는 물건이 더 많아서 상태를 분명히 밝힌다. */
 function BuildingFacts({ u }) {
   const has = u.apr != null || u.hhld != null || u.elvt != null
@@ -180,7 +231,7 @@ function BuildingFacts({ u }) {
   )
 }
 
-export function UnitCard({ u, onClose, onMap }) {
+export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   return (
@@ -210,7 +261,10 @@ export function UnitCard({ u, onClose, onMap }) {
         <div>
           <dt>중위 전세보증금</dt>
           <dd>{eok(u.med_jeonse)}</dd>
-          <small>최근 2년 {u.n_jeonse_24m}건</small>
+          <small>
+            최근 2년 {u.n_jeonse_24m}건
+            {rank && ` · ${rank.umd} 비슷한 평형 중 ${rank.pct}%`}
+          </small>
         </div>
         <div>
           <dt>중위 매매가</dt>
@@ -265,6 +319,8 @@ export function UnitCard({ u, onClose, onMap }) {
         <p className="muted-line">최근 2년 월세 계약 {u.n_wolse_24m}건 (전세 {u.n_jeonse_24m}건)</p>
       )}
 
+      <Siblings u={u} onPick={onSibling} />
+      <Wolse deals={u.deals} jeonse={u.med_jeonse} />
       <Deals deals={u.deals} />
       <BuildingFacts u={u} />
 

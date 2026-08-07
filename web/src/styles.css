@@ -299,3 +299,20 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .d-ym { color: var(--text-muted); width: 46px; }
 .d-amt { font-weight: 600; color: var(--text-primary); text-align: right; width: 78px; }
 .d-tag { color: var(--text-muted); text-align: right; font-size: 11px; }
+
+/* --- 같은 건물 다른 평형 --- */
+.facts-h small { font-weight: 400; color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+.sibs { list-style: none; margin: 4px 0 0; padding: 0; }
+.sibs li + li { border-top: 1px solid var(--border); }
+.sibs button {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 2px 10px; width: 100%;
+  align-items: center; background: transparent; border: 0; font: inherit; color: inherit;
+  text-align: left; padding: 8px 4px; min-height: 40px; cursor: pointer;
+}
+.sibs button:hover:not(:disabled) { background: var(--surface-1); }
+.sibs button:disabled { cursor: default; }
+.sibs span { font-size: 13px; }
+.sibs span small { color: var(--text-muted); font-size: 11px; }
+.sibs b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.sibs em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sibs > li > button > small { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }

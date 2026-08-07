@@ -53,6 +53,27 @@ export default function Verify({ guNames }) {
   const hits = useMemo(
     () => (fin.status === 'ready' ? search(fin, q) : []), [fin, q])
 
+  /**
+   * 같은 동·비슷한 평형에서 이 보증금이 어디쯤인지. "2.4억"만으로는 비싼지 싼지
+   * 알 수 없는데, "이 동네 비슷한 평형 중 위에서 20%"면 바로 읽힌다.
+   */
+  const rank = useMemo(() => {
+    if (fin.status !== 'ready' || !open?.u) return null
+    const { col, d } = fin
+    const u = open.u
+    const ui = d.umds.indexOf(u.umd)
+    if (ui < 0 || !u.med_jeonse || !u.area) return null
+    const peers = []
+    for (let i = 0; i < d.n; i++) {
+      if (col.u[i] !== ui || col.ht[i] !== u.ht || col.jeonse[i] == null) continue
+      if (Math.abs((col.area[i] ?? 0) - u.area) > u.area * 0.2) continue
+      peers.push(col.jeonse[i])
+    }
+    if (peers.length < 5) return null       // 표본이 얇으면 백분위가 의미 없다
+    const below = peers.filter((v) => v < u.med_jeonse).length
+    return { umd: u.umd, n: peers.length, pct: Math.round((1 - below / peers.length) * 100) }
+  }, [fin, open])
+
   const show = useCallback(async (lawd, row) => {
     try {
       const u = await byRow(lawd, row)
@@ -108,7 +129,13 @@ export default function Verify({ guNames }) {
 
       {open?.u && (
         <>
-          <UnitCard u={open.u} onClose={close} />
+          <UnitCard u={open.u} onClose={close} rank={rank}
+                    onSibling={(id) => byId(open.lawd, id).then((v) => {
+                      if (!v) return
+                      setOpen({ lawd: open.lawd, u: v })
+                      history.pushState(null, '', `?u=${open.lawd}.${id}`)
+                      scrollTo({ top: 0, behavior: 'smooth' })
+                    })} />
           <ShareRow lawd={open.lawd} id={open.u.id} />
 
           <h3 className="facts-h">이 앱이 답하지 못하는 것</h3>

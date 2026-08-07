@@ -44,14 +44,14 @@ export function useUnitLoader() {
 
   const byRow = useCallback(async (lawd, row) => {
     const g = await load(lawd)
-    return toObject(g, g.rows[row])
+    return withSiblings(g, toObject(g, g.rows[row]))
   }, [load])
 
   const byId = useCallback(async (lawd, id) => {
     const g = await load(lawd)
     const i = g.cols.indexOf('id')
     const row = g.rows.find((r) => r[i] === id)
-    return row ? toObject(g, row) : null
+    return row ? withSiblings(g, toObject(g, row)) : null
   }, [load])
 
   return { byRow, byId }
@@ -59,6 +59,24 @@ export function useUnitLoader() {
 
 function toObject(g, row) {
   return row ? Object.fromEntries(g.cols.map((c, k) => [c, row[k]])) : null
+}
+
+/**
+ * 같은 건물의 다른 평형. 물건은 면적대로 쪼개져 있어서 "이 건물 전체"가 안 보인다.
+ * 옆 평형이 얼마에 나가는지는 이 집 값이 정상인지 판단하는 데 바로 쓰인다.
+ */
+function withSiblings(g, u) {
+  if (!u) return u
+  const c = Object.fromEntries(g.cols.map((x, k) => [x, k]))
+  const same = (r) => r[c.umd] === u.umd && r[c.jibun] === u.jibun
+    && r[c.name] === u.name && r[c.ht] === u.ht
+  const sibs = g.rows.filter((r) => same(r) && r[c.id] !== u.id)
+    .map((r) => ({
+      id: r[c.id], area: r[c.area], jeonse: r[c.med_jeonse],
+      ratio: r[c.ratio], nj: r[c.n_jeonse_24m], ns: r[c.n_sale_24m],
+    }))
+    .sort((a, b) => (a.area ?? 0) - (b.area ?? 0))
+  return { ...u, siblings: sibs }
 }
 
 /**
