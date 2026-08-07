@@ -119,18 +119,30 @@ def parse_jibun(jibun: str | None) -> tuple[str, str, str] | None:
 def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     """실거래가 DB에서 조회 대상 지번을 뽑고, 법정동코드를 붙인다.
 
-    법정동코드는 아파트 매매 payload의 umdCd에서 얻는다. 아파트가 한 번도 거래되지
-    않은 동(종로구 옛 동네 등)은 매핑이 없어 건너뛴다. 전체의 0.7% 수준이다.
+    법정동코드(umdCd)는 payload에서 얻는다. 처음에는 아파트 매매(apt_trade)에서만
+    얻었는데, 그러면 아파트 '매매' 신고가 없는 동(정동·순화동·낙원동 같은 도심
+    옛 동네)이 통째로 빠진다. 미매핑의 98.2%가 그 경우였고, 아파트 매매가 없는
+    동네일수록 연립·다세대 전세의 위험을 봐야 하는 곳이라 빠진 쪽이 더 위험한
+    쪽이었다. 그래서 소스를 가리지 않고 umdCd를 실은 payload 전부에서 모은다.
     """
     conn = sqlite3.connect(rt_db)
     umd_cd: dict[tuple[str, str], str] = {}
-    for (payload,) in conn.execute("SELECT payload FROM transactions WHERE source = 'apt_trade'"):
-        d = json.loads(payload)
-        sgg, umd, cd = d.get("sggCd"), _clean(d.get("umdNm")), d.get("umdCd")
+    # LIKE로 먼저 거르면 umdCd가 없는 소스의 행은 JSON 해석 없이 지나가고,
+    # DISTINCT라 (동, 코드) 조합당 한 번만 받는다.
+    for sgg, umd, cd in conn.execute(
+        """
+        SELECT DISTINCT json_extract(payload, '$.sggCd'),
+                        json_extract(payload, '$.umdNm'),
+                        json_extract(payload, '$.umdCd')
+        FROM transactions WHERE payload LIKE '%umdCd%'
+        """
+    ):
+        sgg, umd, cd = _clean(sgg), _clean(umd), _clean(cd)
         if sgg and umd and cd:
             umd_cd[(sgg, umd)] = cd
 
-    rows, skipped = [], 0
+    rows, bad_jibun = [], 0
+    unmapped: set[tuple[str, str]] = set()
     query = """
         SELECT DISTINCT lawd_cd, umd_nm, jibun FROM transactions
         WHERE (cdeal_type IS NULL OR cdeal_type <> 'O') AND jibun IS NOT NULL
@@ -142,14 +154,24 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     for lawd, umd, jibun in conn.execute(query, params):
         umd = _clean(umd)
         cd = umd_cd.get((lawd, umd))
+        if not cd:
+            unmapped.add((lawd, umd))
+            continue
         parsed = parse_jibun(jibun)
-        if not cd or not parsed:
-            skipped += 1
+        if not parsed:
+            bad_jibun += 1
             continue
         rows.append((lawd, cd, *parsed, umd))
     conn.close()
-    if skipped:
-        print(f"법정동코드 미매핑 또는 지번 파싱 실패로 제외: {skipped:,}건")
+    if unmapped:
+        # "제외 N건"이라는 숫자만 찍으면 어느 동네가 빠졌는지 아무도 모른다.
+        # 이름을 찍어야 다음 감사가 이 목록에서 시작할 수 있다.
+        names = sorted(f"{SEOUL_LAWD_CODES.get(l, l)} {u or '(빈 동명)'}" for l, u in unmapped)
+        print(f"어떤 소스의 payload에도 umdCd가 없어 제외된 법정동 {len(names)}곳:")
+        for name in names:
+            print(f"  {name}")
+    if bad_jibun:
+        print(f"지번 파싱 실패로 제외: {bad_jibun:,}건")
     return sorted(set(rows))
 
 
