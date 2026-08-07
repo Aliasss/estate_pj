@@ -49,6 +49,15 @@ function riskScore(u) {
   return r ?? 0
 }
 
+/**
+ * 이 값을 넘으면 전세가율이 아니라 비교 기준이 깨진 것으로 본다.
+ * 실측: 매매 3건 이상인 물건 10,418개의 최대가 209%였다. 763%짜리는 보증금 2.9억에
+ * 매매 1건이 붙은 경우였는데, 그 한 건은 지분 거래나 특수 거래일 가능성이 크다.
+ * 이런 값을 퍼센트로 내보이면 정확히 잰 숫자처럼 읽힌다. 그게 제일 나쁘다.
+ */
+export const RATIO_BROKEN = 1.5
+export const ratioBroken = (r) => r != null && r >= RATIO_BROKEN
+
 export function ratioTone(ratio) {
   if (ratio == null) return 'muted'
   if (ratio >= 1) return 'critical'
@@ -123,8 +132,10 @@ export function UnitCard({ u, onClose, onMap }) {
       <dl className="metrics">
         <div>
           <dt>전세가율</dt>
-          <dd className={`big ${ratioTone(u.ratio)}`}>
-            {u.ratio == null ? '—' : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
+          <dd className={`big ${ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}`}>
+            {u.ratio == null ? '—'
+              : ratioBroken(u.ratio) ? '판단 보류'
+              : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
           </dd>
           <small>{st.label}{u.n_comps ? ` · 매매 ${u.n_comps}건` : ''}</small>
         </div>
@@ -147,7 +158,15 @@ export function UnitCard({ u, onClose, onMap }) {
         </div>
       </dl>
 
-      {!st.exact && u.ratio != null && (
+      {ratioBroken(u.ratio) && (
+        <p className="warnline">
+          <strong className="serious">비교 기준이 정상이 아닙니다.</strong> 계산하면
+          {' '}{pct0(u.ratio)}가 나오는데, 이런 값은 전세가율이 높다기보다 비교에 쓴 매매가가
+          이 집의 시세가 아니라는 뜻입니다{u.n_sale_24m === 1 ? ' (매매 단 1건 기준)' : ''}.
+          지분 거래나 특수관계인 거래가 섞였을 수 있습니다. 등기부등본으로 직접 확인하세요.
+        </p>
+      )}
+      {!ratioBroken(u.ratio) && !st.exact && u.ratio != null && (
         <p className="warnline">
           이 건물의 매매 사례가 없어 <strong>같은 동의 비슷한 물건{u.stage === 'B' ? '·연식' : ''}</strong>과
           비교한 참고치입니다. 개별 물건의 실제 담보 가치와 다를 수 있습니다.
@@ -327,8 +346,10 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
                   <span className="u-name">{u.name || '(이름 없음)'}</span>
                   <span className="u-meta">{u.umd} · 전용 {u.area}m²{u.build_year ? ` · ${u.build_year}년` : ''}</span>
                   <span className="u-sig">
-                    <em className={ratioTone(u.ratio)}>
-                      {u.ratio == null ? '비교 불가' : `${STAGE[u.stage]?.exact ? '' : '약 '}${pct0(u.ratio)}`}
+                    <em className={ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}>
+                      {u.ratio == null ? '비교 불가'
+                        : ratioBroken(u.ratio) ? '판단 보류'
+                        : `${STAGE[u.stage]?.exact ? '' : '약 '}${pct0(u.ratio)}`}
                     </em>
                     <small className={!u.n_sale_24m ? 'critical' : u.n_sale_24m < 3 ? 'serious' : ''}>
                       {u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : `매매 ${u.n_sale_24m}건`}

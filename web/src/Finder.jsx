@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
-import { UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
+import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 
 /**
  * 조건 검색 — 서울 전체에서 내 조건에 맞는 집을 추린다.
@@ -38,7 +38,9 @@ const SORTS = [
  */
 function safety(ratio, stage, ns) {
   const evidence = stage === 0 ? (ns >= 3 ? 40 : 25) : stage === 1 ? 15 : stage === 2 ? 8 : 0
-  if (ratio == null) return evidence
+  // 비교 기준이 깨진 값은 "가장 위험함"이 아니라 "모름"이다. 안전 순 맨 뒤에 두면
+  // 정작 실거래로 확인된 깡통이 그 아래로 밀린다.
+  if (ratio == null || ratio >= RATIO_BROKEN) return evidence
   const room = Math.max(0, Math.min(1, (1.05 - ratio) / 0.55))
   return evidence + 60 * room
 }
@@ -316,8 +318,9 @@ export default function Finder({ guNames }) {
               </span>
               <span className="u-sig">
                 <em>{eok(col.jeonse[i])}</em>
-                <small className={ratioTone(col.ratio[i])}>
+                <small className={col.ratio[i] >= RATIO_BROKEN ? 'muted' : ratioTone(col.ratio[i])}>
                   {col.ratio[i] == null ? '전세가율 비교 불가'
+                    : col.ratio[i] >= RATIO_BROKEN ? '전세가율 판단 보류'
                     : `${d.stages[col.stage[i]] === 'A' ? '' : '약 '}${pct0(col.ratio[i])}`}
                   {col.ns[i] ? ` · 매매 ${col.ns[i]}건` : ' · 매매 0건'}
                 </small>
