@@ -147,6 +147,46 @@ def probe(name: str, url: str, params: dict, key_kind: str | None,
     print(f"    {redact(body[:260].replace(chr(10), ' '))}")
 
 
+def probe_vworld(key: str) -> None:
+    """VWorld는 첫 호출에서 연결을 그냥 끊었다(RemoteDisconnected).
+
+    이런 응답은 서버가 요청을 거절한 게 아니라 아예 안 받은 것이라 오류 메시지가
+    없다. 무엇이 걸렸는지 알 수 없으니 변형을 한꺼번에 던져 본다 — 프로토콜,
+    User-Agent(기본 python-requests를 막는 정부 서버가 있다), Referer(키 등록
+    도메인과 대조하는 경우), 그리고 도메인 자체.
+    """
+    print("VWorld 변형 확인 — 무엇이 걸리는지\n")
+    base_params = {
+        "service": "address", "request": "getcoord", "version": "2.0",
+        "crs": "epsg:4326", "type": "PARCEL", "format": "json",
+        "address": "서울특별시 중구 남창동 205-18", "key": key,
+    }
+    browser_ua = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+    variants = [
+        ("https + 기본 UA", "https://api.vworld.kr/req/address", {}),
+        ("http  + 기본 UA", "http://api.vworld.kr/req/address", {}),
+        ("https + 브라우저 UA", "https://api.vworld.kr/req/address",
+         {"User-Agent": browser_ua}),
+        ("http  + 브라우저 UA", "http://api.vworld.kr/req/address",
+         {"User-Agent": browser_ua}),
+        ("https + UA + Referer", "https://api.vworld.kr/req/address",
+         {"User-Agent": browser_ua, "Referer": "http://localhost"}),
+        ("apis.vworld.kr", "https://apis.vworld.kr/req/address",
+         {"User-Agent": browser_ua}),
+    ]
+    for name, url, headers in variants:
+        try:
+            res = requests.get(url, params=base_params, headers=headers, timeout=20)
+        except Exception as exc:
+            print(f"  {name:<24} 막힘 — {type(exc).__name__}: {str(exc)[:90]}")
+            continue
+        body = redact(res.text)[:200].replace("\n", " ")
+        print(f"  {name:<24} HTTP {res.status_code}  {len(res.content):,}바이트")
+        print(f"    {body}")
+    print()
+
+
 def main() -> int:
     molit = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
     if "%" in molit:
@@ -157,10 +197,19 @@ def main() -> int:
     vworld = os.environ.get("VWORLD_KEY", "").strip()
     confm = os.environ.get("JUSO_CONFM_KEY", "").strip()
 
+    if os.environ.get("PROBE_VWORLD_ONLY"):
+        if not vworld:
+            print("VWORLD_KEY가 없습니다.", file=sys.stderr)
+            return 2
+        probe_vworld(vworld)
+        return 0
+
     print("자료원 정찰 — 무엇이 바로 되고 무엇이 활용신청을 요구하는지\n")
     for name, url, params, kind in CANDIDATES:
         probe(name, url, params, kind, molit, vworld, confm)
         print()
+    if vworld:
+        probe_vworld(vworld)
     return 0
 
 

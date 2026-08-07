@@ -114,12 +114,17 @@ def build(master: list[dict], lines: list[dict]) -> dict:
     # 지평(본선 종점)이 이웃이 돼서, 실제로는 두 시간 걸리는 구간이 한 정거장이 된다.
     # 그래서 코드가 정확히 1 차이일 때만 잇는다. 가짜 지름길을 만드는 것보다
     # 실제 구간을 몇 개 놓치는 편이 낫다.
-    edges: set[tuple[int, int]] = set()
-    for items in by_line.values():
+    # 간선마다 어느 노선인지를 같이 남긴다. 없으면 환승을 셀 수 없고, 환승을 못 세면
+    # 통근 시간이 실제와 크게 어긋난다 (서울에서 환승 한 번은 대략 네 정거장 값이다).
+    line_names = sorted(by_line)
+    line_idx = {name: i for i, name in enumerate(line_names)}
+    edges: set[tuple[int, int, int]] = set()
+    for line, items in by_line.items():
         ordered = sorted({(int(c), n) for c, n in items if c.isdigit()})
         for (ca, a), (cb, b) in zip(ordered, ordered[1:]):
             if a != b and cb - ca == 1:
-                edges.add(tuple(sorted((index[a], index[b]))))
+                lo, hi = sorted((index[a], index[b]))
+                edges.add((lo, hi, line_idx[line]))
 
     coords = [[round(sum(p[0] for p in pts[n]) / len(pts[n]), 6),
                round(sum(p[1] for p in pts[n]) / len(pts[n]), 6)] for n in stations]
@@ -127,6 +132,7 @@ def build(master: list[dict], lines: list[dict]) -> dict:
         "stations": stations,
         "coords": coords,
         "routes": [sorted(routes[n]) for n in stations],
+        "lines": line_names,
         "edges": sorted(edges),
     }
 
@@ -135,7 +141,7 @@ def sanity(data: dict) -> None:
     """붙였다고 다 된 게 아니다. 끊긴 노선이 있으면 통근 시간이 통째로 틀린다."""
     n = len(data["stations"])
     adj: dict[int, set] = defaultdict(set)
-    for a, b in data["edges"]:
+    for a, b, _line in data["edges"]:
         adj[a].add(b)
         adj[b].add(a)
     # 가장 큰 덩어리를 찾는다. 0번 역에서 출발하면 그 역이 외톨이일 때 1개가 나온다.
