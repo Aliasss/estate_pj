@@ -57,6 +57,52 @@ export function ratioTone(ratio) {
   return 'good'
 }
 
+/**
+ * 층간소음은 실측 데이터가 공개된 게 없다. 건축물대장에서 끌어낼 수 있는 근거는 둘뿐이다.
+ * 구조로 가르려 했지만 공동주택 3,325동 중 90.2%가 철근콘크리트라 변별이 안 된다.
+ * 점수를 매기지 않고 무엇을 보고 하는 말인지를 그대로 낸다.
+ */
+function quietNote(u) {
+  if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조 — 차음에 가장 불리한 구조입니다' }
+  if (!u.apr) return null
+  return u.apr >= 2005
+    ? { tone: 'good', text: `${u.apr}년 준공 — 표준바닥구조 의무화(2005) 이후입니다` }
+    : { tone: 'muted', text: `${u.apr}년 준공 — 표준바닥구조 의무화(2005) 이전입니다` }
+}
+
+/** 건축물대장. 수집이 끝나기 전까지는 없는 물건이 더 많아서 상태를 분명히 밝힌다. */
+function BuildingFacts({ u }) {
+  const has = u.apr != null || u.hhld != null || u.elvt != null
+  if (!has) {
+    return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
+  }
+  const note = quietNote(u)
+  const items = [
+    u.apr && ['준공', `${u.apr}년`],
+    u.hhld && ['세대수', `${u.hhld}세대`],
+    u.flr && ['지상 층수', `${u.flr}층`],
+    u.elvt != null && ['승강기', u.elvt ? `${u.elvt}대` : '없음'],
+    u.park != null && ['주차', u.park ? `${u.park}대` : '없음'],
+    u.n_dong && ['단지 규모', `${u.n_dong}개 동`],
+  ].filter(Boolean)
+  return (
+    <>
+      <h3 className="facts-h">건물</h3>
+      <ul className="facts">
+        {items.map(([k, v]) => (
+          <li key={k}><span>{k}</span><b>{v}</b></li>
+        ))}
+      </ul>
+      {note && (
+        <p className="warnline">
+          <strong className={note.tone}>층간소음 추정</strong> — {note.text}.{' '}
+          실측 소음 자료가 아니라 구조와 준공연도로 미루어 본 것입니다.
+        </p>
+      )}
+    </>
+  )
+}
+
 export function UnitCard({ u, onClose }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
@@ -116,6 +162,8 @@ export function UnitCard({ u, onClose }) {
       {u.n_wolse_24m > 0 && (
         <p className="muted-line">최근 2년 월세 계약 {u.n_wolse_24m}건 (전세 {u.n_jeonse_24m}건)</p>
       )}
+
+      <BuildingFacts u={u} />
     </div>
   )
 }

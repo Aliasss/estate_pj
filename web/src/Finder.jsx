@@ -66,6 +66,7 @@ export default function Finder({ guNames }) {
   const [ht, setHt] = useState('')               // '' 전체 / 'A' / 'R'
   const [gus, setGus] = useState([])             // 선택한 lawd_cd, 비면 전체
   const [needSale, setNeedSale] = useState(false)
+  const [needElvt, setNeedElvt] = useState(false)
   const [sort, setSort] = useState('safe')
   const [limit, setLimit] = useState(PAGE)
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
@@ -86,6 +87,7 @@ export default function Finder({ guNames }) {
       if (minArea != null && !(col.area[i] >= minArea)) continue
       if (minYear && !(col.by[i] >= minYear)) continue
       if (needSale && !col.ns[i]) continue
+      if (needElvt && !col.elvt[i]) continue
       out.push(i)
     }
     const key = {
@@ -96,9 +98,9 @@ export default function Finder({ guNames }) {
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, minArea, minYear, ht, gus, needSale, sort])
+  }, [fin, cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
 
-  useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, sort])
+  useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, sort])
 
   // 목록 끝이 보이면 이어 붙인다. 전량이 이미 메모리에 있어 네트워크는 타지 않는다.
   const sentinel = useRef(null)
@@ -154,6 +156,8 @@ export default function Finder({ guNames }) {
   }
 
   const { col, d } = fin
+  // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
+  const coverage = col.elvt.reduce((n, v) => n + (v != null ? 1 : 0), 0) / d.n
   return (
     <section className="card">
       <h2>조건 검색</h2>
@@ -213,6 +217,10 @@ export default function Finder({ guNames }) {
                 title="이 건물의 최근 2년 매매 신고가 있어 담보 가치를 실거래로 확인할 수 있는 물건만">
           매매 사례 있는 것만
         </button>
+        <button className="chip" aria-pressed={needElvt} onClick={() => setNeedElvt((v) => !v)}
+                title="건축물대장에 승강기가 등록된 물건만. 대장을 아직 안 받은 물건은 함께 걸러집니다">
+          엘리베이터
+        </button>
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="정렬">
           {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
@@ -265,9 +273,12 @@ export default function Finder({ guNames }) {
       )}
 
       <p className="warnline">
-        <strong>아직 못 넣은 조건이 있습니다.</strong> 통근 시간과 조용함은 지금 데이터로는 답이 안 됩니다.
-        통근은 물건 좌표가 있어야 하고(지오코딩 키 필요), 층간소음은 건축물대장의 구조·사용승인일로
-        추정할 참인데 지금 수집 중입니다. 붙는 대로 조건에 추가하겠습니다.
+        <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
+        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 서울 전체를
+        채우는 데 열흘쯤 걸립니다. 엘리베이터 조건을 켜면 아직 안 받은 물건도 같이 걸러집니다.
+        <br /><br />
+        <strong>통근 시간은 아직 없습니다.</strong> 물건 좌표와 지하철역 자료를 붙이는 중이고,
+        붙으면 목적지 역을 골라 통근 시간으로 거를 수 있게 할 참입니다.
       </p>
     </section>
   )
