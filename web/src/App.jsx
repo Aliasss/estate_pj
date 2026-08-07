@@ -15,6 +15,35 @@ const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '—')
 // 같은 기준으로, 정상 범위를 벗어난 값은 차트와 표에 내지 않는다.
 const sane = (r) => (r != null && r < 1.5 ? r : null)
 
+
+/** 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다. */
+const TABS = [
+  ['verify', '계약 전 확인',
+   'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z M9.5 11.5l2 2 3.5-3.5'],
+  ['find', '동네',
+   'M12 21s-6.5-5.2-6.5-10A6.5 6.5 0 0 1 12 4.5 6.5 6.5 0 0 1 18.5 11c0 4.8-6.5 10-6.5 10z M12 13a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z'],
+  ['market', '시세',
+   'M4 19h16 M4 15l4-4 3 3 5-6 4 4'],
+  ['law', '법·제도',
+   'M12 4v16 M6 7h12 M6 7l-2.5 5a2.7 2.7 0 0 0 5 0L6 7z M18 7l-2.5 5a2.7 2.7 0 0 0 5 0L18 7z M9 20h6'],
+]
+
+function TabBar({ tab, onTab }) {
+  return (
+    <nav className="tabbar" role="tablist" aria-label="화면">
+      {TABS.map(([key, label, d]) => (
+        <button key={key} role="tab" aria-pressed={tab === key} onClick={() => onTab(key)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
+               stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d={d} />
+          </svg>
+          <span>{label}</span>
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
@@ -95,20 +124,14 @@ export default function App() {
 
   return (
     <main className="app">
-      <header>
+      <header className="hero">
+        <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
         <h1>내 집 내놔</h1>
-        <p>
+        <p className="hero-sub">
           국토교통부 실거래가 {ymDot(data.months[0])}~{ymDot(data.months.at(-1))} 신고분 ·
           전용면적 기준 · 마지막 {data.provisional.length}개월은 잠정
         </p>
       </header>
-
-      <div className="seg tabs" role="tablist" aria-label="화면">
-        <button role="tab" aria-pressed={tab === 'verify'} onClick={() => setTab('verify')}>계약 전 확인</button>
-        <button role="tab" aria-pressed={tab === 'find'} onClick={() => setTab('find')}>동네 살펴보기</button>
-        <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>시세 흐름</button>
-        <button role="tab" aria-pressed={tab === 'law'} onClick={() => setTab('law')}>법·제도</button>
-      </div>
 
       {tab === 'market' && (
         <div className="controls">
@@ -180,7 +203,8 @@ export default function App() {
       </section>
       </>}
 
-      <p className="note">
+      {/* 평단가·잠정치 설명은 전부 시세 흐름 얘기다. 확인 탭에 온 사람에게는 소음이다. */}
+      {tab === 'market' && <p className="note">
         <strong>읽는 법.</strong> 평단가는 <strong>전용면적</strong> 기준이라 공급면적으로 표시하는
         부동산 앱 숫자보다 20~30% 높게 나옵니다. 전세가율은 면적 구성의 차이를 걷어내려고
         평단가끼리 나눈 값입니다. 모든 통계는 중위값이며, 신고 후 해제된 거래는 제외했습니다.
@@ -190,7 +214,9 @@ export default function App() {
         <br /><br />
         <strong>이 수치는 참고용입니다.</strong> 구 단위 통계는 개별 물건의 위험을 말해주지 않습니다.
         계약 판단은 등기부등본·전입세대 확인서·보증보험 가입 가능 여부로 하셔야 합니다.
-      </p>
+      </p>}
+
+      <TabBar tab={tab} onTab={setTab} />
     </main>
   )
 }

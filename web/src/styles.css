@@ -1,20 +1,30 @@
 /* 색은 역할로만 참조한다. 라이트/다크 값이 한 곳에서 바뀌도록. */
 :root {
   color-scheme: light;
-  --surface-0: #f6f5f2;
-  --surface-1: #fcfcfb;
-  --border: #e2e1dc;
+  --surface-0: #eef0f4;
+  --surface-1: #ffffff;
+  --border: #e3e6ec;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #7c7a74;
   --series-1: #2a78d6;   /* 매매 */
   --series-2: #eb6834;   /* 전세 */
-  --grid: #ebeae6;
+  --grid: #e9ebf0;
   --critical: #d03b3b;
   --warning: #fab219;
   --good: #0ca30c;
   --bar: #2a78d6;
-  --bar-track: #eceae5;
+  --bar-track: #e6e8ee;
+  /* 브랜드 남색. CTA·활성 상태·히어로가 같은 색을 쓴다 */
+  --brand: #1e2a4a;
+  --brand-deep: #151f39;
+  --brand-ink: #1e2a4a;
+  --on-brand: #ffffff;
+  --on-brand-dim: rgb(255 255 255 / 0.62);
+  --card-border: transparent;
+  --shadow-card: 0 6px 24px rgb(23 31 61 / 0.07), 0 1px 3px rgb(23 31 61 / 0.05);
+  --shadow-float: 0 14px 34px rgb(23 31 61 / 0.16);
+  --radius: 18px;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme='light'])) {
@@ -30,6 +40,14 @@
     --grid: #2a2a26;
     --bar: #3987e5;
     --bar-track: #26261f;
+    --brand: #26335c;
+    --brand-deep: #1b2645;
+    --brand-ink: #a9bdf3;
+    --on-brand: #ffffff;
+    --on-brand-dim: rgb(255 255 255 / 0.6);
+    --card-border: #34342f;
+    --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
+    --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
   }
 }
 :root[data-theme='dark'] {
@@ -45,6 +63,14 @@
   --grid: #2a2a26;
   --bar: #3987e5;
   --bar-track: #26261f;
+  --brand: #26335c;
+  --brand-deep: #1b2645;
+  --brand-ink: #a9bdf3;
+  --on-brand: #ffffff;
+  --on-brand-dim: rgb(255 255 255 / 0.6);
+  --card-border: #34342f;
+  --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -60,9 +86,18 @@ body {
 
 .app { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
 
-header { margin-bottom: 22px; }
-header h1 { font-size: 19px; margin: 4px 0 4px; letter-spacing: -0.01em; }
-header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+/* 남색 히어로. 컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
+.hero {
+  margin: -16px -16px 16px;
+  padding: 34px 20px 52px;
+  background: linear-gradient(165deg, #2b3a63 0%, var(--brand) 55%, var(--brand-deep) 100%);
+  border-radius: 0 0 28px 28px;
+  color: var(--on-brand);
+}
+.hero-hi { margin: 0 0 3px; font-size: 13px; color: var(--on-brand-dim); }
+.hero h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; line-height: 1.2; color: #fff; }
+.hero-sub { margin: 9px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--on-brand-dim); }
+.hero + .card { margin-top: -30px; box-shadow: var(--shadow-float); }
 
 .controls {
   display: flex; flex-wrap: wrap; gap: 8px;
@@ -74,7 +109,7 @@ header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
   font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px; cursor: pointer;
   min-height: 32px;
 }
-.seg button[aria-pressed='true'] { background: var(--series-1); color: #fff; }
+.seg button[aria-pressed='true'] { background: var(--brand); color: var(--on-brand); }
 select {
   font: inherit; font-size: 13px; padding: 7px 10px; min-height: 36px;
   background: var(--surface-1); color: var(--text-primary);
@@ -82,8 +117,9 @@ select {
 }
 
 .card {
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px 14px 10px; margin-bottom: 14px;
+  background: var(--surface-1); border: 1px solid var(--card-border);
+  border-radius: var(--radius); padding: 16px 16px 12px; margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
 }
 .card h2 { font-size: 14px; margin: 0 0 2px; letter-spacing: -0.01em; }
 .card .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
@@ -135,10 +171,11 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 
 /* --- 물건 조회 --- */
 .search {
-  width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; min-height: 42px;
+  width: 100%; font: inherit; font-size: 15px; padding: 12px 14px; min-height: 48px;
   background: var(--surface-0); color: var(--text-primary);
-  border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 14px; margin-bottom: 10px;
 }
+.search:focus { outline: 2px solid var(--brand-ink); outline-offset: -1px; }
 .unit-list { list-style: none; margin: 6px 0 0; padding: 0; }
 .unit-list li + li { border-top: 1px solid var(--border); }
 .unit-list button {
@@ -153,7 +190,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .u-sig em { display: block; font-style: normal; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .u-sig small { display: block; font-size: 11px; color: var(--text-muted); }
 
-.unit-detail { position: relative; background: var(--surface-0); margin: 10px 0 14px; }
+.unit-detail {
+  position: relative; background: var(--surface-0); margin: 10px 0 14px;
+  box-shadow: none; border: 1px solid var(--border);
+}
 .unit-detail .close {
   position: absolute; top: 8px; right: 8px; width: 32px; height: 32px;
   border: 0; border-radius: 8px; background: transparent; color: var(--text-muted);
@@ -187,17 +227,10 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   border-radius: 9px; padding: 8px 10px; margin: 8px 0 0; line-height: 1.55;
 }
 .muted-line { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
-.seg.tabs { display: flex; width: 100%; margin: 0 0 18px; }
-.seg.tabs button { flex: 1; font-size: 14px; padding: 8px 6px; min-height: 38px; white-space: nowrap; }
-/* 탭이 넷이라 좁은 화면에서는 글자를 줄여야 한 줄에 들어간다 */
-@media (max-width: 420px) {
-  .seg.tabs button { font-size: 12.5px; padding: 8px 3px; letter-spacing: -0.03em; }
-}
 .more {
-  width: 100%; margin-top: 10px; padding: 11px 12px; min-height: 44px;
-  font: inherit; font-size: 14px; cursor: pointer;
-  background: var(--surface-0); color: var(--text-secondary);
-  border: 1px solid var(--border); border-radius: 10px;
+  width: 100%; margin-top: 10px; padding: 12px; min-height: 46px;
+  background: var(--brand); color: var(--on-brand); border: 0; border-radius: 14px;
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .more:hover, .more:focus-visible { color: var(--text-primary); outline: none; }
 
@@ -210,7 +243,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   border: 1px solid var(--border); border-radius: 999px;
 }
 .chip .n { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 11px; }
-.chip[aria-pressed='true'] { background: var(--series-1); color: #fff; border-color: var(--series-1); }
+.chip[aria-pressed='true'] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
 .chip[aria-pressed='true'] .n { color: rgb(255 255 255 / 0.75); }
 .chip:disabled { opacity: 0.4; cursor: default; }
 .chip.clear { border-style: dashed; }
@@ -407,3 +440,24 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 
 .checklist a { display: block; margin-top: 2px; font-size: 11.5px; color: var(--series-1);
                text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── 하단 탭바. 엄지가 닿는 곳에 두고, 화면 위 탭 줄을 없앴다 ── */
+.app { padding-bottom: 104px; }
+.tabbar {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 40;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  width: min(calc(100% - 20px), 740px);
+  display: flex; gap: 2px;
+  background: var(--surface-1);
+  border: 1px solid var(--card-border);
+  border-radius: 20px; box-shadow: var(--shadow-float);
+  padding: 5px 6px;
+}
+.tabbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: transparent; border: 0; border-radius: 15px; cursor: pointer;
+  font: inherit; font-size: 10.5px; letter-spacing: -0.02em;
+  color: var(--text-muted); padding: 7px 2px 6px; min-height: 52px;
+}
+.tabbar svg { width: 22px; height: 22px; }
+.tabbar button[aria-pressed='true'] { color: var(--brand-ink); font-weight: 650; background: color-mix(in srgb, var(--brand-ink) 9%, transparent); }
