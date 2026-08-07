@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
+import Law from './Law.jsx'
 import Verify from './Verify.jsx'
 
 const PYEONG = 3.305785
@@ -8,6 +9,8 @@ const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const eok = (manwon) => (manwon == null ? '—' : `${(manwon / 10000).toFixed(2)}억`)
 const manwon = (v) => (v == null ? '—' : `${Math.round(v).toLocaleString()}만`)
+/** tier1의 월은 "2026-07" 꼴이다. 화면에는 한글로 읽히게 둔다. */
+const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '—')
 
 export default function App() {
   const [data, setData] = useState(null)
@@ -91,13 +94,17 @@ export default function App() {
     <main className="app">
       <header>
         <h1>전세 계약 전 확인</h1>
-        <p>국토교통부 실거래가 · {data.months[0]}~{data.months.at(-1)} · 전용면적 기준</p>
+        <p>
+          국토교통부 실거래가 {ymDot(data.months[0])}~{ymDot(data.months.at(-1))} 신고분 ·
+          전용면적 기준 · 마지막 {data.provisional.length}개월은 잠정
+        </p>
       </header>
 
       <div className="seg tabs" role="tablist" aria-label="화면">
         <button role="tab" aria-pressed={tab === 'verify'} onClick={() => setTab('verify')}>계약 전 확인</button>
         <button role="tab" aria-pressed={tab === 'find'} onClick={() => setTab('find')}>동네 살펴보기</button>
         <button role="tab" aria-pressed={tab === 'market'} onClick={() => setTab('market')}>시세 흐름</button>
+        <button role="tab" aria-pressed={tab === 'law'} onClick={() => setTab('law')}>법·제도</button>
       </div>
 
       {tab === 'market' && (
@@ -115,6 +122,7 @@ export default function App() {
 
       {tab === 'verify' && <Verify guNames={view.guNames} />}
       {tab === 'find' && <Finder guNames={view.guNames} />}
+      {tab === 'law' && <Law />}
 
       {tab === 'market' && <>
       <section className="card">

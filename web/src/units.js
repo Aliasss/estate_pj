@@ -10,6 +10,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /** 없는 열은 비어 있는 것으로 본다. 코드가 데이터보다 먼저 배포되면 그렇게 된다. */
 const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk']
 
+/** "202406" -> "2024년 6월". 창을 화면에 그대로 뿌리면 여덟 자리 숫자가 보인다. */
+export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '—')
+
 export function useFinder() {
   const [state, setState] = useState({ status: 'loading' })
   useEffect(() => {

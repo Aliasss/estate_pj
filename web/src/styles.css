@@ -60,7 +60,8 @@ body {
 
 .app { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
 
-header h1 { font-size: 19px; margin: 4px 0 2px; letter-spacing: -0.01em; }
+header { margin-bottom: 22px; }
+header h1 { font-size: 19px; margin: 4px 0 4px; letter-spacing: -0.01em; }
 header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
 
 .controls {
@@ -186,8 +187,12 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   border-radius: 9px; padding: 8px 10px; margin: 8px 0 0; line-height: 1.55;
 }
 .muted-line { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
-.seg.tabs { display: flex; width: 100%; margin-bottom: 14px; }
-.seg.tabs button { flex: 1; font-size: 14px; padding: 8px 12px; min-height: 38px; }
+.seg.tabs { display: flex; width: 100%; margin: 0 0 18px; }
+.seg.tabs button { flex: 1; font-size: 14px; padding: 8px 6px; min-height: 38px; white-space: nowrap; }
+/* 탭이 넷이라 좁은 화면에서는 글자를 줄여야 한 줄에 들어간다 */
+@media (max-width: 420px) {
+  .seg.tabs button { font-size: 12.5px; padding: 8px 3px; letter-spacing: -0.03em; }
+}
 .more {
   width: 100%; margin-top: 10px; padding: 11px 12px; min-height: 44px;
   font: inherit; font-size: 14px; cursor: pointer;
@@ -316,3 +321,66 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .sibs b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .sibs em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .sibs > li > button > small { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
+
+/* ── 법·제도 ─────────────────────────────────────────────────────────
+   글이 길다. 여덟 절을 다 펼쳐 두면 스크롤에 파묻히므로 접어 두고,
+   제목 밑의 한 줄 요약은 접힌 상태에서도 보이게 한다 — 그 한 줄만 훑어도
+   무엇이 있는지는 알 수 있어야 한다. */
+.law-warn, .law-danger, .law-note {
+  font-size: 13px; line-height: 1.65; border-radius: 9px;
+  padding: 10px 12px; margin: 10px 0 0;
+}
+.law-warn { background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
+            border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+            color: var(--text-secondary); }
+.law-danger { background: color-mix(in srgb, var(--critical) 9%, var(--surface-1));
+              border: 1px solid color-mix(in srgb, var(--critical) 35%, var(--border));
+              color: var(--text-secondary); }
+.law-note { background: var(--surface-0); border: 1px solid var(--border);
+            color: var(--text-secondary); }
+.law-warn b, .law-danger b, .law-note b { color: var(--text-primary); }
+
+.law-sec { border-top: 1px solid var(--border); padding: 14px 0 4px; }
+.law-sec:first-of-type { border-top: 0; }
+.law-head {
+  appearance: none; border: 0; background: transparent; width: 100%;
+  display: flex; align-items: center; gap: 10px; padding: 0; cursor: pointer;
+  font: inherit; color: var(--text-primary); text-align: left;
+}
+.law-title { flex: 1; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.law-caret {
+  flex: none; width: 24px; height: 24px; border-radius: 7px;
+  display: grid; place-items: center; font-size: 15px; line-height: 1;
+  background: var(--surface-0); border: 1px solid var(--border); color: var(--text-muted);
+}
+.law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.law-lead { margin: 5px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--text-muted); }
+.law-body { margin-top: 12px; }
+.law-body h4 {
+  margin: 16px 0 6px; font-size: 13.5px; font-weight: 650; color: var(--text-primary);
+}
+.law-body h4:first-child { margin-top: 0; }
+.law-body > p { margin: 0 0 0; font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); }
+.law-body > p b { color: var(--text-primary); font-weight: 600; }
+.law-body p + p { margin-top: 8px; }
+
+.law-list { margin: 6px 0 0; padding-left: 18px; }
+.law-list li {
+  font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 7px;
+}
+.law-list li b { color: var(--text-primary); font-weight: 600; }
+
+/* 조문 번호. 본문과 같은 크기면 눈이 걸리고, 없으면 근거를 확인할 수 없다. */
+.law-cite {
+  font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
+}
+.law-src {
+  margin: 14px 0 0; font-size: 11.5px; line-height: 1.75; color: var(--text-muted);
+  border-top: 1px dashed var(--border); padding-top: 9px;
+}
+.law-src a, .note a, .law-body a { color: var(--series-1); text-decoration: underline;
+                                   text-underline-offset: 2px; }
+.law-table { font-size: 13px; }
+.law-table td:not(:first-child), .law-table th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}

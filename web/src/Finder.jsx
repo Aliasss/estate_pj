@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { useFinder } from './units.js'
+import { useFinder, ym } from './units.js'
 
 /**
  * 조건 검색 — 서울 전체에서 내 조건에 맞는 집을 추린다.
@@ -222,7 +222,7 @@ export default function Finder({ guNames }) {
     <section className="card">
       <h2>동네 살펴보기</h2>
       <p className="sub">
-        <strong>매물 목록이 아닙니다.</strong> {d.window[0]}~{d.window[1]}에 전세 계약이 있었던
+        <strong>매물 목록이 아닙니다.</strong> {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이 있었던
         건물 {d.n.toLocaleString()}개입니다 — 지금 계약 가능한 방인지는 알 수 없습니다.
         시세와 분포를 보는 용도입니다.
       </p>

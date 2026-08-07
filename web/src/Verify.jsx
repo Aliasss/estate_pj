@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UnitCard } from './UnitLookup.jsx'
-import { search, useFinder, useUnitLoader } from './units.js'
+import { search, useFinder, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인 — 이 앱의 본체.
@@ -117,6 +117,7 @@ export default function Verify({ guNames }) {
       <h2>계약 전 확인</h2>
       <p className="sub">
         보고 온 집의 주소나 건물명을 넣으세요. 국토교통부 실거래가로 그 건물을 확인해 드립니다
+        {fin.status === 'ready' && ` · ${ym(fin.d.window[0])}~${ym(fin.d.window[1])} 신고분`}
       </p>
 
       <input className="search" type="search" value={q} autoComplete="off"
@@ -154,8 +155,11 @@ export default function Verify({ guNames }) {
       {fin.status === 'ready' && !open && (
         q.trim().length < 2 ? (
           <p className="muted-line">
-            서울 전체 {d.n.toLocaleString()}개 물건 · {d.window[0]}~{d.window[1]} 전세 계약 기준.
-            자치구를 고르실 필요 없습니다.
+            서울 전체 {d.n.toLocaleString()}개 물건 · {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이
+            있었던 건물입니다. 자치구를 고르실 필요 없습니다.
+            <br />
+            신고 기한이 계약일로부터 30일이라 최근 두 달치는 아직 절반도 안 들어옵니다. 그 구간을
+            빼고 24개월을 셉니다.
           </p>
         ) : hits.length ? (
           <ul className="unit-list">
