@@ -162,14 +162,14 @@ export default function App() {
           <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
           <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전세 보증금</span>
         </div>
-        <LineChart months={data.months} series={view.ppp} provisional={data.provisional}
+        <LineChart months={data.months} series={view.ppp} provisional={data.provisional} height={240}
                    format={{ tick: (v) => Math.round(v).toLocaleString(), value: manwon }} />
       </section>
 
       <section className="card">
         <h2>{view.guName} 전세가율 추이</h2>
         <p className="sub">높을수록 보증금이 매매가에 가깝습니다. 집값이 내려가면 반환 여력이 먼저 사라집니다</p>
-        <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={160}
+        <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={210}
                    format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pct }} />
       </section>
 
@@ -180,7 +180,7 @@ export default function App() {
             한국은행 기준금리입니다. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은
             그 뒤에 옵니다. 위 전세가율 차트와 월이 나란합니다
           </p>
-          <LineChart months={data.months} provisional={data.provisional} height={120}
+          <LineChart months={data.months} provisional={data.provisional} height={160}
                      series={[{ name: '기준금리', short: '기준금리', color: 'var(--series-1)',
                                 values: data.months.map((m) => rates.series.base[m.replace('-', '')] ?? null) }]}
                      format={{ tick: (v) => `${v}%`, value: (v) => `${v.toFixed(2)}%` }} />
@@ -194,7 +194,7 @@ export default function App() {
           <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
           <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전월세</span>
         </div>
-        <LineChart months={data.months} series={view.deals} provisional={data.provisional} height={160}
+        <LineChart months={data.months} series={view.deals} provisional={data.provisional} height={210}
                    format={{ tick: (v) => v.toLocaleString(), value: (v) => `${v.toLocaleString()}건` }} />
         <details>
           <summary>표로 보기</summary>

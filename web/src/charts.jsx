@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const PAD = { top: 10, right: 46, bottom: 22, left: 42 }
 
@@ -20,7 +20,18 @@ function niceTicks(min, max, count = 4) {
 export function LineChart({ months, series, format, provisional = [], height = 190 }) {
   const [hover, setHover] = useState(null)
   const ref = useRef(null)
-  const W = 640, H = height
+  // 좌표계를 실제 픽셀에 1:1로 맞춘다. 고정 640 좌표계를 폰 너비로 축소하면
+  // 높이 190이 106px로, 축 글씨가 6px로 렌더된다. 작아서 안 보인다는 말이 맞았다.
+  const wrap = useRef(null)
+  const [w, setW] = useState(0)
+  useEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setW(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const W = Math.max(280, w || 640), H = height
   const iw = W - PAD.left - PAD.right
   const ih = H - PAD.top - PAD.bottom
 
@@ -42,12 +53,21 @@ export function LineChart({ months, series, format, provisional = [], height = 1
   }, [months.length, iw])
 
   const firstProv = provisional.length ? months.indexOf(provisional[0]) : -1
-  const labelIdx = months.map((_, i) => i).filter((i) =>
-    i === 0 || i === months.length - 1 || months[i].endsWith('-01'))
+  // 라벨끼리 최소 46px 간격을 보장한다. 좁은 화면에서 "21.08/22.01"이나
+  // "26.01/26.07"이 포개지는 것을 실측으로 봤다. 마지막 달은 항상 남긴다.
+  const last = months.length - 1
+  const labelIdx = []
+  for (const i of months.map((_, i) => i)) {
+    if (i !== 0 && i !== last && !months[i].endsWith('-01')) continue
+    if (i !== last && x(last) - x(i) <= 46) continue
+    const prev = labelIdx.at(-1)
+    if (prev != null && x(i) - x(prev) <= 46) labelIdx.pop()   // 뒤(연도 경계) 라벨을 남긴다
+    labelIdx.push(i)
+  }
 
   return (
-    <figure className="plot">
-      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} role="img"
+    <figure className="plot" ref={wrap}>
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img"
            aria-label={`${series.map((s) => s.name).join(', ')} 월별 추이`}
            onMouseMove={move} onMouseLeave={() => setHover(null)}
            onTouchStart={move} onTouchMove={move} onTouchEnd={() => setHover(null)}>
