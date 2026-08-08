@@ -189,19 +189,6 @@ jobs:
           ls -lh units.tar.gz
           gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
 
-      # 새 데이터를 올렸으면 웹도 다시 구워야 한다. Vercel은 코드 푸시가 없으면
-      # 릴리스가 갱신된 것을 모른다. 훅 URL은 시크릿이므로 절대 로그에 찍지 않는다.
-      - name: Vercel 재배포 훅 호출
-        env:
-          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-        run: |
-          if [ -z "$DEPLOY_HOOK" ]; then
-            echo "VERCEL_DEPLOY_HOOK 미설정. 새 데이터는 다음 코드 푸시 때 반영됩니다."
-            exit 0
-          fi
-          curl -fsS --retry 3 --retry-delay 5 -X POST -o /dev/null "$DEPLOY_HOOK"
-          echo "Vercel 재배포를 요청했습니다."
-
       - name: 집계 CSV 커밋
         run: |
           mkdir -p data
@@ -215,6 +202,21 @@ jobs:
             git commit -m "데이터 갱신 $(TZ=Asia/Seoul date +%Y-%m-%d)"
             git push
           fi
+
+      # 새 데이터를 올렸으면 웹도 다시 구워야 한다. Vercel은 코드 푸시가 없으면
+      # 릴리스가 갱신된 것을 모른다. 훅 URL은 시크릿이므로 절대 로그에 찍지 않는다.
+      # 반드시 CSV 커밋 뒤에 부른다. 앞에 부르면 훅이 시작한 빌드가 커밋 직전
+      # 리포지토리를 받아 가서, 시세 탭(tier1)이 한 사이클 묵은 채 배포된다.
+      - name: Vercel 재배포 훅 호출
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "VERCEL_DEPLOY_HOOK 미설정. 새 데이터는 다음 코드 푸시 때 반영됩니다."
+            exit 0
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST -o /dev/null "$DEPLOY_HOOK"
+          echo "Vercel 재배포를 요청했습니다."
 
       - name: 집계 CSV 업로드
         uses: actions/upload-artifact@v4
