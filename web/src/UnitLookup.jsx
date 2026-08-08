@@ -238,12 +238,12 @@ function RateCompare({ rates, conv }) {
   }
   const c = conv * 100
   const verdict = loan && c > loan.v
-    ? `전세대출 이자(${loan.v.toFixed(1)}%)를 내는 편이 이 월세보다 쌉니다.`
+    ? `전세자금대출 이자(${loan.v.toFixed(1)}%)를 내는 편이 이 월세보다 쌉니다.`
     : c > dep.v
       ? '월세가 예금 이자보다 비싼 구간입니다. 목돈이 있다면 전세가 계산상 유리합니다.'
       : '예금 이자가 전환율보다 높아, 드물게 월세가 유리한 경우입니다.'
   return (
-    <>지금 정기예금 금리 {dep.v.toFixed(1)}%{loan ? `, 주택담보대출 ${loan.v.toFixed(1)}%` : ''}
+    <>지금 정기예금(1년) {dep.v.toFixed(1)}%{loan ? `, 전세자금대출 ${loan.v.toFixed(1)}%` : ''}
       (한국은행, {ymKor(dep.ym)}). {verdict}{' '}</>
   )
 }
