@@ -20,6 +20,9 @@ on:
       refresh_recent:
         description: '최근 N개월 강제 재수집'
         default: '3'
+      rates_probe:
+        description: 'ECOS 항목 코드 탐색. 121Y002 같은 통계표 코드를 넣으면 그 표의 항목 목록만 출력'
+        default: ''
       skip_collect:
         description: '수집을 건너뛰고 스냅샷으로 집계·패널만 다시 만든다 (집계 코드만 고쳤을 때)'
         type: boolean
@@ -165,8 +168,10 @@ jobs:
           if [ -z "$ECOS_API_KEY" ]; then
             echo "ECOS_API_KEY 미설정. ecos.bok.or.kr에서 무료 발급 후 시크릿에 넣으면"
             echo "전월세 전환율 판정에 금리 비교가, 시세 탭에 기준금리 차트가 켜집니다."
+          elif [ -n "${{ inputs.rates_probe }}" ]; then
+            python collect_rates.py --probe "${{ inputs.rates_probe }}"
           else
-            python collect_rates.py --out web/public/data/rates.json
+            python collect_rates.py --out data/rates.json
           fi
 
       - name: 집계 패널 생성
@@ -201,7 +206,7 @@ jobs:
           cp out/*.csv data/
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data web/public/data/rates.json 2>/dev/null || git add data
+          git add data
           if git diff --staged --quiet; then
             echo "집계 결과에 변화 없음. 커밋 생략."
           else

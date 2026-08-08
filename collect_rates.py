@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""한국은행 ECOS에서 금리 시계열을 받아 web/public/data/rates.json으로 굽는다.
+"""한국은행 ECOS에서 금리 시계열을 받아 data/rates.json으로 굽는다. web/public/data/는 gitignore라 커밋이 안 되므로,
+웹은 빌드 때 fetch-data.mjs가 이 파일을 public으로 복사해 간다.
 
 이 앱에서 금리가 실제로 쓰이는 곳은 둘이다.
   - 리포트의 전월세 전환율 판정: "전환율 6.0%"만 주면 판단을 못 한다. 비교 대상
@@ -63,7 +64,7 @@ def probe(key: str, stat: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="web/public/data/rates.json")
+    ap.add_argument("--out", default="data/rates.json")
     ap.add_argument("--months", type=int, default=72, help="가져올 개월 수")
     ap.add_argument("--probe", metavar="STAT_CODE", help="항목 코드 목록만 출력")
     args = ap.parse_args()
