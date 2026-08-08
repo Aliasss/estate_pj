@@ -37,13 +37,26 @@ from scrub import scrub
 
 BASE = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus"
 
-# 파라미터 표기 후보. 행안부 주민등록 API 가족은 스네이크와 캐멀이 섞여
-# 배포된 전례가 있어 순서대로 시도한다. 첫 성공 표기를 그 실행 내내 쓴다.
-PARAM_STYLES = [
-    {"from": "srchFrYm", "to": "srchToYm", "code": "stdgCd", "lv": "lv"},
-    {"from": "srch_fr_ym", "to": "srch_to_ym", "code": "stdg_cd", "lv": "lv"},
-    {"from": "srchFrYm", "to": "srchToYm", "code": "admmCd", "lv": "lv"},
-]
+# 파라미터 표기 후보. 첫 실전에서 확인된 사실: 활용신청은 유효하고(JSON 응답),
+# 오류는 NO_MANDATORY_REQUEST_PARAMETERS_ERROR였다. 즉 필수 파라미터 이름이
+# 문제다. 행안부 주민등록 API 가족의 관례(기간 srchFrYm/srchToYm 또는 단월,
+# 레벨 lv, 등록구분 regSeCd, 캐멀·스네이크 혼재)를 조합으로 전부 시도한다.
+# 오류 응답이 head.resultMsg로 즉시 오므로 조합당 1행 호출이면 판별된다.
+def _styles() -> list[dict]:
+    out = []
+    for nm in (
+        {"fr": "srchFrYm", "to": "srchToYm", "code": "stdgCd", "lv": "lv", "reg": "regSeCd"},
+        {"fr": "srch_fr_ym", "to": "srch_to_ym", "code": "stdg_cd", "lv": "lv", "reg": "reg_se_cd"},
+        {"one": "statsYm", "code": "stdgCd", "lv": "lv", "reg": "regSeCd"},
+        {"one": "stats_ym", "code": "stdg_cd", "lv": "lv", "reg": "reg_se_cd"},
+    ):
+        # 등록구분이 필수인 배포가 있다. 1이 거주자 구분이라는 가정까지 시도한다.
+        for reg_val in (None, "1"):
+            out.append({**nm, "reg_val": reg_val})
+    return out
+
+
+PARAM_STYLES = _styles()
 
 # 응답 필드 후보. (법정동코드, 총인구수, 세대수)를 찾는다.
 CODE_KEYS = ("stdgCd", "stdg_cd", "lgdngCd", "bjdCd", "stdgcd")
@@ -105,9 +118,15 @@ def fetch_page(key: str, style: dict, ym: str, code: str, page: int,
     qs = {
         "serviceKey": key, "type": "JSON",
         "pageNo": page, "numOfRows": rows,
-        style["from"]: ym, style["to"]: ym,
         style["lv"]: level,                  # 3이 법정동(읍면동), 2가 시군구 레벨 가정
     }
+    if "one" in style:
+        qs[style["one"]] = ym
+    else:
+        qs[style["fr"]] = ym
+        qs[style["to"]] = ym
+    if style.get("reg_val") is not None:
+        qs[style["reg"]] = style["reg_val"]
     if code:
         qs[style["code"]] = code
     url = f"{BASE}?{urllib.parse.urlencode(qs)}"
@@ -165,22 +184,27 @@ def main() -> int:
             print()
         return 0
 
-    # 표기 확정: 첫 요청이 행을 돌려주는 표기를 쓴다
+    # 표기 확정: 첫 요청이 행을 돌려주는 조합을 쓴다. 전멸하면 조합별 응답을
+    # 전부 남긴다. 그 목록이 곧 다음 수정의 명세다.
     style = None
-    last_raw = ""
+    attempts: list[str] = []
     for cand in PARAM_STYLES:
+        label = f"{cand.get('one') or cand['fr']}/reg={cand.get('reg_val')}"
         try:
-            rows, last_raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
+            rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
         except Exception as exc:
-            last_raw = scrub(exc)
+            attempts.append(f"{label}: 요청 실패 {scrub(exc)}"[:200])
             continue
         if rows:
             style = cand
+            print(f"파라미터 표기 확정: {label}")
             break
+        attempts.append(f"{label}: {scrub(raw)[:200]}")
     if style is None:
-        print("어느 파라미터 표기로도 행을 받지 못했습니다. 활용신청(공공데이터포털 15108071) "
-              "여부를 먼저 확인하고, 아래 응답으로 표기를 맞추세요.", file=sys.stderr)
-        print(scrub(last_raw)[:600], file=sys.stderr)
+        print("어느 파라미터 조합으로도 행을 받지 못했습니다. 활용신청(공공데이터포털 "
+              "15108071) 여부를 확인하고, 아래 조합별 응답으로 표기를 맞추세요.", file=sys.stderr)
+        for a in attempts:
+            print(f"  {a}", file=sys.stderr)
         return 1
 
     # 필드 확정: 표본 행에서 코드·인구·세대 필드를 찾는다. 못 찾으면 행을 보여주고 멈춘다.
