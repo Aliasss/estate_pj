@@ -186,6 +186,22 @@ export function useRates() {
   return rates
 }
 
+/**
+ * 인구·세대 시계열(행안부 주민등록, 법정동별 원천을 시군구로 합산).
+ * series[lawd][ym] = [인구, 세대]. 파일이 없으면(활용신청 전) null로 살고,
+ * 세대수 카드가 통째로 빠진다. 이것 때문에 화면이 죽는 일은 없어야 한다.
+ */
+export function usePop() {
+  const [pop, setPop] = useState(null)
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}data/pop.json`)
+      .then((r) => (r.ok && (r.headers.get('content-type') || '').includes('json') ? r.json() : null))
+      .then(setPop)
+      .catch(() => {})
+  }, [])
+  return pop
+}
+
 /** 시리즈의 최신 값. {ym: "202606", v: 3.5} 꼴. */
 export function latestRate(rates, field) {
   const s = rates?.series?.[field]

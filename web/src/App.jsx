@@ -3,7 +3,7 @@ import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
 import Law from './Law.jsx'
 import Verify from './Verify.jsx'
-import { REGIONS, useRates } from './units.js'
+import { REGIONS, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -53,6 +53,7 @@ export default function App() {
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
   const rates = useRates()
+  const pop = usePop()
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/tier1.json`)
@@ -242,6 +243,32 @@ export default function App() {
           </div>
         </details>
       </section>
+
+      {/* 세대수 추이. 구 단위 배경 지표라 시세 탭에만 산다. 물건 리포트에는
+          붙이지 않는다. 구 통계는 개별 물건의 위험을 말해주지 않는다. */}
+      {pop?.series && (() => {
+        const hh = data.months.map((m) => pop.series[gu]?.[m.replace('-', '')]?.[1] ?? null)
+        const lastIdx = hh.reduce((a, v, i) => (v != null ? i : a), -1)
+        if (lastIdx < 0) return null
+        // 기준 시점은 파일 전체의 asof가 아니라 이 구의 마지막 값이다. 커버리지
+        // 가드는 10%까지 결측을 허용하므로 전역 asof는 그 구에서 거짓말이 된다.
+        const guAsof = data.months[lastIdx].replace('-', '')
+        return (
+          <section className="card">
+            <h2>{view.guName} 세대수 추이</h2>
+            <p className="sub">
+              세대가 줄면 매매 수요부터 마르고, 매매가 마르면 보증금 검증이 어려워집니다.
+              행정안전부 <strong>주민등록</strong> 세대 기준이며 이 구는 {ymKo(guAsof)} 말일
+              집계까지 반영되어 있습니다
+            </p>
+            <LineChart months={data.months} provisional={[]} height={180}
+                       series={[{ name: '세대수', short: '세대수', color: 'var(--series-1)',
+                                  values: hh }]}
+                       format={{ tick: (v) => `${(v / 10000).toFixed(1)}만`,
+                                 value: (v) => `${v.toLocaleString()}세대` }} />
+          </section>
+        )
+      })()}
       </>}
 
       {/* 평단가·잠정치 설명은 전부 시세 흐름 얘기다. 확인 탭에 온 사람에게는 소음이다. */}

@@ -147,21 +147,23 @@ async function buildSubway() {
 }
 
 /**
- * 금리(rates.json)는 몇 KB라 릴리스가 아니라 리포지토리(data/)에 커밋된다.
- * web/public/data/는 gitignore라 빌드 때 여기로 복사해 온다. 없으면(키 등록 전)
- * 조용히 건너뛴다. 화면이 금리 없는 문장으로 내려앉는 건 프런트가 처리한다.
+ * 금리(rates.json)와 인구·세대(pop.json)는 KB급이라 릴리스가 아니라
+ * 리포지토리(data/)에 커밋된다. web/public/data/는 gitignore라 빌드 때
+ * 여기로 복사해 온다. 없으면(키·활용신청 전) 조용히 건너뛴다. 화면이 해당
+ * 지표 없는 문장으로 내려앉는 건 프런트가 처리한다.
  */
-async function copyRates() {
-  const src = path.join(repo, 'data', 'rates.json')
+async function copySmall(name, offMessage) {
+  const src = path.join(repo, 'data', name)
   if (!existsSync(src)) {
-    console.log('rates.json 없음. 금리 표시는 꺼진 채 빌드합니다.')
+    console.log(`${name} 없음. ${offMessage}`)
     return
   }
-  await cp(src, path.join(outDir, 'rates.json'))
-  console.log('rates.json 복사')
+  await cp(src, path.join(outDir, name))
+  console.log(`${name} 복사`)
 }
 
 await buildTier1()
 await buildTier2()
 await buildSubway()
-await copyRates()
+await copySmall('rates.json', '금리 표시는 꺼진 채 빌드합니다.')
+await copySmall('pop.json', '세대수 추이는 꺼진 채 빌드합니다.')
