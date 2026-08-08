@@ -31,19 +31,19 @@ const YEAR_OPTS = [
  */
 const RISKS = [
   { key: 'confirmed', label: '확인된 깡통',
-    hint: '그 건물 매매 3건 이상 기준으로 보증금이 매매가를 넘음',
+    hint: '그 건물 매매 3건 이상을 기준으로 보증금이 매매가를 넘습니다',
     test: (c, i) => c.stage[i] === 0 && c.ns[i] >= 3 && c.ratio[i] >= 1 && c.ratio[i] < RATIO_BROKEN },
   { key: 'high', label: '전세가율 90%↑',
-    hint: '근거 단계와 무관하게 90% 이상',
+    hint: '근거 단계와 무관하게 전세가율이 90% 이상입니다',
     test: (c, i) => c.ratio[i] >= 0.9 && c.ratio[i] < RATIO_BROKEN },
   { key: 'newvilla', label: '신축 빌라 · 매매 0건',
-    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상. 빌라 중 1%로, 전세사기 물건에서 반복된 패턴',
+    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상입니다. 빌라 중 1%뿐이고, 전세사기 물건에서 반복된 패턴입니다',
     test: (c, i) => c.ht[i] === 'R' && !c.ns[i] && (c.apr[i] ?? c.by[i]) >= 2018 && c.nj[i] >= 5 },
   { key: 'nosale', label: '매매 0건',
-    hint: '최근 2년 매매 신고 없음. 빌라에서는 열에 일곱이라 기준선에 가깝고, 아파트에서는 열에 셋',
+    hint: '최근 2년 매매 신고가 없습니다. 빌라에서는 열에 일곱이라 기준선에 가깝고, 아파트에서는 열에 셋뿐입니다',
     test: (c, i) => !c.ns[i] },
   { key: 'reverse', label: '역전세',
-    hint: '갱신 계약에서 보증금이 5% 이상 내려감. 집주인이 돈을 돌려주고 있다는 뜻',
+    hint: '갱신 계약에서 보증금이 5% 이상 내려갔습니다. 집주인이 보증금을 돌려주고 있다는 뜻입니다',
     test: (c, i) => c.hike[i] != null && c.hike[i] <= -0.05 },
 ]
 
@@ -317,8 +317,8 @@ export default function Finder({ guNames }) {
       </div>
 
       <p className="muted-line">
-        조건에 맞는 물건 <strong>{hits.length.toLocaleString()}개</strong>
-        {sort === 'safe' && ' · 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저, 그다음이 전세가율 여유 순입니다'}
+        조건에 맞는 물건이 <strong>{hits.length.toLocaleString()}개</strong> 있습니다.
+        {sort === 'safe' && ' 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저 오고, 그다음이 전세가율 여유 순입니다'}
       </p>
 
       {/* 좌표 0%에서 지도 탭은 "물건 핀 0개"만 보여 준다. 만든 것만 못한 화면이라
@@ -334,7 +334,7 @@ export default function Finder({ guNames }) {
         <>
           <MapView points={pins} stations={stationPins} selected={picked}
                    onPick={(p) => { setView('list'); toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`) }}
-                   note={pins.length ? `좌표 ${pct0(geoCoverage)} 확보` : '파란 점은 지하철역'} />
+                   note={pins.length ? `좌표를 ${pct0(geoCoverage)} 확보했습니다` : '파란 점은 지하철역입니다'} />
           {!pins.length && (
             <p className="warnline">
               <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이

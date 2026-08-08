@@ -151,13 +151,13 @@ export default function App() {
       {tab === 'market' && <>
       <section className="card">
         <h2>자치구별 전세가율 ({housing})</h2>
-        <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값. 전세 보증금 ÷ 매매가, 평단가 기준. 눌러서 선택</p>
+        <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값입니다. 전세 보증금을 매매가로 나눈 값이고, 평단가 기준입니다. 막대를 누르면 그 구가 선택됩니다</p>
         <RankBars items={view.rank} format={pct0} selected={gu} onSelect={setGu} />
       </section>
 
       <section className="card">
         <h2>{view.guName} 평단가 추이</h2>
-        <p className="sub">전용면적 1평당 만원, 월별 중위값. 전세는 월세 0원 계약만</p>
+        <p className="sub">전용면적 1평당 만원, 월별 중위값입니다. 전세는 월세 0원 계약만 셉니다</p>
         <div className="legend">
           <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
           <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전세 보증금</span>
@@ -168,7 +168,7 @@ export default function App() {
 
       <section className="card">
         <h2>{view.guName} 전세가율 추이</h2>
-        <p className="sub">높을수록 보증금이 매매가에 가깝다. 집값이 내려가면 반환 여력이 먼저 사라진다</p>
+        <p className="sub">높을수록 보증금이 매매가에 가깝습니다. 집값이 내려가면 반환 여력이 먼저 사라집니다</p>
         <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={160}
                    format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pct }} />
       </section>
@@ -177,8 +177,8 @@ export default function App() {
         <section className="card">
           <h2>기준금리</h2>
           <p className="sub">
-            한국은행. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은 그 뒤에 온다.
-            위 전세가율 차트와 월이 나란하다
+            한국은행 기준금리입니다. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은
+            그 뒤에 옵니다. 위 전세가율 차트와 월이 나란합니다
           </p>
           <LineChart months={data.months} provisional={data.provisional} height={120}
                      series={[{ name: '기준금리', short: '기준금리', color: 'var(--series-1)',
@@ -189,7 +189,7 @@ export default function App() {
 
       <section className="card">
         <h2>{view.guName} 거래건수</h2>
-        <p className="sub">매매가 마르면 가격 검증 자체가 어려워진다</p>
+        <p className="sub">매매가 마르면 가격 검증 자체가 어려워집니다</p>
         <div className="legend">
           <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
           <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전월세</span>

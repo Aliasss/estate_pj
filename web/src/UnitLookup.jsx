@@ -138,7 +138,7 @@ export function ratioTone(ratio) {
  * 점수를 매기지 않고 무엇을 보고 하는 말인지를 그대로 낸다.
  */
 function quietNote(u) {
-  if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조입니다. 차음에 가장 불리한 구조예요' }
+  if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조입니다. 차음에 가장 불리한 구조입니다' }
   if (!u.apr) return null
   // 의무화(2005.7)는 사업계획승인 기준이고 준공은 그보다 2~3년 늦다. 2005~2008년
   // 준공은 이전 설계일 수 있어 초록을 켜지 않는다.
@@ -446,16 +446,16 @@ const FILTERS = [
   // 판단 보류(비교 기준이 깨진 값, RATIO_BROKEN)는 위험이 아니라 모름이므로 세지 않는다.
   // 동네 살펴보기 탭과 같은 정의여야 한다. 두 탭의 숫자가 다르면 어느 쪽도 못 믿게 된다.
   { key: 'confirmed', label: '확인된 깡통',
-    hint: '그 건물 매매 3건 이상 기준으로 보증금이 매매가를 넘음',
+    hint: '그 건물 매매 3건 이상을 기준으로 보증금이 매매가를 넘습니다',
     test: (u) => u.stage === 'A' && u.n_sale_24m >= 3 && u.ratio >= 1 && u.ratio < RATIO_BROKEN },
   { key: 'high', label: '전세가율 90%↑',
-    hint: '근거 단계와 무관하게 90% 이상',
+    hint: '근거 단계와 무관하게 전세가율이 90% 이상입니다',
     test: (u) => u.ratio >= 0.9 && u.ratio < RATIO_BROKEN },
   { key: 'nosale', label: '매매 0건',
-    hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치 검증 불가',
+    hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치를 검증할 수 없습니다',
     test: (u) => !u.n_sale_24m },
   { key: 'reverse', label: '역전세',
-    hint: '갱신 계약에서 보증금이 5% 이상 내려감',
+    hint: '갱신 계약에서 보증금이 5% 이상 내려갔습니다',
     test: (u) => u.renew_hike != null && u.renew_hike <= -0.05 },
 ]
 
