@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { useCompare, useFinder, ym } from './units.js'
+import { REGIONS, useCompare, useFinder, ym } from './units.js'
 
 /**
- * 조건 검색. 서울 전체에서 내 조건에 맞는 집을 추린다.
+ * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
  *
  * 물건 조회 탭이 "이 구에서 위험한 게 뭐냐"를 본다면 여기는 반대 방향이다.
  * 예산·면적·연식·지역을 먼저 걸고, 남은 것 중에서 순서를 매긴다.
@@ -84,8 +84,8 @@ function useSubway() {
 
 const PAGE = 60
 
-export default function Finder({ guNames }) {
-  const fin = useFinder()
+export default function Finder({ guNames, region = '11' }) {
+  const fin = useFinder(region)
   const stationPins = useSubway()
   const [budget, setBudget] = useState('')       // 억
   const [minPy, setMinPy] = useState('')         // 평
@@ -101,6 +101,9 @@ export default function Finder({ guNames }) {
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
   const [open, setOpen] = useState(null)
   const compare = useCompare()
+
+  // 지역을 바꾸면 선택한 시군구와 펼친 줄은 이전 지역 것이라 의미가 없다
+  useEffect(() => { setGus([]); setOpen(null) }, [region])
 
   const cap = budget === '' ? null : Math.round(Number(budget) * 10000)
   const minArea = minPy === '' ? null : Number(minPy) * PYEONG
@@ -237,6 +240,17 @@ export default function Finder({ guNames }) {
   const toggleGu = (lawd) =>
     setGus((cur) => (cur.includes(lawd) ? cur.filter((g) => g !== lawd) : [...cur, lawd]))
 
+  if (fin.status === 'pending') {
+    return (
+      <section className="card">
+        <h2>동네 살펴보기</h2>
+        <p className="sub">
+          {REGIONS[region]} 실거래 데이터를 수집하고 있습니다. 수집이 끝나면 이 화면에서
+          조건으로 걸러 보실 수 있습니다.
+        </p>
+      </section>
+    )
+  }
   if (fin.status === 'error') {
     return (
       <section className="card">
@@ -250,7 +264,7 @@ export default function Finder({ guNames }) {
     )
   }
   if (fin.status !== 'ready') {
-    return <section className="card"><h2>동네 살펴보기</h2><p className="sub">서울 전체 물건을 불러오는 중…</p></section>
+    return <section className="card"><h2>동네 살펴보기</h2><p className="sub">{REGIONS[region]} 전체 물건을 불러오는 중…</p></section>
   }
 
   const { col, d } = fin
@@ -316,17 +330,17 @@ export default function Finder({ guNames }) {
       {/* 칩 25개를 펼쳐 두면 390px 화면에서 결과가 여섯 줄 아래로 밀린다 */}
       <details className="gu-picker">
         <summary>
-          지역 · {gus.length === 0 ? '서울 전체'
+          지역 · {gus.length === 0 ? `${REGIONS[region]} 전체`
             : gus.length <= 3 ? gus.map((g) => guNames[g] ?? g).join(', ')
             : `${guNames[gus[0]] ?? gus[0]} 외 ${gus.length - 1}곳`}
         </summary>
-        <div className="filters" role="group" aria-label="자치구">
+        <div className="filters" role="group" aria-label="시군구">
           {d.gus.map((lawd) => (
             <button key={lawd} className="chip" aria-pressed={gus.includes(lawd)}
                     onClick={() => toggleGu(lawd)}>{guNames[lawd] ?? lawd}</button>
           ))}
           {gus.length > 0 && (
-            <button className="chip clear" onClick={() => setGus([])}>서울 전체</button>
+            <button className="chip clear" onClick={() => setGus([])}>{REGIONS[region]} 전체</button>
           )}
         </div>
       </details>
@@ -434,8 +448,8 @@ export default function Finder({ guNames }) {
 
       <p className="warnline">
         <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
-        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 서울 전체를
-        채우는 데 열흘쯤 걸립니다.
+        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 전체를
+        채우는 데 시간이 걸립니다.
         <br /><br />
         <strong>통근 시간은 아직 없습니다.</strong> 물건 좌표와 지하철역 자료를 붙이는 중이고,
         붙으면 목적지 역을 골라 통근 시간으로 거를 수 있게 할 참입니다.

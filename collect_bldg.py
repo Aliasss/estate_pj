@@ -37,7 +37,7 @@ import requests
 
 from collect import (FATAL_CODES, QUOTA_CODE, SUCCESS_CODES, FatalApiError,
                      QuotaExhausted, _clean, _to_float, _to_int)
-from lawd_codes import SEOUL_LAWD_CODES
+from lawd_codes import LAWD_CODES
 from scrub import describe, scrub
 
 # 구버전(BldRgstService_v2)은 폐기됐다 — NO_OPENAPI_SERVICE_ERROR(12)를 돌려준다.
@@ -185,7 +185,7 @@ def targets(rt_db: str, lawd_filter: list[str], bjdong_map: dict | None = None) 
     if unmapped:
         # "제외 N건"이라는 숫자만 찍으면 어느 동네가 빠졌는지 아무도 모른다.
         # 이름을 찍어야 다음 감사가 이 목록에서 시작할 수 있다.
-        names = sorted(f"{SEOUL_LAWD_CODES.get(l, l)} {u or '(빈 동명)'}" for l, u in unmapped)
+        names = sorted(f"{LAWD_CODES.get(l, l)} {u or '(빈 동명)'}" for l, u in unmapped)
         print(f"공식 코드표에도 payload에도 없어 제외된 법정동 {len(names)}곳:")
         for name in names:
             print(f"  {name}")
@@ -418,7 +418,7 @@ def main() -> int:
 
     lawd_filter = [c.strip() for c in args.lawd.split(",") if c.strip()]
     for code in lawd_filter:
-        if code not in SEOUL_LAWD_CODES:
+        if code not in LAWD_CODES:
             print(f"알 수 없는 자치구 코드: {code}", file=sys.stderr)
             return 2
 
@@ -486,7 +486,7 @@ def main() -> int:
     try:
         for target, items, exc in results(plan, key, endpoint_idx, args.workers, throttle):
             calls += 1
-            gu = SEOUL_LAWD_CODES.get(target[0], target[0])
+            gu = LAWD_CODES.get(target[0], target[0])
             if isinstance(exc, QuotaExhausted):
                 # 한도를 다 쓴 것은 실패가 아니다. 여기까지 저장하고 정상 종료한다.
                 print(f"\n오늘 한도를 다 썼습니다 ({exc}). 다음 실행이 이어받습니다.", flush=True)

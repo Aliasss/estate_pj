@@ -94,7 +94,7 @@ STAGES = ["A", "B", "B-", "C"]
 
 
 def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
-                 build_id: str) -> None:
+                 build_id: str, fname: str = "finder.json") -> None:
     col = {name: i for i, name in enumerate(cols)}
     gus = sorted(by_gu)
     umds: dict[str, int] = {}
@@ -120,11 +120,11 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
                "cols": FINDER_COLS, "n": len(recs),
                "columns": [list(c) for c in zip(*recs)]}
-    path = os.path.join(out_dir, "finder.json")
+    path = os.path.join(out_dir, fname)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
     packed = len(gzip.compress(open(path, "rb").read(), 6))
-    print(f"\nfinder.json  물건 {len(recs):,}개  {os.path.getsize(path) / 1e6:.1f}MB "
+    print(f"\n{fname}  물건 {len(recs):,}개  {os.path.getsize(path) / 1e6:.1f}MB "
           f"(gzip {packed / 1e6:.2f}MB, 법정동 {len(umds)}개)")
 
 
@@ -366,7 +366,15 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         json.dump({"window": [recent_start, complete_end], "gu": index}, fh, ensure_ascii=False)
 
-    write_finder(out_dir, by_gu, COLS, [recent_start, complete_end], build_id)
+    prefixes = sorted({lawd[:2] for lawd in by_gu})
+    for pref in prefixes:
+        sub = {k: v for k, v in by_gu.items() if k.startswith(pref)}
+        write_finder(out_dir, sub, COLS, [recent_start, complete_end], build_id,
+                     fname=f"finder-{pref}.json")
+    if "11" in prefixes:
+        import shutil
+        shutil.copyfile(os.path.join(out_dir, "finder-11.json"),
+                        os.path.join(out_dir, "finder.json"))
 
     print(registry.report())
     print(nearest.report())

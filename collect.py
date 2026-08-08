@@ -39,7 +39,7 @@ from xml.etree import ElementTree
 
 import requests
 
-from lawd_codes import SEOUL_LAWD_CODES
+from lawd_codes import LAWD_CODES
 from scrub import scrub
 
 API_BASE = "https://apis.data.go.kr/1613000"
@@ -236,7 +236,7 @@ def normalize(payload: dict[str, str], source: Source, lawd_cd: str) -> dict:
         "housing_type": source.housing_type,
         "deal_type": source.deal_type,
         "lawd_cd": lawd_cd,
-        "sgg_nm": SEOUL_LAWD_CODES.get(lawd_cd),
+        "sgg_nm": LAWD_CODES.get(lawd_cd),
         "deal_date": _deal_date(payload),
     }
     for column, aliases in FIELD_ALIASES.items():
@@ -460,7 +460,7 @@ def main() -> int:
             return 2
         sources.append(SOURCES[key])
 
-    codes = [c.strip() for c in args.lawd.split(",") if c.strip()] or list(SEOUL_LAWD_CODES)
+    codes = [c.strip() for c in args.lawd.split(",") if c.strip()] or list(LAWD_CODES)
     months = month_range(args.start, args.end)
     refresh = set(months[-args.refresh_recent :]) if args.refresh_recent else set()
 
@@ -495,7 +495,7 @@ def main() -> int:
                 print(f"--max-calls({args.max_calls}) 도달. 중단합니다. 재실행하면 이어서 받습니다.")
                 break
 
-            gu = SEOUL_LAWD_CODES.get(code, code)
+            gu = LAWD_CODES.get(code, code)
             prefix = f"[{index}/{len(plan)}] {source.key} {gu} {ym}"
             try:
                 items, total = fetch_month(

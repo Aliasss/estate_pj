@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { UnitCard, questionsFor } from './UnitLookup.jsx'
-import { search, useCompare, useFinder, useUnitLoader, ym } from './units.js'
+import { REGIONS, search, useCompare, useFinder, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -50,8 +50,8 @@ function ShareRow({ lawd, id }) {
   )
 }
 
-export default function Verify({ guNames }) {
-  const fin = useFinder()
+export default function Verify({ guNames, region = '11' }) {
+  const fin = useFinder(region)
   const { byRow, byId } = useUnitLoader()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null)     // {lawd, u} | {error}
@@ -131,6 +131,17 @@ export default function Verify({ guNames }) {
     history.pushState(null, '', location.pathname)
   }
 
+  if (fin.status === 'pending') {
+    return (
+      <section className="card">
+        <h2>계약 전 확인</h2>
+        <p className="sub">
+          {REGIONS[region]} 실거래 데이터를 수집하고 있습니다. 수집이 끝나면 이 화면에서
+          바로 검색하실 수 있습니다.
+        </p>
+      </section>
+    )
+  }
   if (fin.status === 'error') {
     return (
       <section className="card">
@@ -206,8 +217,8 @@ export default function Verify({ guNames }) {
       {fin.status === 'ready' && !open && (
         q.trim().length < 2 ? (
           <p className="muted-line">
-            위 기간에 전세 계약이 있었던 서울 전체 {d.n.toLocaleString()}개 건물을 담고 있습니다.
-            자치구를 고르실 필요 없습니다. 신고 기한이 계약일로부터 30일이라 최근 두 달치는
+            위 기간에 전세 계약이 있었던 {REGIONS[region]} 전체 {d.n.toLocaleString()}개 건물을 담고 있습니다.
+            시군구를 고르실 필요 없습니다. 신고 기한이 계약일로부터 30일이라 최근 두 달치는
             아직 절반도 안 들어와서, 그 구간은 빼고 셉니다.
           </p>
         ) : hits.idx.length ? (

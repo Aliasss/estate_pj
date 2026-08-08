@@ -30,11 +30,11 @@ from scrub import scrub
 BASE = "https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList"
 
 
-def fetch_page(key: str, page: int, rows: int = 1000) -> dict:
+def fetch_page(key: str, region: str, page: int, rows: int = 1000) -> dict:
     qs = urllib.parse.urlencode({
         "serviceKey": key, "type": "json",
         "pageNo": page, "numOfRows": rows,
-        "locatadd_nm": "서울특별시",
+        "locatadd_nm": region,
     })
     req = urllib.request.Request(f"{BASE}?{qs}", headers={"User-Agent": "estate-pj"})
     with urllib.request.urlopen(req, timeout=30) as res:
@@ -58,19 +58,35 @@ def main() -> int:
         key = urllib.parse.unquote(key)
 
     mapping: dict[str, dict[str, str]] = {}
-    page, total = 1, None
-    while True:
+    for region in ("서울특별시", "경기도"):
         try:
-            body = fetch_page(key, page)
+            _collect_region(key, region, mapping)
         except Exception as exc:
             print(f"법정동코드 조회 실패: {scrub(exc)}", file=sys.stderr)
             return 1
+
+    n = sum(len(v) for v in mapping.values())
+    if n < 800:                          # 서울 460여 + 경기 570여. 뚝 모자라면 뭔가 잘못됐다
+        print(f"법정동이 {n}개뿐입니다. 응답이 잘렸거나 필터가 어긋났습니다.", file=sys.stderr)
+        return 1
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(mapping, fh, ensure_ascii=False, separators=(",", ":"))
+    print(f"{args.out} 기록: {len(mapping)}개 시군구, 법정동 {n}개")
+    return 0
+
+
+def _collect_region(key: str, region: str, mapping: dict) -> None:
+    page, total = 1, None
+    while True:
+        try:
+            body = fetch_page(key, region, page)
+        except Exception as exc:
+            raise RuntimeError(f"{region} 조회 실패: {scrub(exc)}") from exc
         blocks = body.get("StanReginCd")
         if not blocks:
             # 오류 구조는 {"RESULT": {...}} 또는 nationalCode 오류 포맷으로 온다
-            print(f"법정동코드 응답에 데이터가 없습니다: {scrub(json.dumps(body, ensure_ascii=False))[:200]}",
-                  file=sys.stderr)
-            return 1
+            raise RuntimeError(f"{region} 응답에 데이터가 없습니다: "
+                               f"{scrub(json.dumps(body, ensure_ascii=False))[:200]}")
         rows = []
         for b in blocks:
             if "head" in b:
@@ -81,22 +97,15 @@ def main() -> int:
         for r in rows:
             cd = (r.get("region_cd") or "").strip()
             name = (r.get("locallow_nm") or "").strip()
-            # 동 단위만 취한다. 구 자체(뒤 5자리 00000)와 리 단위(서울엔 없지만)는 건너뛴다.
-            if len(cd) != 10 or cd[5:8] == "000" or not name:
+            # 동·리 단위만 취한다. 시군구 자체(뒤 5자리 00000)는 건너뛴다.
+            # 경기도에는 리(里)가 있어 뒤 두 자리가 00이 아닐 수 있다. 실거래 umd_nm은
+            # 동/읍/면 수준이므로 리 행(cd[8:10] != '00')은 걷어낸다.
+            if len(cd) != 10 or cd[5:8] == "000" or cd[8:10] != "00" or not name:
                 continue
             mapping.setdefault(cd[:5], {})[name] = cd[5:10]
         if total is None or page * 1000 >= total:
             break
         page += 1
-
-    n = sum(len(v) for v in mapping.values())
-    if n < 400:                          # 서울 법정동은 460여 개다. 뚝 모자라면 뭔가 잘못됐다
-        print(f"법정동이 {n}개뿐입니다. 응답이 잘렸거나 필터가 어긋났습니다.", file=sys.stderr)
-        return 1
-    with open(args.out, "w", encoding="utf-8") as fh:
-        json.dump(mapping, fh, ensure_ascii=False, separators=(",", ":"))
-    print(f"{args.out} 기록: {len(mapping)}개 구, 법정동 {n}개")
-    return 0
 
 
 if __name__ == "__main__":

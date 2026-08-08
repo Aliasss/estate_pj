@@ -3,7 +3,7 @@ import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
 import Law from './Law.jsx'
 import Verify from './Verify.jsx'
-import { useRates } from './units.js'
+import { REGIONS, useRates } from './units.js'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -49,6 +49,7 @@ export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [housing, setHousing] = useState('연립다세대')
+  const [region, setRegion] = useState('11')  // 서울. 법정동코드 앞 2자리
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
   const rates = useRates()
@@ -60,15 +61,25 @@ export default function App() {
       .catch((e) => setErr(e.message))
   }, [])
 
+  // 지역을 바꾸면 선택 구가 다른 지역 것으로 남는다. 그 지역 첫 구로 옮겨 준다.
+  useEffect(() => {
+    if (!data || gu.startsWith(region)) return
+    const first = data.gu.find((g) => g.lawd_cd.startsWith(region))
+    if (first) setGu(first.lawd_cd)
+  }, [region, data, gu])
+
   const view = useMemo(() => {
     if (!data) return null
     const solid = data.months.filter((m) => !data.provisional.includes(m))
     const lastSolid = solid.at(-1)
     const recent12 = solid.slice(-12)
+    // 시세 탭은 지역 단위로 본다. 서울과 경기를 한 랭킹에 섞으면 축만 길어진다.
+    const guList = data.gu.filter((g) => g.lawd_cd.startsWith(region))
 
     // 구별 랭킹. 잠정 구간을 뺀 최근 12개월 중위 전세가율
     const byGu = new Map()
     for (const r of data.ratio) {
+      if (!r.lawd_cd.startsWith(region)) continue
       if (r.housing_type !== housing || !recent12.includes(r.ym) || sane(r.jeonse_ratio_ppp) == null) continue
       if (!byGu.has(r.lawd_cd)) byGu.set(r.lawd_cd, { sgg: r.sgg_nm, vals: [] })
       byGu.get(r.lawd_cd).vals.push(r.jeonse_ratio_ppp)
@@ -101,7 +112,7 @@ export default function App() {
     const guNames = Object.fromEntries(data.gu.map((g) => [g.lawd_cd, g.sgg_nm]))
 
     return {
-      rank, guName, guNames, lastSolid,
+      rank, guName, guNames, guList, lastSolid,
       ppp: [
         { name: '매매 평단가', short: '매매', color: 'var(--series-1)', values: byYm('median_sale_ppp') },
         { name: '전세 평단가', short: '전세', color: 'var(--series-2)', values: byYm('median_jeonse_ppp') },
@@ -119,7 +130,7 @@ export default function App() {
         ratio: ratios.get(ym) ?? null,
       })),
     }
-  }, [data, housing, gu])
+  }, [data, housing, gu, region])
 
   if (err) return <main className="app"><p>데이터를 불러오지 못했습니다: {err}</p></main>
   if (!data || !view) return <main className="app"><p style={{ color: 'var(--text-muted)' }}>불러오는 중…</p></main>
@@ -129,28 +140,46 @@ export default function App() {
       <header className="hero">
         <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
         <h1>내 집 내놔</h1>
+        {/* 법·제도는 전국 공통이라 지역 토글이 소음이다 */}
+        {tab !== 'law' && (
+          <div className="seg region-seg" role="group" aria-label="지역">
+            {Object.entries(REGIONS).map(([code, label]) => (
+              <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
+            ))}
+          </div>
+        )}
       </header>
 
-      {tab === 'market' && (
+      {tab === 'market' && view.guList.length > 0 && (
         <div className="controls">
           <div className="seg" role="group" aria-label="주택 유형">
             {['연립다세대', '아파트'].map((t) => (
               <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
             ))}
           </div>
-          <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="자치구">
-            {data.gu.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
+          <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="시군구">
+            {view.guList.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
           </select>
         </div>
       )}
 
-      {tab === 'verify' && <Verify guNames={view.guNames} />}
-      {tab === 'find' && <Finder guNames={view.guNames} />}
+      {tab === 'verify' && <Verify guNames={view.guNames} region={region} />}
+      {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
       {tab === 'law' && <Law />}
 
-      {tab === 'market' && <>
+      {tab === 'market' && view.guList.length === 0 && (
+        <section className="card">
+          <h2>{REGIONS[region]} 시세</h2>
+          <p className="sub">
+            {REGIONS[region]} 실거래 데이터를 수집하고 있습니다. 수집이 끝나면 이 화면에서
+            시군구별 전세가율과 평단가 추이를 보실 수 있습니다.
+          </p>
+        </section>
+      )}
+
+      {tab === 'market' && view.guList.length > 0 && <>
       <section className="card">
-        <h2>자치구별 전세가율 ({housing})</h2>
+        <h2>{REGIONS[region]} 시군구별 전세가율 ({housing})</h2>
         <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값입니다. 전세 보증금을 매매가로 나눈 값이고, 평단가 기준입니다. 막대를 누르면 그 구가 선택됩니다</p>
         <RankBars items={view.rank} format={pct0} selected={gu} onSelect={setGu} />
       </section>
@@ -216,7 +245,7 @@ export default function App() {
       </>}
 
       {/* 평단가·잠정치 설명은 전부 시세 흐름 얘기다. 확인 탭에 온 사람에게는 소음이다. */}
-      {tab === 'market' && <p className="note">
+      {tab === 'market' && view.guList.length > 0 && <p className="note">
         <strong>읽는 법.</strong> 평단가는 <strong>전용면적</strong> 기준이라 공급면적으로 표시하는
         부동산 앱 숫자보다 20~30% 높게 나옵니다. 전세가율은 면적 구성의 차이를 걷어내려고
         평단가끼리 나눈 값입니다. 모든 통계는 중위값이며, 신고 후 해제된 거래는 제외했습니다.

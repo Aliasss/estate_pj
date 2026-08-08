@@ -20,11 +20,30 @@ const REQUIRED = ['i', 'ht', 'g', 'u', 'name', 'area', 'by', 'jeonse', 'ratio', 
 /** "202406" -> "2024년 6월". 창을 화면에 그대로 뿌리면 여덟 자리 숫자가 보인다. */
 export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '—')
 
-export function useFinder() {
+/** 지역 코드(법정동 앞 2자리)와 표시 이름. 토글·문구가 다 여기서 나온다. */
+export const REGIONS = { 11: '서울', 41: '경기' }
+
+export function useFinder(region = '11') {
   const [state, setState] = useState({ status: 'loading' })
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/units/finder.json`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    setState({ status: 'loading' })
+    const base = import.meta.env.BASE_URL
+    // 없는 파일이 늘 404로 오지는 않는다. SPA 폴백이 있는 서버(vite preview 등)는
+    // index.html을 200으로 준다. content-type까지 봐야 "파일 없음"을 제대로 읽는다.
+    const missing = (r) => !r.ok || !(r.headers.get('content-type') || '').includes('json')
+    fetch(`${base}data/units/finder-${region}.json`)
+      .then((r) => {
+        if (!missing(r)) return r.json()
+        // 분할 파일이 아직 없는 배포. 서울은 통짜 finder.json으로 내려앉는다.
+        // 경기 쪽 없음은 수집이 안 끝났다는 뜻이라 오류가 아니라 안내로 처리한다.
+        if (region === '11') {
+          return fetch(`${base}data/units/finder.json`)
+            .then((r2) => (missing(r2) ? Promise.reject(new Error(`HTTP ${r2.status}`)) : r2.json()))
+        }
+        const e = new Error(`HTTP ${r.status}`)
+        e.pending = true
+        throw e
+      })
       .then((d) => {
         const col = Object.fromEntries(d.cols.map((c, i) => [c, d.columns[i]]))
         const missing = REQUIRED.filter((c) => !col[c])
@@ -39,8 +58,8 @@ export function useFinder() {
         for (let i = 0; i < d.n; i++) flat[i] = (col.name[i] || '').replace(/\s+/g, '')
         setState({ status: 'ready', d, col, flat })
       })
-      .catch((e) => setState({ status: 'error', message: e.message }))
-  }, [])
+      .catch((e) => setState({ status: e.pending ? 'pending' : 'error', message: e.message }))
+  }, [region])
   return state
 }
 
@@ -104,10 +123,10 @@ function withSiblings(g, u) {
 }
 
 /**
- * 서울 전체에서 주소·건물명으로 찾는다.
+ * 지역 전체에서 주소·건물명으로 찾는다.
  *
  * 검증하러 온 사람은 계약서에 적힌 주소를 통째로 들고 온다. "서울시 강서구 화곡동
- * 123-45"에서 시·구는 매칭 필드에 없으므로 떼되, 구 이름은 버리지 않고 범위를
+ * 123-45"에서 시·도는 매칭 필드에 없으므로 떼되, 구 이름은 버리지 않고 범위를
  * 좁히는 데 쓴다. 구 이름 한 단어 때문에 검색이 통째로 죽으면 진입점이 막힌 것이다.
  *
  * 반드시 전수를 훑은 뒤에 자른다. 앞에서 끊고 정렬하면 파일 순서상 앞에 몰린
@@ -117,23 +136,30 @@ export function search(fin, query, limit = 40, guNames = null) {
   const raw = query.trim()
   const { col, d, flat } = fin
 
-  let gi = null
+  let gset = null
   const kept = []
   for (const t of raw.split(/\s+/)) {
-    if (/^서울(특별시|시)?$/.test(t)) continue
-    if (guNames && /구$/.test(t)) {
-      const hit = Object.entries(guNames).find(([, n]) => n === t)
-      if (hit) { gi = d.gus.indexOf(hit[0]); continue }
+    if (/^(서울(특별시|시)?|경기도?)$/.test(t)) continue
+    if (guNames && /[구시군]$/.test(t)) {
+      // 경기 시군구 이름은 "수원시 장안구"처럼 두 단어다. "장안구"는 끝 단어로,
+      // "수원시"는 앞 단어로 맞춘다. "수원시"처럼 여러 구에 걸치면 그 구들 전부로
+      // 좁힌다. 어느 쪽이든 매칭 문자열에서는 떼야 검색이 살아남는다.
+      const ms = Object.entries(guNames).filter(([, n]) =>
+        n === t || n.endsWith(' ' + t) || n.startsWith(t + ' '))
+      if (ms.length) {
+        gset = new Set([...(gset ?? []), ...ms.map(([lawd]) => d.gus.indexOf(lawd))])
+        continue
+      }
     }
     kept.push(t)
   }
   const q = kept.join('').replace(/\s+/g, '')
   // 구 이름만 넣은 경우("강서구")는 그 구에서 전세가 많은 순으로 보여 준다
-  if (q.length < 2 && gi == null) return { idx: [], total: 0 }
+  if (q.length < 2 && gset == null) return { idx: [], total: 0 }
 
   const out = []
   for (let i = 0; i < d.n; i++) {
-    if (gi != null && col.g[i] !== gi) continue
+    if (gset != null && !gset.has(col.g[i])) continue
     if (q.length >= 2) {
       const umd = d.umds[col.u[i]] || ''
       if (!flat[i].includes(q) && !(umd + (col.jibun?.[i] ?? '')).includes(q)) continue
