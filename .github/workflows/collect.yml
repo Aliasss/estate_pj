@@ -13,8 +13,10 @@ name: 서울 실거래가 수집
 
 on:
   schedule:
-    # 매월 3일 오전 9시 KST (전월 신고분이 어느 정도 쌓인 뒤)
-    - cron: '0 0 3 * *'
+    # 매주 월요일 21:00 UTC = 화요일 06:00 KST. 신고는 매일 쌓이는데 월 1회면
+    # 월말로 갈수록 원본이 최대 4주 낡는다. 주간 + 최근 3개월 재수집(--refresh-recent
+    # 기본 3)이면 호출 300건 수준으로 신선도가 7일 이내로 유지된다.
+    - cron: '0 21 * * 1'
   workflow_dispatch:
     inputs:
       refresh_recent:

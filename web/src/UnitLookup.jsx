@@ -158,12 +158,17 @@ const floorText = (f) => (f == null ? '—' : f <= 0 ? '반지하' : `${f}층`)
  */
 function Deals({ deals }) {
   if (!deals) return null
+  // 행 끝의 'P'는 신고 기한이 아직 안 지난 달의 계약이다. 월 통계에는 안 들어가지만
+  // 신고된 개별 계약은 사실이므로, 꼬리표를 달아 최신 정보로 보여 준다.
+  const prov = (r) => r.at(-1) === 'P'
   const groups = [
-    ['j', '전세', (r) => [eok(r[1]), floorText(r[2]), r[3] === '갱신' ? '갱신' : '']],
-    ['s', '매매', (r) => [eok(r[1]), floorText(r[2]), '']],
-    ['w', '월세', (r) => [`${eok(r[1])} / ${r[2]}만`, floorText(r[3]), '']],
+    ['j', '전세', (r) => [eok(r[1]), floorText(r[2]),
+      [r[3] === '갱신' ? '갱신' : '', prov(r) ? '잠정' : ''].filter(Boolean).join('·')]],
+    ['s', '매매', (r) => [eok(r[1]), floorText(r[2]), prov(r) ? '잠정' : '']],
+    ['w', '월세', (r) => [`${eok(r[1])} / ${r[2]}만`, floorText(r[3]), prov(r) ? '잠정' : '']],
   ].filter(([k]) => deals[k]?.length)
   if (!groups.length) return null
+  const hasProv = groups.some(([k]) => deals[k].some(prov))
   return (
     <>
       <h3 className="facts-h">최근 거래</h3>
@@ -187,6 +192,12 @@ function Deals({ deals }) {
           </table>
         </div>
       ))}
+      {hasProv && (
+        <p className="muted-line">
+          '잠정' 표시는 신고 기한(계약 후 30일)이 아직 안 지난 달의 계약입니다. 그 달에
+          늦게 신고되는 계약이 더 있을 수 있어, 위쪽 통계에는 넣지 않았습니다.
+        </p>
+      )}
     </>
   )
 }

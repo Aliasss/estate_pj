@@ -70,7 +70,15 @@ async function buildTier1() {
 
   const months = [...new Set(panel.map((r) => r.ym))].sort()
   // 마지막 2개월은 30일 신고 기한 때문에 계속 채워진다. 잠정 구간으로 표시한다.
-  const provisional = months.slice(-2)
+  // 잠정 구간도 달력으로 판정한다. 말일+35일(신고 기한 30일+여유)이 지난 달은
+  // 완성이다. 뒤에서 두 달을 기계적으로 자르면 8월 8일에 6월까지 회색이 된다.
+  const now = new Date()
+  const isComplete = (ym) => {
+    const [y, m] = ym.split('-').map(Number)
+    const lastDay = new Date(y, m, 0)                    // 그 달 말일
+    return now - lastDay > 35 * 86400_000
+  }
+  const provisional = months.filter((mo) => !isComplete(mo))
 
   const gu = [...new Map(panel.map((r) => [r.lawd_cd, r.sgg_nm])).entries()]
     .map(([lawd_cd, sgg_nm]) => ({ lawd_cd, sgg_nm }))

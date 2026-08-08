@@ -36,11 +36,26 @@ AREA_BAND = 0.5      # 실측으로 고른 값
 UMD_BAND = 10.0      # B단계 면적대 폭
 YEAR_BAND = 10       # B단계 준공연도 폭. 신축 전세를 구축 매매와 비교하면 전세가율이 터진다
 RECENT_MONTHS = 24
-LAG_MONTHS = 2       # 신고 지연으로 미완성인 최근 구간
+DEADLINE_GRACE_DAYS = 35   # 신고 기한 30일 + 늦은 처리 여유. 말일+35일이 지나면 완성으로 본다
 
 
 def year_key(year: int | None) -> str:
     return str(year // YEAR_BAND * YEAR_BAND) if year else ""
+
+
+def calendar_complete_end(today) -> str:
+    """오늘 기준으로 신고 기한이 전부 지난 마지막 달.
+
+    신고 기한이 계약일로부터 30일이므로 6월 30일 계약은 7월 30일까지 신고된다.
+    즉 말일+35일(여유 5일)이 지났으면 그 달은 완성이다. 예전에는 데이터의 마지막
+    달에서 기계적으로 두 달을 잘랐는데, 8월 8일에 5월까지만 보여주는 식으로
+    필요 이상 보수적이었다. 달력으로 판정하면 같은 날 6월까지 열린다.
+    """
+    import datetime
+    cand = today.replace(day=1) - datetime.timedelta(days=1)   # 지난달 말일
+    while today < cand + datetime.timedelta(days=DEADLINE_GRACE_DAYS + 1):
+        cand = cand.replace(day=1) - datetime.timedelta(days=1)
+    return f"{cand.year:04d}{cand.month:02d}"
 
 
 def shift_ym(ym: str, months: int) -> str:
@@ -134,7 +149,9 @@ def trim_deals(d: dict | None) -> dict | None:
 def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
           nearest: Nearest) -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
-    complete_end = shift_ym(end, -LAG_MONTHS)          # 마지막 완성 월
+    import datetime
+    # 완성 여부는 달력이 정하고, 수집이 거기 못 미치면 수집된 데까지만 쓴다
+    complete_end = min(calendar_complete_end(datetime.date.today()), end)
     recent_start = shift_ym(complete_end, -(RECENT_MONTHS - 1))
     prev_start = shift_ym(recent_start, -RECENT_MONTHS)
     print(f"수집 최종 {end} / 완성 구간 ~{complete_end}")
@@ -175,7 +192,19 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         if seen % 500_000 == 0:
             print(f"  {seen:,}행 처리")
         if ymd > complete_end:
-            continue                                   # 미완성 구간 제외
+            # 월 집계는 미완성이지만 신고된 개별 계약은 사실이다. 검증하러 온
+            # 사람에게 가장 시의성 있는 게 지난달 계약이라, 통계에서는 빼고
+            # 최근 거래 목록에만 'P'(잠정) 꼬리표를 달아 싣는다.
+            key_p = (ht, lawd, (umd or "").strip(), norm_jibun(jibun), norm_name(bname),
+                     area_key(area, AREA_BAND))
+            if dt == "매매" and amount:
+                deals[key_p]["s"].append((ymd, amount, floor, "P"))
+            elif dt == "전월세" and deposit:
+                if (rent or 0) == 0:
+                    deals[key_p]["j"].append((ymd, deposit, floor, ctype, "P"))
+                else:
+                    deals[key_p]["w"].append((ymd, deposit, rent, floor, "P"))
+            continue
         umd = (umd or "").strip()
         key = (ht, lawd, umd, norm_jibun(jibun), norm_name(bname), area_key(area, AREA_BAND))
         bm_key = (ht, lawd, umd, area_key(area, UMD_BAND))
