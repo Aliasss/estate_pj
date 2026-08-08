@@ -63,15 +63,33 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
 
-      # 조회 대상은 실거래가 DB에서 뽑으므로 원본 스냅샷이 필요하다.
+      # 조회 대상은 실거래가 DB에서 뽑으므로 원본 스냅샷이 필요하다. 스냅샷이
+      # 정말 없으면(최초, collect.yml이 아직 안 돈 상태) 오늘은 할 일이 없는
+      # 것이지 실패가 아니다. 매일 빨간 런이 쌓이면 진짜 실패가 묻힌다.
       - name: 실거래가 스냅샷 복원
+        id: rt
         run: |
-          gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber
-          gunzip -f seoul_rt.sqlite.gz
+          if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
+            if echo "$assets" | grep -qx 'seoul_rt.sqlite.gz'; then
+              # 에셋이 분명히 있다. 여기서 실패하면 일시 오류이므로 중단한다.
+              gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber
+              gunzip -f seoul_rt.sqlite.gz
+              echo "has_rt=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "원본 스냅샷 에셋이 아직 없습니다. collect.yml이 먼저 돌면 생깁니다."
+              echo "has_rt=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif echo "$assets" | grep -qiE 'not found|404'; then
+            echo "릴리스가 아직 없습니다(최초 실행 전). 오늘은 할 일이 없습니다."
+            echo "has_rt=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "릴리스 확인 자체가 실패했습니다(일시 오류)."; echo "$assets"; exit 1
+          fi
 
       # "에셋이 정말 없음"과 "다운로드 실패"를 구분한다. 일시 오류를 '처음부터'로
       # 삼키면 며칠치 진행분이 이번 실행의 하루치로 덮여 갈려 나간다.
       - name: 건축물대장 진행분 복원
+        if: steps.rt.outputs.has_rt == 'true'
         run: |
           assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name')
           if echo "$assets" | grep -qx 'bldg.sqlite.gz'; then
@@ -86,6 +104,7 @@ jobs:
           fi
 
       - name: 법정동코드 공식 매핑 내려받기
+        if: steps.rt.outputs.has_rt == 'true'
         env:
           MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
         run: |
@@ -95,12 +114,21 @@ jobs:
 
       - name: 건축물대장 수집
         id: collect
+        if: steps.rt.outputs.has_rt == 'true'
         continue-on-error: true
+        env:
+          # dispatch 입력을 셸에 직접 보간하지 않는다. env를 거치면 셸 입장에서
+          # 값일 뿐이라 명령으로 해석될 표면이 사라진다.
+          IN_LAWD: ${{ inputs.lawd }}
+          IN_MAX_CALLS: ${{ inputs.max_calls }}
+          IN_WORKERS: ${{ inputs.workers }}
+          IN_RATE: ${{ inputs.rate }}
+          IN_PROBE: ${{ inputs.probe == true && '1' || '' }}
         run: |
           python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite \
-            --lawd "${{ inputs.lawd }}" --max-calls ${{ inputs.max_calls || 9000 }} \
-            --workers ${{ inputs.workers || 2 }} --rate ${{ inputs.rate || 1 }} \
-            ${{ inputs.probe && '--probe' || '' }}
+            --lawd "$IN_LAWD" --max-calls "${IN_MAX_CALLS:-9000}" \
+            --workers "${IN_WORKERS:-2}" --rate "${IN_RATE:-1}" \
+            ${IN_PROBE:+--probe}
 
       # 한도에 걸려 중간에 끊겨도 받은 만큼은 보존해야 다음 실행이 이어받는다.
       - name: 진행분 발행

@@ -487,10 +487,19 @@ def main() -> int:
     inserted_total = 0
     calls = 0
     errors = 0
-    quota_hit = False
+    # 절단 가드가 "이번 실행" 범위를 알 수 있게 시작 시각을 박아 둔다
+    run_started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # 소스(서비스)마다 일일 쿼터가 독립이다. 한 소스의 소진으로 전체를 멈추면
+    # 나머지 세 소스의 남은 쿼터를 버리고, 순회가 늘 서울 먼저라 경기 뒤쪽
+    # 시군구부터 매번 굶는다. 소진된 소스만 접고 나머지는 계속 간다.
+    exhausted: set[str] = set()
+    starved = 0
 
     try:
         for index, (source, code, ym) in enumerate(plan, start=1):
+            if source.key in exhausted:
+                starved += 1
+                continue
             if args.max_calls and calls >= args.max_calls:
                 print(f"--max-calls({args.max_calls}) 도달. 중단합니다. 재실행하면 이어서 받습니다.")
                 break
@@ -512,11 +521,12 @@ def main() -> int:
                 print(f"{prefix} 치명적 오류로 중단: {scrub(exc)}", file=sys.stderr)
                 return 1
             except QuotaExhausted as exc:
-                # 오늘 몫을 다 썼다. 실패가 아니라 여기까지 받았다는 뜻이다.
+                # 이 소스의 오늘 몫을 다 썼다. 실패가 아니라 여기까지 받았다는 뜻이다.
                 # 받은 구간은 fetch_log에 ok로 남았으므로 다음 실행이 이어받는다.
-                print(f"\n{prefix} 일일 한도 소진 ({scrub(exc)}). 여기서 멈춥니다.", flush=True)
-                quota_hit = True
-                break
+                print(f"\n{prefix} 일일 한도 소진 ({scrub(exc)}). 이 소스만 접고 계속합니다.",
+                      flush=True)
+                exhausted.add(source.key)
+                continue
             except Exception as exc:
                 print(f"{prefix} 실패: {scrub(exc)}", file=sys.stderr)
                 # fetch_log는 공개 릴리스로 올라가는 seoul_rt.sqlite 안의 테이블이다.
@@ -550,29 +560,45 @@ def main() -> int:
         conn.commit()
 
     # 절단 탐지: API가 말한 totalCount와 실제 적재 행 수가 다른데 ok로 남았다면
-    # 조용히 덜 받은 것이다. 조용히 틀린 숫자가 장애보다 위험하다.
-    truncated = conn.execute(
-        "SELECT COUNT(*) FROM fetch_log WHERE status='ok' AND total_count <> row_count"
+    # 조용히 덜 받은 것이다. 이번 실행에서 새로 생긴 것만 실패 사유로 삼되,
+    # 과거 이력까지 포함해 전부 error로 강등해 다음 실행이 자동 재수집하게 한다.
+    # 전체 이력을 실패 사유로 삼으면 과거 절단 1건이 수동 --force 전까지
+    # 매주 헛 빨간불을 만든다.
+    truncated_now = conn.execute(
+        "SELECT COUNT(*) FROM fetch_log "
+        "WHERE status='ok' AND total_count <> row_count AND fetched_at >= ?",
+        (run_started,),
     ).fetchone()[0]
+    degraded = conn.execute(
+        "UPDATE fetch_log SET status='error', "
+        "message='절단 의심: totalCount와 적재 행 수 불일치' "
+        "WHERE status='ok' AND total_count <> row_count"
+    ).rowcount
+    conn.commit()
     conn.close()
 
     print(f"완료. 이번 실행에서 {inserted_total:,}건 적재, API 호출 {calls}회 (오류 구간 {errors}개)")
 
     # 성공/실패 회계. collect_bldg.py 끝의 규율과 같다:
     # 틀린 초록불은 없느니만 못하다.
-    if truncated:
-        print(f"경고: totalCount와 적재 행 수가 다른 ok 구간이 {truncated}개 있습니다. "
-              "조용한 절단입니다. 해당 구간을 --force로 재수집하세요.", file=sys.stderr)
+    if degraded:
+        print(f"절단 의심 {degraded}개 구간을 error로 강등했습니다. 다음 실행이 재수집합니다.")
+    if truncated_now:
+        print(f"경고: 이번 실행에서 totalCount와 적재 행 수가 다른 구간이 {truncated_now}개 "
+              "생겼습니다. 조용한 절단이므로 실패로 종료합니다.", file=sys.stderr)
         return 1
-    if quota_hit:
-        print("일일 한도 소진. 받은 만큼은 저장됐고, 다음 실행이 이어받습니다.")
-        return 0
-    if calls and not inserted_total:
-        print("호출은 있었는데 한 건도 적재하지 못했습니다.", file=sys.stderr)
-        return 1
+    # 오류 회계가 쿼터의 정상 종료보다 먼저다. 쿼터 소진과 40% 오류가 같이
+    # 있었던 실행을 초록불로 끝내면 안 된다.
     if calls and errors > calls * 0.20:
         print(f"오류 구간이 {errors}/{calls}개 ({errors / calls:.0%})로 20%를 넘습니다. "
               "결과를 신뢰할 수 없어 실패로 종료합니다.", file=sys.stderr)
+        return 1
+    if exhausted:
+        print(f"일일 한도 소진 소스: {', '.join(sorted(exhausted))} "
+              f"(건너뛴 구간 {starved:,}개). 받은 만큼은 저장됐고, 다음 실행이 이어받습니다.")
+        return 0
+    if calls and not inserted_total:
+        print("호출은 있었는데 한 건도 적재하지 못했습니다.", file=sys.stderr)
         return 1
     return 0
 

@@ -65,13 +65,22 @@ def main() -> int:
             print(f"법정동코드 조회 실패: {scrub(exc)}", file=sys.stderr)
             return 1
 
+    # 지역별로 따로 검사한다. 합산 임계는 "서울 온전 + 경기 절반 유실" 같은
+    # 부분 유실을 통과시킨다. 서울 460여, 경기 570여가 실측 기준이다.
     n = sum(len(v) for v in mapping.values())
-    if n < 800:                          # 서울 460여 + 경기 570여. 뚝 모자라면 뭔가 잘못됐다
-        print(f"법정동이 {n}개뿐입니다. 응답이 잘렸거나 필터가 어긋났습니다.", file=sys.stderr)
-        return 1
+    counts = {
+        "서울특별시": sum(len(v) for k, v in mapping.items() if k.startswith("11")),
+        "경기도": sum(len(v) for k, v in mapping.items() if k.startswith("41")),
+    }
+    for region, minimum in (("서울특별시", 400), ("경기도", 500)):
+        if counts[region] < minimum:
+            print(f"{region} 법정동이 {counts[region]}개뿐입니다(최소 {minimum}). "
+                  "응답이 잘렸거나 필터가 어긋났습니다.", file=sys.stderr)
+            return 1
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(mapping, fh, ensure_ascii=False, separators=(",", ":"))
-    print(f"{args.out} 기록: {len(mapping)}개 시군구, 법정동 {n}개")
+    print(f"{args.out} 기록: {len(mapping)}개 시군구, 법정동 {n}개 "
+          f"(서울 {counts['서울특별시']}, 경기 {counts['경기도']})")
     return 0
 
 

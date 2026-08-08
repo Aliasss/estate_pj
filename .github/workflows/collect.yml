@@ -107,7 +107,10 @@ jobs:
         id: collect
         if: ${{ !inputs.skip_collect }}
         continue-on-error: true
-        run: python collect.py --db seoul_rt.sqlite --refresh-recent ${{ inputs.refresh_recent || 3 }}
+        env:
+          # dispatch 입력은 env를 거쳐 셸에 준다. 직접 보간은 인젝션 표면이다.
+          IN_REFRESH: ${{ inputs.refresh_recent }}
+        run: python collect.py --db seoul_rt.sqlite --refresh-recent "${IN_REFRESH:-3}"
 
       # 수집이 중간에 깨져도 받은 만큼은 보존해야 다음 실행이 이어받는다.
       # 건너뛴 경우엔 원본이 그대로라 다시 올릴 게 없다(2.2GB 왕복을 아낀다).
@@ -190,12 +193,13 @@ jobs:
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         env:
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+          IN_RATES_PROBE: ${{ inputs.rates_probe }}
         run: |
           if [ -z "$ECOS_API_KEY" ]; then
             echo "ECOS_API_KEY 미설정. ecos.bok.or.kr에서 무료 발급 후 시크릿에 넣으면"
             echo "전월세 전환율 판정에 금리 비교가, 시세 탭에 기준금리 차트가 켜집니다."
-          elif [ -n "${{ inputs.rates_probe }}" ]; then
-            python collect_rates.py --probe "${{ inputs.rates_probe }}"
+          elif [ -n "$IN_RATES_PROBE" ]; then
+            python collect_rates.py --probe "$IN_RATES_PROBE"
           else
             # 부가 지표의 일시 장애가 실거래 갱신 전체를 볼모로 잡으면 안 된다.
             # 실패하면 리포지토리에 커밋된 기존 rates.json이 그대로 쓰인다.

@@ -570,6 +570,13 @@ def main() -> int:
         ):
             print(f"  {strct}: {n:,}")
     conn.close()
+    # 오류 회계가 쿼터의 정상 종료보다 먼저다. 429 폭풍으로 20%를 넘긴 실행이
+    # 쿼터 소진과 겹쳤다고 초록으로 끝나면 안 된다 (collect.py와 같은 원칙).
+    # 표본이 작을 때의 헛 빨간불은 최소 호출 수 50으로 거른다.
+    if calls >= 50 and errors > calls * 0.20:
+        print(f"실패가 {errors}/{calls}건 ({errors / calls:.0%})으로 20%를 넘습니다. "
+              "결과를 신뢰할 수 없어 실패로 종료합니다.", file=sys.stderr)
+        return 1
     # 쿼터 소진은 실패가 아니다. 첫 호출부터 한도였으면 calls=1, inserted=0이라
     # 아래 검사에 걸려 빨간불이 되는데, 그건 내일 이어받으면 되는 정상 상태다.
     if quota_hit:
