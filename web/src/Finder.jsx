@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { useFinder, ym } from './units.js'
+import { useCompare, useFinder, ym } from './units.js'
 
 /**
  * 조건 검색. 서울 전체에서 내 조건에 맞는 집을 추린다.
@@ -100,6 +100,7 @@ export default function Finder({ guNames }) {
   const [limit, setLimit] = useState(PAGE)
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
   const [open, setOpen] = useState(null)
+  const compare = useCompare()
 
   const cap = budget === '' ? null : Math.round(Number(budget) * 10000)
   const minArea = minPy === '' ? null : Number(minPy) * PYEONG
@@ -116,6 +117,25 @@ export default function Finder({ guNames }) {
     }
     return { coverage: e / d.n, geoCoverage: g / d.n }
   }, [fin])
+
+  // 예산 역산. "내 보증금이면 어느 동네에 안전한 선택지가 많은가"는 전 물건의
+  // 위험 판정이 있어야 답할 수 있고, 매물 앱은 못 하는 방향이다. 확인된 안전 =
+  // 그 건물 매매 3건 이상이고 전세가율 90% 미만.
+  const byBudget = useMemo(() => {
+    if (fin.status !== 'ready' || cap == null || gus.length) return null
+    const { col, d } = fin
+    const acc = d.gus.map(() => ({ n: 0, safe: 0 }))
+    for (let i = 0; i < d.n; i++) {
+      if (!(col.jeonse[i] <= cap)) continue
+      if (ht && col.ht[i] !== ht) continue
+      const a = acc[col.g[i]]
+      a.n++
+      if (col.stage[i] === 0 && col.ns[i] >= 3 && col.ratio[i] < 0.9) a.safe++
+    }
+    return d.gus.map((lawd, gi) => ({ lawd, ...acc[gi] }))
+      .filter((r) => r.n > 0)
+      .sort((a, b) => b.safe - a.safe)
+  }, [fin, cap, ht, gus.length])
 
   const hits = useMemo(() => {
     if (fin.status !== 'ready') return []
@@ -272,6 +292,27 @@ export default function Finder({ guNames }) {
         </label>
       </div>
 
+      {byBudget && (
+        <div className="budget-rank">
+          <p className="muted-line">
+            보증금 {budget}억이면 어느 동네에 안전한 선택지가 많은지부터 보세요.
+            <strong> 확인된 안전</strong>은 그 건물 매매 3건 이상에 전세가율 90% 미만이라는
+            뜻입니다. 구를 누르면 그 구만 걸러집니다.
+          </p>
+          <ul>
+            {byBudget.slice(0, 8).map((r) => (
+              <li key={r.lawd}>
+                <button onClick={() => setGus([r.lawd])}>
+                  <span>{guNames[r.lawd] ?? r.lawd}</span>
+                  <em>확인된 안전 {r.safe.toLocaleString()}개</em>
+                  <small>예산 안 {r.n.toLocaleString()}개 중 {Math.round((r.safe / r.n) * 100)}%</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* 칩 25개를 펼쳐 두면 390px 화면에서 결과가 여섯 줄 아래로 밀린다 */}
       <details className="gu-picker">
         <summary>
@@ -369,7 +410,8 @@ export default function Finder({ guNames }) {
             </button>
             {open?.key === key && (
               open.u ? (
-                <UnitCard u={open.u} onClose={() => setOpen(null)}
+                <UnitCard u={open.u} lawd={d.gus[col.g[i]]} compare={compare}
+                          onClose={() => setOpen(null)}
                           onMap={col.lat[i] != null ? () => setView('map') : null} />
               )
               : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>

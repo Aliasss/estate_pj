@@ -460,3 +460,69 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 }
 .tabbar svg { width: 22px; height: 22px; }
 .tabbar button[aria-pressed='true'] { color: var(--brand-ink); font-weight: 650; background: color-mix(in srgb, var(--brand-ink) 9%, transparent); }
+
+/* ── 호가 검증기. 매물에서 본 보증금을 실거래와 견주는 협상 카드 ── */
+.asking {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin: 10px 0; font-size: 13px;
+}
+.asking label { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.asking label b { font-size: 13.5px; }
+.asking-in { display: inline-flex; align-items: center; gap: 6px; }
+.asking-in input {
+  width: 84px; font: inherit; font-size: 15px; padding: 7px 10px; text-align: right;
+  background: var(--surface-0); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.asking-in em { font-style: normal; color: var(--text-muted); font-size: 13px; }
+.asking > p { margin: 8px 0 0; line-height: 1.65; color: var(--text-secondary); }
+.asking > p strong { font-weight: 650; }
+
+/* ── 임장 비교함 ── */
+.cmp-btn {
+  display: inline-flex; align-items: center; gap: 4px; margin: 0 0 4px;
+  font: inherit; font-size: 12.5px; padding: 6px 12px; min-height: 32px;
+  background: var(--surface-1); color: var(--text-secondary); cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px;
+}
+.cmp-btn[aria-pressed='true'] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.cmp-bar { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; }
+.cmp-bar > button {
+  flex: 1; font: inherit; font-size: 13.5px; font-weight: 600; padding: 10px 12px;
+  background: var(--brand); color: var(--on-brand); border: 0; border-radius: 12px; cursor: pointer;
+}
+.cmp-bar .cmp-clear {
+  flex: none; background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border); font-weight: 400;
+}
+.cmp-panel { margin-bottom: 14px; }
+.cmp-table th { text-align: left; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+.cmp-table td { text-align: left; min-width: 108px; vertical-align: top; }
+.cmp-open {
+  font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  background: transparent; border: 0; color: var(--brand-ink); padding: 0;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.cmp-open small { display: block; font-weight: 400; color: var(--text-muted); font-size: 11px; text-decoration: none; }
+.cmp-del {
+  font: inherit; font-size: 11.5px; color: var(--text-muted); cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px;
+}
+.cmp-q { margin-top: 8px; font-size: 13px; }
+.cmp-q b { font-size: 13px; }
+.cmp-q ol { margin: 4px 0 0; padding-left: 20px; }
+.cmp-q li { color: var(--text-secondary); line-height: 1.6; margin-bottom: 4px; }
+
+/* ── 예산 역산: 이 보증금으로 안전한 선택지가 많은 동네 ── */
+.budget-rank { margin: 10px 0; }
+.budget-rank ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.budget-rank button {
+  display: grid; grid-template-columns: 1fr auto; gap: 0 10px; width: 100%; text-align: left;
+  font: inherit; padding: 9px 12px; cursor: pointer;
+  background: var(--surface-0); border: 1px solid var(--border); border-radius: 11px;
+  color: inherit; align-items: center;
+}
+.budget-rank button:hover { border-color: var(--brand-ink); }
+.budget-rank span { font-size: 13.5px; font-weight: 600; }
+.budget-rank em { font-style: normal; font-size: 13px; font-weight: 600; color: var(--brand-ink); font-variant-numeric: tabular-nums; }
+.budget-rank small { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-muted); }

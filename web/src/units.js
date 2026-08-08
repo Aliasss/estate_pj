@@ -167,3 +167,27 @@ export function latestRate(rates, field) {
   const ks = Object.keys(s).sort()
   return ks.length ? { ym: ks.at(-1), v: s[ks.at(-1)] } : null
 }
+
+/**
+ * 임장 비교함. 주말에 보러 갈 집 몇 개를 담아 나란히 본다. 기기에만 저장한다
+ * (localStorage). 서버가 없으니 계정도 없고, 있어서도 안 되는 데이터다.
+ */
+const CMP_KEY = 'compare-v1'
+const cmpRead = () => {
+  try { return JSON.parse(localStorage.getItem(CMP_KEY)) || [] } catch { return [] }
+}
+export function useCompare() {
+  const [items, setItems] = useState(cmpRead)
+  const save = (next) => {
+    setItems(next)
+    try { localStorage.setItem(CMP_KEY, JSON.stringify(next)) } catch { /* 시크릿 모드 등 */ }
+  }
+  return {
+    items,
+    has: (id) => items.some((x) => x.id === id),
+    toggle: (lawd, id, name) => save(items.some((x) => x.id === id)
+      ? items.filter((x) => x.id !== id)
+      : [...items, { lawd, id, name }].slice(-6)),   // 여섯 개면 주말 임장으로 충분하다
+    clear: () => save([]),
+  }
+}

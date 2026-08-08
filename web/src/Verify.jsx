@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { UnitCard } from './UnitLookup.jsx'
-import { search, useFinder, useUnitLoader, ym } from './units.js'
+import { UnitCard, questionsFor } from './UnitLookup.jsx'
+import { search, useCompare, useFinder, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -55,6 +55,8 @@ export default function Verify({ guNames }) {
   const { byRow, byId } = useUnitLoader()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null)     // {lawd, u} | {error}
+  const compare = useCompare()
+  const [showCmp, setShowCmp] = useState(false)
 
   // 키 입력마다 8만 행을 훑으면 저사양 폰에서 입력이 끊긴다. 렌더 우선순위를 낮춰
   // 타이핑을 먼저 그리게 한다.
@@ -84,8 +86,8 @@ export default function Verify({ guNames }) {
       peers.push(col.jeonse[i])
     }
     if (peers.length < 5) return null       // 표본이 얇으면 백분위가 의미 없다
-    const below = peers.filter((v) => v < u.med_jeonse).length
-    return { umd: u.umd, n: peers.length, pct: Math.round((1 - below / peers.length) * 100) }
+    const pctOf = (v) => Math.round((1 - peers.filter((x) => x < v).length / peers.length) * 100)
+    return { umd: u.umd, n: peers.length, pct: pctOf(u.med_jeonse), pctOf }
   }, [fin, open])
 
   const show = useCallback(async (lawd, row) => {
@@ -151,13 +153,32 @@ export default function Verify({ guNames }) {
              placeholder="예: 화곡동 871-8 · 엔에스월드타워"
              onChange={(e) => setQ(e.target.value)} aria-label="주소 또는 건물명" />
 
+      {compare.items.length > 0 && (
+        <div className="cmp-bar">
+          <button onClick={() => setShowCmp((v) => !v)} aria-expanded={showCmp}>
+            비교함 {compare.items.length}개 {showCmp ? '접기' : '나란히 보기'}
+          </button>
+          <button className="cmp-clear" onClick={() => { compare.clear(); setShowCmp(false) }}>비우기</button>
+        </div>
+      )}
+      {showCmp && compare.items.length > 0 && (
+        <ComparePanel compare={compare} byId={byId}
+                      onOpen={(lawd, u) => {
+                        setShowCmp(false)
+                        setOpen({ lawd, u })
+                        history.pushState(null, '', `?u=${lawd}.${u.id}`)
+                        scrollTo({ top: 0, behavior: 'smooth' })
+                      }} />
+      )}
+
       {fin.status !== 'ready' && <p className="muted-line">불러오는 중…</p>}
 
       {open?.error && <p className="muted-line critical">{open.error}</p>}
 
       {open?.u && (
         <>
-          <UnitCard u={open.u} onClose={close} rank={rank}
+          <UnitCard u={open.u} lawd={open.lawd} onClose={close} rank={rank}
+                    compare={compare} pctOf={rank?.pctOf}
                     onSibling={(id) => byId(open.lawd, id).then((v) => {
                       if (!v) return
                       setOpen({ lawd: open.lawd, u: v })
@@ -220,6 +241,66 @@ export default function Verify({ guNames }) {
         )
       )}
     </section>
+  )
+}
+
+/**
+ * 임장 비교함. 주말에 보러 갈 집들을 나란히 놓고, 집마다 무엇을 물어봐야 하는지까지
+ * 준비해 준다. 매물 앱은 찜 목록까지만 해 주고 "보러 가서 뭘 확인하나"는 안 해 준다.
+ */
+const cmpEok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
+
+function ComparePanel({ compare, byId, onOpen }) {
+  const [units, setUnits] = useState(null)
+  useEffect(() => {
+    let live = true
+    Promise.all(compare.items.map((it) =>
+      byId(it.lawd, it.id).then((u) => u && { lawd: it.lawd, u }).catch(() => null)))
+      .then((xs) => live && setUnits(xs.filter(Boolean)))
+    return () => { live = false }
+  }, [compare.items, byId])
+
+  if (!units) return <p className="muted-line">비교함 불러오는 중…</p>
+  if (!units.length) return <p className="muted-line">담긴 물건을 찾지 못했습니다.</p>
+
+  const TONE = { critical: '위험', serious: '주의', muted: '검증 불가', good: '확인됨' }
+  const row = (label, render) => (
+    <tr key={label}><th>{label}</th>{units.map(({ lawd, u }) => <td key={u.id}>{render(u, lawd)}</td>)}</tr>
+  )
+  return (
+    <div className="cmp-panel">
+      <div className="scroll-x">
+        <table className="data cmp-table">
+          <tbody>
+            {row('물건', (u, lawd) => (
+              <button className="cmp-open" onClick={() => onOpen(lawd, u)}>
+                {u.name || u.jibun}<small>{u.umd} · {u.area}m²</small>
+              </button>
+            ))}
+            {row('전세가율', (u) => u.ratio == null ? '—'
+              : u.ratio >= 1.5 ? '판단 보류' : `${Math.round(u.ratio * 100)}%`)}
+            {row('근거', (u) => u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : '인근 추정')}
+            {row('중위 전세', (u) => cmpEok(u.med_jeonse))}
+            {row('최근 전세', (u) => {
+              const r = u.deals?.j?.[0]
+              return r ? `${String(r[0]).slice(2, 4)}.${String(r[0]).slice(4, 6)} ${cmpEok(r[1])}` : '—'
+            })}
+            {row('갱신 변화', (u) => u.renew_hike == null ? '—'
+              : `${u.renew_hike > 0 ? '+' : ''}${(u.renew_hike * 100).toFixed(1)}%`)}
+            {row('', (u, lawd) => (
+              <button className="cmp-del" onClick={() => compare.toggle(lawd, u.id, u.name)}>빼기</button>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h3 className="facts-h">집마다 물어볼 것</h3>
+      {units.map(({ u }) => (
+        <div key={u.id} className="cmp-q">
+          <b>{u.name || u.jibun}</b>
+          <ol>{questionsFor(u).map((q, i) => <li key={i}>{q}</li>)}</ol>
+        </div>
+      ))}
+    </div>
   )
 }
 

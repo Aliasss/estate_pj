@@ -316,6 +316,93 @@ function BuildingFacts({ u }) {
 }
 
 /**
+ * 임장 질문 생성기. 판정이 이미 계산돼 있으니 "이 집에서 뭘 물어봐야 하나"를
+ * 물건마다 다르게 만들 수 있다. 비교함에서 물건별로 보여 준다.
+ */
+export function questionsFor(u) {
+  const q = []
+  const r = ratioBroken(u.ratio) ? null : u.ratio
+  const year = u.apr ?? u.build_year
+  if (u.stage === 'A' && u.n_sale_24m >= 3 && r >= 0.9) {
+    q.push('보증금이 이 건물 매매가에 육박합니다. 근저당 잔액과 감액(말소) 조건을 먼저 물어보세요')
+  }
+  if (u.ht === 'R' && !u.n_sale_24m && year >= 2018 && u.n_jeonse_24m >= 5) {
+    q.push('신축인데 매매 없이 전세만 여럿인 패턴입니다. 보증보험 가입 가능 확인을 계약 조건(특약)으로 거세요')
+  } else if (!u.n_sale_24m) {
+    q.push('매매 사례가 없어 시세 검증이 안 되는 건물입니다. 등기부 을구와 건축물대장 위반 여부를 현장에서 확인하세요')
+  }
+  if (u.renew_hike != null && u.renew_hike <= -0.05) {
+    q.push('갱신에서 보증금이 내린 건물입니다. 직전 계약 대비 감액을 협상 근거로 쓰세요')
+  }
+  if (u.deals?.w?.length) {
+    q.push('이 건물에 월세 계약이 있습니다. 전월세 전환율과 견줘 보증금·월세 조합을 조정할 여지를 물어보세요')
+  }
+  q.push('전입신고·확정일자는 잔금일에 바로 하고, 잔금일 다음 날까지 근저당 설정 금지 특약을 넣으세요')
+  return q.slice(0, 3)
+}
+
+/**
+ * 호가 검증기. 매물 앱은 호가만 보여주고 그 호가가 실거래 대비 어디쯤인지는 말하지
+ * 않는다. 자기 광고주의 값에 "비싸다"고 쓸 수 없는 구조라서다. 우리는 쓸 수 있다.
+ * 보고 온 보증금을 넣으면 이 건물의 실제 계약들과 견줘 준다. 협상 카드다.
+ */
+function Asking({ u, pctOf }) {
+  const [raw, setRaw] = useState('')
+  const amt = raw === '' || isNaN(Number(raw)) ? null : Math.round(Number(raw) * 10000)
+  const rows = u.deals?.j ?? []
+  const amounts = rows.map((r) => r[1])
+  const max = amounts.length ? Math.max(...amounts) : null
+
+  let lines = null
+  if (amt > 0) {
+    lines = []
+    if (max != null) {
+      if (amt > max) {
+        lines.push(<span key="m">이 건물 최근 2년 어느 전세 계약보다 높습니다
+          (최고 {eok(max)} 대비 <strong className="critical">+{Math.round((amt / max - 1) * 100)}%</strong>).
+          내릴 근거가 충분합니다.</span>)
+      } else if (u.med_jeonse && amt > u.med_jeonse) {
+        lines.push(<span key="m">이 건물 중위 {eok(u.med_jeonse)}보다 높고,
+          최고 {eok(max)} 아래입니다.</span>)
+      } else {
+        lines.push(<span key="m">이 건물 중위 {eok(u.med_jeonse)} 이하입니다.
+          값 자체는 무리한 호가가 아닙니다.</span>)
+      }
+      const latest = rows[0]
+      lines.push(<span key="l"> 가장 최근 계약은 {String(latest[0]).slice(2, 4)}.{String(latest[0]).slice(4, 6)}의 {eok(latest[1])}입니다.</span>)
+    } else if (u.med_jeonse) {
+      lines.push(<span key="m">이 건물 중위 전세보증금은 {eok(u.med_jeonse)}입니다.</span>)
+    }
+    if (u.med_sale) {
+      const rr = amt / u.med_sale
+      lines.push(<span key="r"> 이 보증금이면 전세가율은{' '}
+        <strong className={ratioTone(rr)}>{pct0(rr)}</strong>입니다.</span>)
+    }
+    const p = pctOf ? pctOf(amt) : null
+    if (p != null) {
+      lines.push(<span key="p"> {u.umd} 비슷한 평형 중 비싼 쪽에서 {p}%입니다.</span>)
+    }
+  }
+
+  return (
+    <div className="asking">
+      <label>
+        <b>보고 온 보증금 검증</b>
+        <span className="asking-in">
+          <input type="number" inputMode="decimal" step="0.1" min="0" placeholder="예: 3.2"
+                 value={raw} onChange={(e) => setRaw(e.target.value)}
+                 aria-label="보고 온 보증금(억)" />
+          <em>억</em>
+        </span>
+      </label>
+      {lines
+        ? <p>{lines}</p>
+        : <p className="muted-line">매물에서 본 보증금을 넣으면 이 건물의 실제 계약과 견줘 드립니다.</p>}
+    </div>
+  )
+}
+
+/**
  * 판정 다음에 할 일. 숫자를 보여주고 끝나면 읽고 끝난다. 이 앱이 답하지 못하는
  * 부분(등기부·보증보험)으로 가는 문이 판정 바로 아래에 있어야 한다.
  */
@@ -346,7 +433,7 @@ function Actions({ tone, u }) {
   )
 }
 
-export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
+export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, pctOf }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   return (
@@ -358,10 +445,19 @@ export function UnitCard({ u, onClose, onMap, onSibling, rank }) {
         {u.build_year ? ` · ${u.build_year}년 준공` : ''}
       </p>
 
+      {compare && lawd && (
+        <button className="cmp-btn" aria-pressed={compare.has(u.id)}
+                onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
+          {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
+        </button>
+      )}
+
       <div className={`verdict ${v.tone}`}>
         <strong>{v.head}</strong>
         <span>{v.body}</span>
       </div>
+
+      <Asking u={u} pctOf={pctOf} />
 
       <Actions tone={v.tone} u={u} />
 
