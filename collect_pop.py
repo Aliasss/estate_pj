@@ -185,15 +185,26 @@ def main() -> int:
         return 0
 
     # 표기 확정: 첫 요청이 행을 돌려주는 조합을 쓴다. 전멸하면 조합별 응답을
-    # 전부 남긴다. 그 목록이 곧 다음 수정의 명세다.
+    # 전부 남긴다. 그 목록이 곧 다음 수정의 명세다. 단, 네트워크가 아예 죽어
+    # 있으면(자정 전후 data.go.kr 무응답 시간대를 실측했다) 파라미터 문제가
+    # 아니므로 일찍 접고 그렇게 말한다. 30초 타임아웃 8번으로 4분을 태울 이유도,
+    # 파라미터를 의심하며 헛수정할 이유도 없다.
     style = None
     attempts: list[str] = []
+    net_fails = 0
     for cand in PARAM_STYLES:
         label = f"{cand.get('one') or cand['fr']}/reg={cand.get('reg_val')}"
         try:
             rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
         except Exception as exc:
+            net_fails += 1
             attempts.append(f"{label}: 요청 실패 {scrub(exc)}"[:200])
+            if net_fails >= 3 and net_fails == len(attempts):
+                print("호스트가 응답하지 않습니다 (연속 3회 요청 실패). 파라미터 문제가 "
+                      "아니라 접속 문제입니다. 시간대를 바꿔 재실행하세요.", file=sys.stderr)
+                for a in attempts:
+                    print(f"  {a}", file=sys.stderr)
+                return 1
             continue
         if rows:
             style = cand
