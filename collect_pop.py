@@ -37,26 +37,35 @@ from scrub import scrub
 
 BASE = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus"
 
-# 파라미터 표기 후보. 첫 실전에서 확인된 사실: 활용신청은 유효하고(JSON 응답),
-# 오류는 NO_MANDATORY_REQUEST_PARAMETERS_ERROR였다. 즉 필수 파라미터 이름이
-# 문제다. 행안부 주민등록 API 가족의 관례(기간 srchFrYm/srchToYm 또는 단월,
-# 레벨 lv, 등록구분 regSeCd, 캐멀·스네이크 혼재)를 조합으로 전부 시도한다.
+# 파라미터 격자. 실전 두 번의 실측으로 좁혔다. 1차: 활용신청 유효(JSON 응답).
+# 2차: 월 파라미터가 statsYm일 때만 오류가 NO_MANDATORY(필수 누락)에서
+# INVALID(값·이름 하나가 틀림)로 바뀌었다. 즉 월 표기는 statsYm이 유력하고,
+# 남은 변수는 type 대소문자, lv 유무, 지역코드 파라미터의 이름·자릿수,
+# 등록구분 유무다. 전부 격자로 돌리되 유력 조합을 앞세워 조기 종료를 노린다.
 # 오류 응답이 head.resultMsg로 즉시 오므로 조합당 1행 호출이면 판별된다.
 def _styles() -> list[dict]:
     out = []
-    for nm in (
-        {"fr": "srchFrYm", "to": "srchToYm", "code": "stdgCd", "lv": "lv", "reg": "regSeCd"},
-        {"fr": "srch_fr_ym", "to": "srch_to_ym", "code": "stdg_cd", "lv": "lv", "reg": "reg_se_cd"},
-        {"one": "statsYm", "code": "stdgCd", "lv": "lv", "reg": "regSeCd"},
-        {"one": "stats_ym", "code": "stdg_cd", "lv": "lv", "reg": "reg_se_cd"},
-    ):
-        # 등록구분이 필수인 배포가 있다. 1이 거주자 구분이라는 가정까지 시도한다.
-        for reg_val in (None, "1"):
-            out.append({**nm, "reg_val": reg_val})
+    for month, month_to in (("statsYm", None), ("stats_ym", None),
+                            ("srchFrYm", "srchToYm"), ("srch_fr_ym", "srch_to_ym")):
+        for type_val in ("JSON", "json"):
+            for use_lv in (True, False):
+                for code_key, code_len in (("stdgCd", 5), ("stdgCd", 10),
+                                           ("admmCd", 5), (None, 0)):
+                    for reg_val in (None, "1"):
+                        out.append({
+                            "month": month, "month_to": month_to, "type": type_val,
+                            "use_lv": use_lv, "code_key": code_key,
+                            "code_len": code_len, "reg_val": reg_val,
+                        })
     return out
 
 
 PARAM_STYLES = _styles()
+
+
+def style_label(s: dict) -> str:
+    return (f"{s['month']}/type={s['type']}/lv={'o' if s['use_lv'] else 'x'}"
+            f"/code={s['code_key'] or 'x'}{s['code_len'] or ''}/reg={s['reg_val'] or 'x'}")
 
 # 응답 필드 후보. (법정동코드, 총인구수, 세대수)를 찾는다.
 CODE_KEYS = ("stdgCd", "stdg_cd", "lgdngCd", "bjdCd", "stdgcd")
@@ -113,22 +122,21 @@ def _pick(row: dict, keys: tuple[str, ...]) -> str | None:
     return None
 
 
-def fetch_page(key: str, style: dict, ym: str, code: str, page: int,
+def fetch_page(key: str, style: dict, ym: str, code: str | None, page: int,
                rows: int = 1000, level: int = 3) -> tuple[list[dict], str]:
     qs = {
-        "serviceKey": key, "type": "JSON",
+        "serviceKey": key, "type": style.get("type", "JSON"),
         "pageNo": page, "numOfRows": rows,
-        style["lv"]: level,                  # 3이 법정동(읍면동), 2가 시군구 레벨 가정
+        style["month"]: ym,
     }
-    if "one" in style:
-        qs[style["one"]] = ym
-    else:
-        qs[style["fr"]] = ym
-        qs[style["to"]] = ym
+    if style.get("month_to"):
+        qs[style["month_to"]] = ym
+    if style.get("use_lv"):
+        qs["lv"] = level                     # 3이 법정동(읍면동), 2가 시군구 레벨 가정
     if style.get("reg_val") is not None:
-        qs[style["reg"]] = style["reg_val"]
-    if code:
-        qs[style["code"]] = code
+        qs["regSeCd"] = style["reg_val"]
+    if code and style.get("code_key"):
+        qs[style["code_key"]] = code if style.get("code_len") == 5 else f"{code:0<10}"
     url = f"{BASE}?{urllib.parse.urlencode(qs)}"
     req = urllib.request.Request(url, headers={"User-Agent": "estate-pj"})
     with urllib.request.urlopen(req, timeout=30) as res:
@@ -173,15 +181,13 @@ def main() -> int:
 
     if args.probe:
         for style in PARAM_STYLES:
-            print(f"--- 표기 {style}")
+            print(f"--- {style_label(style)}")
             try:
                 rows, raw = fetch_page(key, style, last_ym, "11110", 1, rows=5)
             except Exception as exc:
                 print(f"요청 실패: {scrub(exc)}")
                 continue
-            print(f"행 {len(rows)}개")
-            print(scrub(raw)[:1500])
-            print()
+            print(f"행 {len(rows)}개 · {scrub(raw)[:400]}")
         return 0
 
     # 표기 확정: 첫 요청이 행을 돌려주는 조합을 쓴다. 전멸하면 조합별 응답을
@@ -193,7 +199,7 @@ def main() -> int:
     attempts: list[str] = []
     net_fails = 0
     for cand in PARAM_STYLES:
-        label = f"{cand.get('one') or cand['fr']}/reg={cand.get('reg_val')}"
+        label = style_label(cand)
         try:
             rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
         except Exception as exc:
@@ -210,12 +216,25 @@ def main() -> int:
             style = cand
             print(f"파라미터 표기 확정: {label}")
             break
-        attempts.append(f"{label}: {scrub(raw)[:200]}")
+        attempts.append(f"{label}: {scrub(raw)[:160]}")
+        time.sleep(0.1)
     if style is None:
         print("어느 파라미터 조합으로도 행을 받지 못했습니다. 활용신청(공공데이터포털 "
               "15108071) 여부를 확인하고, 아래 조합별 응답으로 표기를 맞추세요.", file=sys.stderr)
+        # 같은 오류의 반복은 접고 서로 다른 응답만 남긴다. 128개 조합을 다 찍으면
+        # 로그가 명세가 아니라 소음이 된다.
+        seen_msgs = set()
+        shown = 0
         for a in attempts:
+            body = a.split(": ", 1)[-1]
+            if body in seen_msgs:
+                continue
+            seen_msgs.add(body)
             print(f"  {a}", file=sys.stderr)
+            shown += 1
+            if shown >= 20:
+                break
+        print(f"  (총 {len(attempts)}개 조합 시도, 고유 응답 {len(seen_msgs)}종)", file=sys.stderr)
         return 1
 
     # 필드 확정: 표본 행에서 코드·인구·세대 필드를 찾는다. 못 찾으면 행을 보여주고 멈춘다.
@@ -225,13 +244,14 @@ def main() -> int:
         print("응답 필드명이 후보와 다릅니다. 표본 행:", file=sys.stderr)
         print(scrub(json.dumps(sample, ensure_ascii=False))[:600], file=sys.stderr)
         return 1
-    # code 필터가 안 먹는 표기면 전국 행을 받아 프리픽스로 거르게 된다. 숫자는
-    # 맞지만 호출이 수십 배가 되므로, 표기를 로그에 드러내 고칠 수 있게 한다.
+    # 지역코드 필터가 실제로 먹는지 본다. 표본에 타 지역 코드가 섞였거나 코드
+    # 파라미터가 아예 없는 조합이면, 시군구별 호출 대신 전국 한 달을 페이지로
+    # 받아 접두사로 나누는 모드로 간다. 호출 수는 페이지 수만큼이라 오히려 싸다.
     stray = [cd for cd in ((_pick(r, CODE_KEYS) or "") for r in sample_rows)
              if cd and not cd.startswith("11110")]
-    if stray:
-        print(f"주의: code 파라미터가 무시되는 표기입니다 (표본에 타 지역 코드 {stray[:3]}). "
-              "정확성은 프리픽스 필터가 지키지만 호출 비용이 큽니다.", file=sys.stderr)
+    filter_ok = bool(style.get("code_key")) and not stray
+    if not filter_ok:
+        print("지역코드 필터 없이 전국 응답 모드로 갑니다 (월 단위 페이지 수집, 접두사 분배).")
 
     months = month_list(args.months)
     sggs = sorted(LAWD_CODES)
@@ -258,37 +278,70 @@ def main() -> int:
         except Exception as exc:
             print(f"{src_path}을 읽지 못해 그 몫은 다시 받습니다: {scrub(exc)}")
 
+    def _add(acc: dict, cd: str, p: str | None, h: str | None) -> None:
+        # 빈 문자열은 0이 아니라 결측이다. 0으로 합산해 [0,0]을 저장하면
+        # 차트가 "세대 0"이라는 조용한 거짓말을 그린다. 시군구 자체 합계 행
+        # (읍면동 코드 000)이 섞여 오면 이중 계상이므로 걷어낸다.
+        if p in (None, "") or h in (None, ""):
+            return
+        if len(cd) == 10 and cd[5:8] == "000":
+            return
+        acc[0] += int(float(p.replace(",", "")))
+        acc[1] += int(float(h.replace(",", "")))
+        acc[2] = True
+
     for ym in months:
-        for code in sggs:
-            if ym in series[code]:
-                continue
-            acc_p = acc_h = 0
-            got = False
+        todo = [c for c in sggs if ym not in series[c]]
+        if not todo:
+            continue
+        if filter_ok:
+            for code in todo:
+                acc = [0, 0, False]
+                page = 1
+                while True:
+                    rows, raw = fetch_page(key, style, ym, code, page)
+                    if not rows:
+                        if page == 1 and raw and not raw.lstrip().startswith(("{", "[")):
+                            print(f"{ym} {code}: 비정상 응답 {scrub(raw)[:160]}", file=sys.stderr)
+                        break
+                    for r in rows:
+                        cd = _pick(r, CODE_KEYS) or ""
+                        if cd and not cd.startswith(code):
+                            continue      # 필터가 어긋난 행은 계상하지 않는다
+                        _add(acc, cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
+                    if len(rows) < 1000:
+                        break
+                    page += 1
+                    time.sleep(args.sleep)
+                if acc[2]:
+                    series[code][ym] = [acc[0], acc[1]]
+                time.sleep(args.sleep)
+        else:
+            # 전국 모드: 한 달을 통째로 페이지네이션해 접두사로 나눈다.
+            accs = {c: [0, 0, False] for c in todo}
             page = 1
             while True:
-                rows, raw = fetch_page(key, style, ym, code, page)
+                rows, raw = fetch_page(key, style, ym, None, page)
                 if not rows:
-                    if page == 1 and raw and not raw.lstrip().startswith(("{", "[")):
-                        print(f"{ym} {code}: 비정상 응답 {scrub(raw)[:160]}", file=sys.stderr)
+                    if page == 1 and raw:
+                        print(f"{ym}: 행 없음 {scrub(raw)[:160]}", file=sys.stderr)
                     break
                 for r in rows:
                     cd = _pick(r, CODE_KEYS) or ""
-                    if cd and not cd.startswith(code):
-                        continue          # 필터가 안 먹는 표기면 프리픽스로 거른다
-                    p, h = _pick(r, POP_KEYS), _pick(r, HH_KEYS)
-                    # 빈 문자열은 0이 아니라 결측이다. 0으로 합산해 [0,0]을 저장하면
-                    # 차트가 "세대 0"이라는 조용한 거짓말을 그린다.
-                    if p in (None, "") or h in (None, ""):
-                        continue
-                    acc_p += int(float(p.replace(",", "")))
-                    acc_h += int(float(h.replace(",", "")))
-                    got = True
+                    if cd[:5] in accs:
+                        _add(accs[cd[:5]], cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
                 if len(rows) < 1000:
                     break
                 page += 1
+                if page > 120:
+                    # 12만 행을 넘기면 통반 레벨 전국 응답이다. 이 모드로 받을 물건이 아니다.
+                    print(f"{ym}: 페이지가 120을 넘습니다. 응답 레벨이 너무 깊어 중단합니다.",
+                          file=sys.stderr)
+                    return 1
                 time.sleep(args.sleep)
-            if got:
-                series[code][ym] = [acc_p, acc_h]
+            for c, acc in accs.items():
+                if acc[2]:
+                    series[c][ym] = [acc[0], acc[1]]
             time.sleep(args.sleep)
 
     def _dump(path: str, payload: dict) -> None:
@@ -321,7 +374,10 @@ def main() -> int:
     # 시군구 합계 검산: 표본 구를 시군구 레벨(lv=2) 한 행으로 다시 받아 동 합과
     # 대조한다. 안분·이중 계상 버그를 잡는 가장 싼 검산이다. 레벨 파라미터가
     # 지원되지 않아 검산 자체가 불가능하면 그 사실만 남기고 발행은 막지 않는다.
-    for probe_code in ("11110", "41111"):
+    probe_codes = ("11110", "41111") if (style.get("use_lv") and filter_ok) else ()
+    if not probe_codes:
+        print("합계 검산 불가 (lv 또는 지역코드 필터가 없는 표기). 규모 검산만 통과했습니다.")
+    for probe_code in probe_codes:
         if last_ym not in series.get(probe_code, {}):
             continue
         try:
