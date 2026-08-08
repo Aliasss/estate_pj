@@ -158,6 +158,17 @@ jobs:
             echo "지하철 없음."
           fi
 
+      - name: 금리 시계열 수집 (ECOS)
+        env:
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+        run: |
+          if [ -z "$ECOS_API_KEY" ]; then
+            echo "ECOS_API_KEY 미설정. ecos.bok.or.kr에서 무료 발급 후 시크릿에 넣으면"
+            echo "전월세 전환율 판정에 금리 비교가, 시세 탭에 기준금리 차트가 켜집니다."
+          else
+            python collect_rates.py --out web/public/data/rates.json
+          fi
+
       - name: 집계 패널 생성
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
 
@@ -190,7 +201,7 @@ jobs:
           cp out/*.csv data/
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          git add data web/public/data/rates.json 2>/dev/null || git add data
           if git diff --staged --quiet; then
             echo "집계 결과에 변화 없음. 커밋 생략."
           else

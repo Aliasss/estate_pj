@@ -144,3 +144,26 @@ export function search(fin, query, limit = 40, guNames = null) {
   out.sort((a, b) => (col.nj[b] ?? 0) - (col.nj[a] ?? 0))
   return { idx: out.slice(0, limit), total: out.length }
 }
+
+/**
+ * 금리 시계열(한국은행 ECOS). 파일이 없으면(키 등록 전) null로 살고, 쓰는 쪽이
+ * 금리 없는 문장으로 내려앉는다. 금리 때문에 화면이 죽는 일은 없어야 한다.
+ */
+export function useRates() {
+  const [rates, setRates] = useState(null)
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}data/rates.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setRates)
+      .catch(() => {})
+  }, [])
+  return rates
+}
+
+/** 시리즈의 최신 값. {ym: "202606", v: 3.5} 꼴. */
+export function latestRate(rates, field) {
+  const s = rates?.series?.[field]
+  if (!s) return null
+  const ks = Object.keys(s).sort()
+  return ks.length ? { ym: ks.at(-1), v: s[ks.at(-1)] } : null
+}

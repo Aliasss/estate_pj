@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { latestRate, useRates, ym as ymKor } from './units.js'
 
 export const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -223,23 +224,48 @@ function Siblings({ u, onPick }) {
  * 전월세전환율 = 연 월세 ÷ (전세보증금 − 월세보증금). 이 값이 예금 금리보다 높으면
  * 전세가 유리하고, 낮으면 월세가 유리하다. 다만 전세는 보증금을 떼일 위험을 같이 진다.
  */
+/**
+ * 전환율을 실제 금리와 견준다. "6.0%"만 주면 판단을 못 한다. 예금 금리보다 높으면
+ * 월세는 은행 이자보다 비싼 돈이고, 대출 금리보다 높으면 대출 이자를 내는 편이 싸다.
+ * 금리 자료가 없으면(키 등록 전) 원래의 일반 문장으로 내려앉는다.
+ */
+function RateCompare({ rates, conv }) {
+  const dep = latestRate(rates, 'deposit') ?? latestRate(rates, 'base')
+  const loan = latestRate(rates, 'loan')
+  if (!dep) {
+    return <>전세보증금을 은행에 넣어 이보다 높은 이자를 받을 수 있다면 월세가 유리하고,
+      아니면 전세가 유리합니다.{' '}</>
+  }
+  const c = conv * 100
+  const verdict = loan && c > loan.v
+    ? `전세대출 이자(${loan.v.toFixed(1)}%)를 내는 편이 이 월세보다 쌉니다.`
+    : c > dep.v
+      ? '월세가 예금 이자보다 비싼 구간입니다. 목돈이 있다면 전세가 계산상 유리합니다.'
+      : '예금 이자가 전환율보다 높아, 드물게 월세가 유리한 경우입니다.'
+  return (
+    <>지금 정기예금 금리 {dep.v.toFixed(1)}%{loan ? `, 주택담보대출 ${loan.v.toFixed(1)}%` : ''}
+      (한국은행, {ymKor(dep.ym)}). {verdict}{' '}</>
+  )
+}
+
 function Wolse({ deals, jeonse }) {
+  const rates = useRates()
   const rows = deals?.w
   if (!rows?.length || !jeonse) return null
-  const rates = rows
+  const rates2 = rows
     .map(([, dep, rent]) => (jeonse > dep ? (rent * 12) / (jeonse - dep) : null))
     .filter((r) => r != null && r > 0 && r < 0.3)
-  if (!rates.length) return null
+  if (!rates2.length) return null
   // 표본 수는 필터를 통과한 건수로 말한다. 6건을 받아 1건만 살아남았는데
   // "6건에서 계산"이라고 쓰면 근거를 부풀리는 말이 된다.
-  rates.sort((a, b) => a - b)
-  const mid = rates.length >> 1
-  const rate = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2
+  const rateSamples = rates2.sort((a, b) => a - b)
+  const mid = rateSamples.length >> 1
+  const rate = rateSamples.length % 2 ? rateSamples[mid] : (rateSamples[mid - 1] + rateSamples[mid]) / 2
   return (
     <p className="warnline">
       <strong>전월세 전환율 {(rate * 100).toFixed(1)}%</strong>.{' '}
-      이 건물 월세 계약 {rates.length}건에서 계산한 값입니다. 전세보증금을 은행에 넣어 이보다 높은 이자를
-      받을 수 있다면 월세가 유리하고, 아니면 전세가 유리합니다.{' '}
+      이 건물 월세 계약 {rateSamples.length}건에서 계산한 값입니다.{' '}
+      <RateCompare rates={rates} conv={rate} />
       다만 전세는 <strong className="serious">보증금을 떼일 위험</strong>을 같이 집니다.
     </p>
   )

@@ -3,6 +3,7 @@ import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
 import Law from './Law.jsx'
 import Verify from './Verify.jsx'
+import { useRates } from './units.js'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -50,6 +51,7 @@ export default function App() {
   const [housing, setHousing] = useState('연립다세대')
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
+  const rates = useRates()
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/tier1.json`)
@@ -170,6 +172,20 @@ export default function App() {
         <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={160}
                    format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pct }} />
       </section>
+
+      {rates?.series?.base && (
+        <section className="card">
+          <h2>기준금리</h2>
+          <p className="sub">
+            한국은행. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은 그 뒤에 온다.
+            위 전세가율 차트와 월이 나란하다
+          </p>
+          <LineChart months={data.months} provisional={data.provisional} height={120}
+                     series={[{ name: '기준금리', short: '기준금리', color: 'var(--series-1)',
+                                values: data.months.map((m) => rates.series.base[m.replace('-', '')] ?? null) }]}
+                     format={{ tick: (v) => `${v}%`, value: (v) => `${v.toFixed(2)}%` }} />
+        </section>
+      )}
 
       <section className="card">
         <h2>{view.guName} 거래건수</h2>
