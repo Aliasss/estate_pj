@@ -31,12 +31,15 @@ on:
         type: boolean
         default: false
   schedule:
-    # 전체를 다 받을 때까지 매일 새벽에 이어받는다. 다 받으면 즉시 종료된다.
-    - cron: '0 18 * * *'
+    # 전체를 다 받을 때까지 매일 이어받는다. 다 받으면 즉시 종료된다.
+    # 00:00 UTC = 09:00 KST. 원래 18:00 UTC(03:00 KST)였는데 data.go.kr가
+    # 심야에 접속 자체를 안 받는 것을 이틀 연속 실측했다(ConnectTimeout).
+    # 한국 낮 시간대 실행은 계속 성공했으므로 아침으로 옮긴다.
+    - cron: '0 0 * * *'
 
 # collect.yml과 같은 그룹. 둘 다 data-latest 릴리스 자산을 만지므로 겹치면
 # 한쪽의 --clobber 창에 다른 쪽 다운로드가 걸려 깨진다. 같은 그룹이면 GitHub이
-# 직렬화한다(월요일 18:00 buildings 실행 중이면 21:00 collect는 대기 후 실행).
+# 직렬화한다(둘이 겹치는 시각이면 늦게 온 쪽이 대기 후 실행).
 concurrency:
   group: data-latest
   cancel-in-progress: false

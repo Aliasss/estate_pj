@@ -5,9 +5,10 @@
 payload에 실려 온 umdCd를 주워 썼다. 전 소스로 넓혀도 "그 동에 신고가 한 건도
 없으면" 여전히 빠진다. 이 스크립트는 행안부 공식 코드표를 받아 그 구멍을 없앤다.
 
-산출: bjdong.json  {"11110": {"청운동": "10100", ...}, ...}
-서울은 500행 안쪽이라 한 페이지면 끝난다. 매일 크론에서 받아도 부담이 없고,
-코드 개편(동 통폐합)도 자동으로 따라간다.
+산출: bjdong.json  {"11110": {"청운동": "10100", ...}, "41220": {"팽성읍 대사리": "25331", ...}}
+동·읍·면은 이름 그대로, 경기의 리(里)는 "읍면명 리명"으로 담는다. 실거래
+umd_nm이 리 수준으로 오는 지역이 실재해서다. 매일 크론에서 받아도 부담이
+없고, 코드 개편(동 통폐합)도 자동으로 따라간다.
 
 사용법
     MOLIT_SERVICE_KEY=... python fetch_bjdong.py --out bjdong.json
@@ -86,6 +87,7 @@ def main() -> int:
 
 def _collect_region(key: str, region: str, mapping: dict) -> None:
     page, total = 1, None
+    raw: list[tuple[str, str]] = []
     while True:
         try:
             body = fetch_page(key, region, page)
@@ -106,15 +108,26 @@ def _collect_region(key: str, region: str, mapping: dict) -> None:
         for r in rows:
             cd = (r.get("region_cd") or "").strip()
             name = (r.get("locallow_nm") or "").strip()
-            # 동·리 단위만 취한다. 시군구 자체(뒤 5자리 00000)는 건너뛴다.
-            # 경기도에는 리(里)가 있어 뒤 두 자리가 00이 아닐 수 있다. 실거래 umd_nm은
-            # 동/읍/면 수준이므로 리 행(cd[8:10] != '00')은 걷어낸다.
-            if len(cd) != 10 or cd[5:8] == "000" or cd[8:10] != "00" or not name:
+            # 시군구 자체(읍면동 코드 000)는 건너뛴다. 동·읍·면·리는 담는다.
+            if len(cd) != 10 or cd[5:8] == "000" or not name:
                 continue
-            mapping.setdefault(cd[:5], {})[name] = cd[5:10]
+            raw.append((cd, name))
         if total is None or page * 1000 >= total:
             break
         page += 1
+
+    # 동·읍·면(리 코드 00)은 이름 그대로. 리(里) 행은 "읍면명 리명"으로 담는다.
+    # 처음에는 리를 걷어냈는데, 경기 실거래 umd_nm이 "팽성읍 대사리"처럼 리
+    # 수준으로 오는 것을 실측했다. 리를 버리면 그 동네 건축물대장 조회가 통째로
+    # 빠지고, 조회에 쓰는 법정동 5자리도 리 코드까지 있어야 맞는 지번을 찾는다.
+    emd = {cd[:8]: name for cd, name in raw if cd[8:10] == "00"}
+    for cd, name in raw:
+        if cd[8:10] == "00":
+            mapping.setdefault(cd[:5], {})[name] = cd[5:10]
+        else:
+            parent = emd.get(cd[:8])
+            full = f"{parent} {name}" if parent else name
+            mapping.setdefault(cd[:5], {})[full] = cd[5:10]
 
 
 if __name__ == "__main__":
