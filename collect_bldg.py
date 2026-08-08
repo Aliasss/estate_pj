@@ -157,6 +157,13 @@ def targets(rt_db: str, lawd_filter: list[str], bjdong_map: dict | None = None) 
         sgg, umd, cd = _clean(sgg), _clean(umd), _clean(cd)
         if sgg and umd and cd:
             payload_cd[(sgg, umd)] = cd
+    # 공식 코드와 payload 코드가 다른 동은 done 키가 어긋나 재조회되고, 구코드로
+    # 이미 적재된 buildings 행이 남아 조인에서 이중 계상될 수 있다. 0이 아니면
+    # 구코드 행 정리를 설계해야 하므로, 실측치를 매 실행 로그에 남긴다.
+    mismatch = [k for k, cd in payload_cd.items() if k in umd_cd and umd_cd[k] != cd]
+    if bjdong_map:
+        print(f"공식·payload 법정동코드 불일치: {len(mismatch)}건"
+              + (f" (예: {sorted(mismatch)[:5]})" if mismatch else ""))
     for k, cd in payload_cd.items():
         umd_cd.setdefault(k, cd)
 
@@ -458,7 +465,8 @@ def main() -> int:
         done_query += " WHERE status <> 'error'"
     done = {tuple(r) for r in conn.execute(done_query)}
 
-    plan = [t for t in targets(args.rt_db, lawd_filter) if t[:5] not in done]
+    plan = [t for t in targets(args.rt_db, lawd_filter, load_bjdong_map(args.bjdong_map))
+            if t[:5] not in done]
     print(f"조회 대상 {len(plan):,}건 (완료 {len(done):,}건)")
     if not plan:
         print("모두 수집 완료된 상태입니다.")
@@ -473,7 +481,17 @@ def main() -> int:
     quota_hit = False
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
-    blocked = preflight(key, plan[0], endpoint_idx)
+    try:
+        blocked = preflight(key, plan[0], endpoint_idx)
+    except QuotaExhausted as exc:
+        # 첫 호출부터 한도면 오늘은 받을 게 없다. 실패가 아니라 정상 종료다.
+        print(f"사전 확인에서 오늘 한도 소진 확인 ({scrub(exc)}). 다음 실행이 이어받습니다.")
+        conn.close()
+        return 0
+    except FatalApiError as exc:
+        print(f"사전 확인에서 치명적 오류: {scrub(exc)}", file=sys.stderr)
+        conn.close()
+        return 1
     if blocked:
         print(f"사전 확인 실패 — 지금은 접속이 안 됩니다:\n  {blocked}", file=sys.stderr)
         print("한도를 넘기면 한동안 차단됩니다(실측 38분 이상). 시간을 두고 재실행하세요.",
@@ -489,11 +507,11 @@ def main() -> int:
             gu = LAWD_CODES.get(target[0], target[0])
             if isinstance(exc, QuotaExhausted):
                 # 한도를 다 쓴 것은 실패가 아니다. 여기까지 저장하고 정상 종료한다.
-                print(f"\n오늘 한도를 다 썼습니다 ({exc}). 다음 실행이 이어받습니다.", flush=True)
+                print(f"\n오늘 한도를 다 썼습니다 ({scrub(exc)}). 다음 실행이 이어받습니다.", flush=True)
                 quota_hit = True
                 break
             if isinstance(exc, FatalApiError):
-                print(f"치명적 오류로 중단: {exc}", file=sys.stderr)
+                print(f"치명적 오류로 중단: {scrub(exc)}", file=sys.stderr)
                 print("공공데이터포털에서 '국토교통부_건축물대장정보 서비스'(건축HUB) "
                       "활용신청이 되어 있는지 확인하세요.", file=sys.stderr)
                 conn.commit()
@@ -552,6 +570,10 @@ def main() -> int:
         ):
             print(f"  {strct}: {n:,}")
     conn.close()
+    # 쿼터 소진은 실패가 아니다. 첫 호출부터 한도였으면 calls=1, inserted=0이라
+    # 아래 검사에 걸려 빨간불이 되는데, 그건 내일 이어받으면 되는 정상 상태다.
+    if quota_hit:
+        return 0
     # 한 건도 못 받았는데 성공으로 끝내면 다음 실행이 같은 실패를 반복한다
     if calls and not inserted:
         print("한 건도 적재하지 못했습니다.", file=sys.stderr)

@@ -19,10 +19,19 @@ import re
 # [^&\s'"<]가 그대로 삼킨다.
 SECRET_RE = re.compile(r"((?:serviceKey|confmKey|key)=)[^&\s'\"<]+", re.I)
 
+# ECOS(한국은행)는 키가 쿼리스트링이 아니라 URL 경로에 박힌다
+# (/api/StatisticSearch/{키}/json/...). 위 패턴이 원천적으로 못 잡으므로
+# 경로 세그먼트를 따로 가린다. 호스트가 아니라 서비스명에 앵커를 건다.
+# urllib3 예외는 "host='ecos.bok.or.kr' ... url: /api/StatisticSearch/키/..."처럼
+# 호스트와 경로를 떼어 싣기 때문에, 호스트 앵커로는 그 형태를 놓친다.
+ECOS_PATH_RE = re.compile(
+    r"(/api/(?:StatisticSearch|StatisticItemList|StatisticTableList"
+    r"|StatisticWord|KeyStatisticList)/)[^/\s'\"<]+", re.I)
+
 
 def scrub(text: object) -> str:
     """문자열(또는 예외 등 아무것이나)에서 인증키를 ***로 가린다."""
-    return SECRET_RE.sub(r"\1***", str(text))
+    return ECOS_PATH_RE.sub(r"\1***", SECRET_RE.sub(r"\1***", str(text)))
 
 
 def describe(exc: BaseException, limit: int = 240) -> str:

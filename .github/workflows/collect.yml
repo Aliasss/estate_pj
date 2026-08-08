@@ -30,9 +30,11 @@ on:
         type: boolean
         default: false
 
-# 동시 실행되면 릴리스 자산과 커밋이 서로 덮어쓴다.
+# 동시 실행되면 릴리스 자산과 커밋이 서로 덮어쓴다. buildings.yml과 같은
+# 그룹을 써서 두 워크플로도 직렬화한다. 서로 같은 data-latest 릴리스를 만지므로,
+# 겹치면 한쪽의 --clobber(삭제 후 재업로드) 창에 다른 쪽 다운로드가 걸려 깨진다.
 concurrency:
-  group: collect
+  group: data-latest
   cancel-in-progress: false
 
 env:
@@ -64,7 +66,25 @@ jobs:
       # 삼키면 5년치 스냅샷이 한 달치로 조용히 갈려 나간다.
       - name: 직전 스냅샷 복원
         run: |
-          if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
+          # '없음' 판정은 세 번 확인한다. GitHub API가 존재하는 릴리스에 일시적으로
+          # 404를 주는 드문 경우를 '최초 실행'으로 오판하면, 빈 DB에서 시작한 부분
+          # 수집본이 행 수 가드(기준 0)를 통과해 5년치 스냅샷을 덮어쓴다.
+          view_release() { gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1; }
+          found=""
+          for attempt in 1 2 3; do
+            if assets=$(view_release); then found=yes; break; fi
+            if echo "$assets" | grep -qiE 'not found|404'; then
+              found=no
+              # 간격 30초. GitHub 장애는 분 단위로 가는 일이 있어, 10초 세 번으로는
+              # 같은 장애 창 안에서 세 번 다 속을 수 있다. 진짜 최초 실행의 비용은 60초뿐.
+              [ "$attempt" -lt 3 ] && sleep 30
+            else
+              echo "릴리스 확인 자체가 실패했습니다. 일시 오류를 '처음부터'로 오판하지 않도록 중단합니다."
+              echo "$assets"
+              exit 1
+            fi
+          done
+          if [ "$found" = yes ]; then
             if echo "$assets" | grep -qx 'seoul_rt.sqlite.gz'; then
               # 에셋이 분명히 있다. 여기서 실패하면 일시 오류이므로 중단한다.
               gh release download "$SNAPSHOT_TAG" --pattern 'seoul_rt.sqlite.gz' --clobber
@@ -73,12 +93,8 @@ jobs:
             else
               echo "릴리스는 있지만 seoul_rt.sqlite.gz 에셋이 없음. 처음부터 수집합니다."
             fi
-          elif echo "$assets" | grep -qiE 'not found|404'; then
-            echo "이전 스냅샷 없음(최초 실행). 5년치를 처음부터 수집합니다 (40분~1시간)."
           else
-            echo "릴리스 확인 자체가 실패했습니다. 일시 오류를 '처음부터'로 오판하지 않도록 중단합니다."
-            echo "$assets"
-            exit 1
+            echo "이전 스냅샷 없음(3회 확인, 최초 실행). 5년치를 처음부터 수집합니다."
           fi
           # 발행 스텝의 행 수 가드 기준. 복원이 없으면 0에서 시작한다.
           if [ -f seoul_rt.sqlite ]; then
@@ -120,10 +136,16 @@ jobs:
               --notes "국토교통부 실거래가 원본 SQLite. 매 수집 실행마다 갱신된다. gunzip 후 sqlite3로 열면 된다."
           gh release upload "$SNAPSHOT_TAG" seoul_rt.sqlite.gz --clobber
 
+      # 여기부터는 배포 체인이다. 수집이 "신뢰 불가"(exit 1)로 끝났으면 태우지
+      # 않는다. 스냅샷 보존(위)은 이어받기를 위해 필요하지만, 오류율 20% 초과나
+      # 절단이 의심되는 데이터를 집계해 프로덕션에 내보내는 것은 다른 문제다.
+      # skip_collect(집계만 재생성)일 때는 수집 스텝이 skipped라 조건으로 살린다.
+
       # 건축물대장은 buildings.yml이 매일 조금씩 채운다. 에셋이 정말 없으면 해당 열만
       # 비고 나머지는 그대로 나온다. 있는데 못 받은 것은 일시 오류이므로, 열이 빈 채
       # 조용히 발행되지 않도록 중단한다.
       - name: 건축물대장 복원
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
           if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
             if echo "$assets" | grep -qiE 'not found|404'; then
@@ -142,6 +164,7 @@ jobs:
 
       # 좌표·지하철도 릴리스에서 받아 온다. 위와 같은 규율: 정말 없을 때만 비운다.
       - name: 좌표·지하철 복원
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
           if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
             if echo "$assets" | grep -qiE 'not found|404'; then
@@ -164,6 +187,7 @@ jobs:
           fi
 
       - name: 금리 시계열 수집 (ECOS)
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         env:
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
         run: |
@@ -173,15 +197,20 @@ jobs:
           elif [ -n "${{ inputs.rates_probe }}" ]; then
             python collect_rates.py --probe "${{ inputs.rates_probe }}"
           else
-            python collect_rates.py --out data/rates.json
+            # 부가 지표의 일시 장애가 실거래 갱신 전체를 볼모로 잡으면 안 된다.
+            # 실패하면 리포지토리에 커밋된 기존 rates.json이 그대로 쓰인다.
+            python collect_rates.py --out data/rates.json \
+              || echo "::warning::금리 갱신 실패. 기존 rates.json을 유지합니다."
           fi
 
       - name: 집계 패널 생성
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: python aggregate.py --db seoul_rt.sqlite --csv-dir out
 
       # 물건 단위 패널은 10MB급이라 커밋하면 리포지토리가 매달 그만큼 불어난다.
       # 릴리스 자산으로 올리고 Vercel 빌드가 받아 정적 파일로 굽는다.
       - name: 물건 단위 패널 발행
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
           python build_units.py --db seoul_rt.sqlite --out units \
             --bldg bldg.sqlite --geo geo.sqlite --subway subway.json
@@ -190,6 +219,7 @@ jobs:
           gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
 
       - name: 집계 CSV 커밋
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
           mkdir -p data
           cp out/*.csv data/
@@ -200,7 +230,18 @@ jobs:
             echo "집계 결과에 변화 없음. 커밋 생략."
           else
             git commit -m "데이터 갱신 $(TZ=Asia/Seoul date +%Y-%m-%d)"
-            git push
+            # 잡 시작 후 수집에 몇 시간이 걸리므로 그 사이 코드 푸시가 있으면
+            # non-fast-forward가 된다. data/만 만지니 rebase 충돌은 사실상 없다.
+            # 여기서 실패한 채 넘어가면 릴리스(units)는 신세대, CSV는 구세대로
+            # 갈린 채 다음 빌드에 실린다. 재시도 후에도 안 되면 빨간불로 남긴다.
+            pushed=""
+            for attempt in 1 2 3; do
+              if git push; then pushed=yes; break; fi
+              echo "push 실패 (${attempt}회). 원격 변경을 rebase 후 재시도합니다."
+              sleep $((attempt * 5))
+              git pull --rebase origin main
+            done
+            [ "$pushed" = yes ]
           fi
 
       # 새 데이터를 올렸으면 웹도 다시 구워야 한다. Vercel은 코드 푸시가 없으면
@@ -208,6 +249,7 @@ jobs:
       # 반드시 CSV 커밋 뒤에 부른다. 앞에 부르면 훅이 시작한 빌드가 커밋 직전
       # 리포지토리를 받아 가서, 시세 탭(tier1)이 한 사이클 묵은 채 배포된다.
       - name: Vercel 재배포 훅 호출
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         env:
           DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
@@ -219,6 +261,7 @@ jobs:
           echo "Vercel 재배포를 요청했습니다."
 
       - name: 집계 CSV 업로드
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: seoul-realestate-panel

@@ -27,15 +27,18 @@ on:
         description: '초당 호출 수 상한. 429가 계속되면 낮춘다'
         default: '1'
       probe:
-        description: '진단 모드 — 지번 하나만 호출하고 원 응답 출력'
+        description: '진단 모드. 지번 하나만 호출하고 원 응답 출력'
         type: boolean
         default: false
   schedule:
     # 전체를 다 받을 때까지 매일 새벽에 이어받는다. 다 받으면 즉시 종료된다.
     - cron: '0 18 * * *'
 
+# collect.yml과 같은 그룹. 둘 다 data-latest 릴리스 자산을 만지므로 겹치면
+# 한쪽의 --clobber 창에 다른 쪽 다운로드가 걸려 깨진다. 같은 그룹이면 GitHub이
+# 직렬화한다(월요일 18:00 buildings 실행 중이면 21:00 collect는 대기 후 실행).
 concurrency:
-  group: buildings
+  group: data-latest
   cancel-in-progress: false
 
 env:

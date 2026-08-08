@@ -6,7 +6,7 @@
   "scripts": {
     "fetch-data": "node scripts/fetch-data.mjs",
     "dev": "npm run fetch-data && vite",
-    "build": "npm run fetch-data && vite build",
+    "build": "npm run fetch-data && vite build && node scripts/check-precache.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -110,8 +110,12 @@ def main() -> int:
         return 1
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    with open(args.out, "w", encoding="utf-8") as fh:
+    # 임시 파일에 다 쓰고 원자적으로 바꾼다. 도중에 죽어 잘린 파일이 남으면
+    # 워크플로의 git add data가 그걸 그대로 실어 간다.
+    tmp = f"{args.out}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, args.out)
     print(f"{args.out} 기록 ({len(out['series'])}/{len(SERIES)} 시리즈)")
     # 일부 실패는 경고로 두되 성공으로 끝낸다. 기준금리 하나만 있어도 화면은 선다.
     if failed:

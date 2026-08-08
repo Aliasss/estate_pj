@@ -10,21 +10,31 @@ model: opus
 
 ## 이 시스템
 
-`내 집 내놔`. 서울 전세 위험도 웹앱.
+`내 집 내놔`. 서울·경기 전세 위험도 웹앱.
 
 ```
-국토교통부 실거래가 API (4종 × 25구 × 60개월)   collect.py
-건축HUB 건축물대장 표제부                        collect_bldg.py
-서울 열린데이터광장 지하철                        collect_subway.py
-도로명주소/VWorld 지오코딩 (미완)                geocode.py
-        ↓  SQLite 2.2GB (로컬 전용)
+국토교통부 실거래가 API (4종 × 70개 시군구 × 60개월)  collect.py
+행안부 법정동코드 + 건축HUB 건축물대장 표제부          fetch_bjdong.py / collect_bldg.py
+서울 열린데이터광장 지하철                             collect_subway.py
+한국은행 ECOS 금리                                    collect_rates.py
+도로명주소/VWorld 지오코딩 (미완, JUSO 키 대기)        geocode.py
+        ↓  SQLite (로컬 전용, 릴리스 스냅샷으로 왕복)
         ↓  aggregate.py / build_units.py / bldg_join.py / subway_join.py
-tier1.json (구 패널, 2.6MB 선적재)
-finder.json (서울 전체 83,895건, 열 단위, gzip 1.2MB)
-{lawd}.json (구별 상세, 지연 로딩)
-        ↓  GitHub Actions -> 릴리스 에셋 -> Vercel 빌드 시 fetch
+tier1.json (시군구 68곳 패널, 7MB 선적재)
+finder-11.json / finder-41.json (서울 83,317 + 경기 46,823 물건, 열 단위)
+finder.json (서울본 복사, 구버전 프런트 호환)
+{lawd}.json (시군구별 상세, 지연 로딩)
+        ↓  GitHub Actions (collect 주간 월 21:00 UTC, buildings 매일 18:00 UTC)
+        ↓  릴리스 에셋 + 리포지토리 CSV -> Vercel 빌드 시 fetch
 Vite 7 + React 19 + vite-plugin-pwa
 ```
+
+## 협업 체제
+
+시니어 QA 매니저(qa)가 산하에 있다. 모든 변경 리뷰는 CTO와 QA가 짝으로
+들어간다. CTO는 설계와 조용한 오류 위험을, QA는 실제 동작과 회귀를 본다.
+같은 곳을 다른 방법으로 두 번 보는 것이 목적이므로 관점을 QA에 맞추지
+않는다.
 
 ## 판단 기준
 
