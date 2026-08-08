@@ -116,7 +116,21 @@ def parse_jibun(jibun: str | None) -> tuple[str, str, str] | None:
     return plat_gb, bun, ji
 
 
-def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
+def load_bjdong_map(path: str) -> dict[tuple[str, str], str]:
+    """fetch_bjdong.py가 만든 공식 법정동 매핑. 없으면 빈 dict로 살고 payload가 대신한다."""
+    if not path or not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        raw = json.load(fh)
+    out = {}
+    for lawd, umds in raw.items():
+        for name, cd in umds.items():
+            out[(lawd, name)] = cd
+    print(f"법정동코드 공식 매핑 사용: {len(out)}개 동 ({path})")
+    return out
+
+
+def targets(rt_db: str, lawd_filter: list[str], bjdong_map: dict | None = None) -> list[tuple]:
     """실거래가 DB에서 조회 대상 지번을 뽑고, 법정동코드를 붙인다.
 
     법정동코드(umdCd)는 payload에서 얻는다. 처음에는 아파트 매매(apt_trade)에서만
@@ -126,7 +140,10 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     쪽이었다. 그래서 소스를 가리지 않고 umdCd를 실은 payload 전부에서 모은다.
     """
     conn = sqlite3.connect(rt_db)
-    umd_cd: dict[tuple[str, str], str] = {}
+    # 공식 코드표가 있으면 그걸 기준으로 삼는다. 신고가 한 건도 없는 동까지 커버되고,
+    # payload 값과 다르면 공식 쪽이 맞다. payload는 코드표에 없는 이름의 대비책으로 남긴다.
+    umd_cd: dict[tuple[str, str], str] = dict(bjdong_map or {})
+    payload_cd: dict[tuple[str, str], str] = {}
     # LIKE로 먼저 거르면 umdCd가 없는 소스의 행은 JSON 해석 없이 지나가고,
     # DISTINCT라 (동, 코드) 조합당 한 번만 받는다.
     for sgg, umd, cd in conn.execute(
@@ -139,7 +156,9 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
     ):
         sgg, umd, cd = _clean(sgg), _clean(umd), _clean(cd)
         if sgg and umd and cd:
-            umd_cd[(sgg, umd)] = cd
+            payload_cd[(sgg, umd)] = cd
+    for k, cd in payload_cd.items():
+        umd_cd.setdefault(k, cd)
 
     rows, bad_jibun = [], 0
     unmapped: set[tuple[str, str]] = set()
@@ -167,7 +186,7 @@ def targets(rt_db: str, lawd_filter: list[str]) -> list[tuple]:
         # "제외 N건"이라는 숫자만 찍으면 어느 동네가 빠졌는지 아무도 모른다.
         # 이름을 찍어야 다음 감사가 이 목록에서 시작할 수 있다.
         names = sorted(f"{SEOUL_LAWD_CODES.get(l, l)} {u or '(빈 동명)'}" for l, u in unmapped)
-        print(f"어떤 소스의 payload에도 umdCd가 없어 제외된 법정동 {len(names)}곳:")
+        print(f"공식 코드표에도 payload에도 없어 제외된 법정동 {len(names)}곳:")
         for name in names:
             print(f"  {name}")
     if bad_jibun:
@@ -376,6 +395,8 @@ def to_row(item: dict, target: tuple, fetched_at: str) -> tuple:
 def main() -> int:
     parser = argparse.ArgumentParser(description="건축물대장 표제부 수집")
     parser.add_argument("--rt-db", default="seoul_rt.sqlite", help="실거래가 DB (조회 대상 추출용)")
+    parser.add_argument("--bjdong-map", default="bjdong.json",
+                        help="fetch_bjdong.py 산출물. 없으면 payload 매핑만 쓴다")
     parser.add_argument("--db", default="bldg.sqlite")
     parser.add_argument("--lawd", default="", help="자치구 코드 제한 (쉼표 구분)")
     parser.add_argument("--rate", type=float, default=1.0,
@@ -403,7 +424,7 @@ def main() -> int:
 
     # 진단 모드. 대량 실행 전에 엔드포인트/파라미터가 맞는지 30초 안에 확인한다.
     if args.probe:
-        plan = targets(args.rt_db, lawd_filter)
+        plan = targets(args.rt_db, lawd_filter, load_bjdong_map(args.bjdong_map))
         if not plan:
             print("조회 대상이 없습니다.", file=sys.stderr)
             return 2

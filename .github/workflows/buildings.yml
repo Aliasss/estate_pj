@@ -82,6 +82,14 @@ jobs:
             echo 0 > .rows_before
           fi
 
+      - name: 법정동코드 공식 매핑 내려받기
+        env:
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+        run: |
+          # 실패해도 수집은 계속한다. payload 매핑이 대비책이고, 활용신청 승인이
+          # 아직이면 여기서 오류가 난다. 승인되면 다음 크론부터 조용히 켜진다.
+          python fetch_bjdong.py --out bjdong.json || echo "공식 매핑 없이 진행 (payload 매핑 사용)"
+
       - name: 건축물대장 수집
         id: collect
         continue-on-error: true
