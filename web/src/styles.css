@@ -172,6 +172,10 @@ table.data th, table.data td { text-align: right; padding: 4px 6px; border-botto
 table.data th:first-child, table.data td:first-child { text-align: left; }
 table.data th { color: var(--text-muted); font-weight: 500; }
 details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 6px 0; }
+/* 거래량 표의 증감 보조 줄 */
+.vol-table td, .vol-table th { text-align: right; }
+.vol-table td:first-child, .vol-table th:first-child { text-align: left; }
+.vol-table .delta { display: block; font-size: 11px; color: var(--text-muted); font-weight: 400; white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
 
 /* --- 물건 조회 --- */

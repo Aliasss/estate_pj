@@ -16,6 +16,14 @@ const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '—')
 // 같은 기준으로, 정상 범위를 벗어난 값은 차트와 표에 내지 않는다.
 const sane = (r) => (r != null && r < 1.5 ? r : null)
 
+// 거래량 조망의 세 계열. 키는 volumes의 열 이름과 같다.
+const VOL_DEFS = [
+  ['s', '매매', 'var(--series-1)'],
+  ['j', '전세', 'var(--series-2)'],
+  ['w', '월세', 'var(--series-3)'],
+]
+const delta = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
+
 
 /** 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다. */
 const TABS = [
@@ -53,6 +61,8 @@ export default function App() {
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
   const [volRegion, setVolRegion] = useState('all')  // 거래량 조망: 전체/서울/경기
+  const [volLines, setVolLines] = useState({ s: true, j: true, w: true })
+  const [volGran, setVolGran] = useState('month')    // 표 단위: month | half
   const rates = useRates()
   const pop = usePop()
 
@@ -148,12 +158,68 @@ export default function App() {
       else { a.j += r.n_jeonse ?? 0; a.w += r.n_wolse ?? 0 }
     }
     const pick = (k) => data.months.map((m) => (acc.has(m) ? acc.get(m)[k] : null))
-    return [
-      { name: '매매', short: '매매', color: 'var(--series-1)', values: pick('s') },
-      { name: '전세', short: '전세', color: 'var(--series-2)', values: pick('j') },
-      { name: '월세', short: '월세', color: 'var(--series-3)', values: pick('w') },
-    ]
+    return { s: pick('s'), j: pick('j'), w: pick('w') }
   }, [data, volRegion])
+
+  // 표: 월별(전월비·전년동월비) 또는 반기(전반기비·전년동기비). 집계가 덜 끝난
+  // 구간(잠정 월, 6개월이 안 찼거나 잠정을 품은 반기)은 비교치를 내지 않는다.
+  // 덜 채워진 분자로 만든 증감률은 숫자 모양을 한 오보다.
+  const volTable = useMemo(() => {
+    if (!volumes || !data) return null
+    const months = data.months
+    const keys = ['s', 'j', 'w']
+    if (volGran === 'month') {
+      const rows = []
+      for (let i = months.length - 1; i >= Math.max(0, months.length - 12); i--) {
+        const prov = data.provisional.includes(months[i])
+        const cells = {}
+        for (const k of keys) {
+          const v = volumes[k][i]
+          const cmp = (j, base_prov) => (v != null && !prov && !base_prov && j >= 0
+            && volumes[k][j] ? v / volumes[k][j] - 1 : null)
+          cells[k] = {
+            v,
+            d1: cmp(i - 1, data.provisional.includes(months[i - 1] ?? '')),
+            yoy: cmp(i - 12, data.provisional.includes(months[i - 12] ?? '')),
+          }
+        }
+        rows.push({ label: months[i].replace('-', '.'), partial: prov,
+                    partialNote: ['잠정'], cells })
+      }
+      return { rows, d1Label: '전월' }
+    }
+    const halves = []
+    for (let i = 0; i < months.length; i++) {
+      const [y, mm] = months[i].split('-')
+      const label = `${y} ${+mm <= 6 ? '상' : '하'}`
+      let e = halves.at(-1)
+      if (!e || e.label !== label) {
+        e = { label, n: 0, prov: false, sums: { s: 0, j: 0, w: 0 }, any: false }
+        halves.push(e)
+      }
+      e.n++
+      if (data.provisional.includes(months[i])) e.prov = true
+      for (const k of keys) {
+        const v = volumes[k][i]
+        if (v != null) { e.sums[k] += v; e.any = true }
+      }
+    }
+    for (const e of halves) e.partial = e.n < 6 || e.prov
+    const rows = halves.map((e, idx) => {
+      const cells = {}
+      for (const k of keys) {
+        const v = e.any ? e.sums[k] : null
+        const cmp = (o) => (o && !o.partial && !e.partial && v != null && o.sums[k]
+          ? v / o.sums[k] - 1 : null)
+        cells[k] = { v, d1: cmp(halves[idx - 1]), yoy: cmp(halves[idx - 2]) }
+      }
+      // "집계 중"만으로는 6분의 1짜리 합계가 급락으로 읽힌다. 몇 달치인지 같이 쓴다.
+      // 390px에서 한 줄이면 첫 열이 표를 밀어내므로 두 줄로 나눈다.
+      return { label: e.label, partial: e.partial,
+               partialNote: ['집계 중', `${e.n}/6개월`], cells }
+    }).reverse()
+    return { rows, d1Label: '전반기' }
+  }, [volumes, volGran, data])
 
   if (err) return <main className="app"><p>데이터를 불러오지 못했습니다: {err}</p></main>
   if (!data || !view) return <main className="app"><p style={{ color: 'var(--text-muted)' }}>불러오는 중…</p></main>
@@ -216,14 +282,63 @@ export default function App() {
             <button key={v} aria-pressed={volRegion === v} onClick={() => setVolRegion(v)}>{label}</button>
           ))}
         </div>
-        <div className="legend">
-          <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
-          <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전세</span>
-          <span><i className="swatch" style={{ background: 'var(--series-3)' }} />월세</span>
+        {/* 범례가 곧 필터다. 세 선이 수렴 구간에서 겹치므로 눌러서 하나만 남길 수
+            있게 한다. 표의 열도 함께 따라간다. 마지막 하나는 못 끈다. */}
+        <div className="filters" style={{ marginBottom: 6 }}>
+          {VOL_DEFS.map(([k, name, color]) => (
+            <button key={k} className="chip" aria-pressed={volLines[k]}
+                    disabled={volLines[k] && Object.values(volLines).filter(Boolean).length === 1}
+                    onClick={() => setVolLines((cur) => {
+                      const next = { ...cur, [k]: !cur[k] }
+                      return Object.values(next).some(Boolean) ? next : cur
+                    })}>
+              <i className="swatch" style={{ background: color, display: 'inline-block', marginRight: 6 }} />
+              {name}
+            </button>
+          ))}
         </div>
-        <LineChart months={data.months} series={volumes} provisional={data.provisional} height={230}
+        <LineChart months={data.months} provisional={data.provisional} height={230}
+                   series={VOL_DEFS.filter(([k]) => volLines[k])
+                     .map(([k, name, color]) => ({ name, short: name, color, values: volumes[k] }))}
                    format={{ tick: (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}만` : v.toLocaleString(),
                              value: (v) => `${v.toLocaleString()}건` }} />
+
+        <div className="seg" role="group" aria-label="표 단위" style={{ margin: '10px 0 4px' }}>
+          {[['month', '월별'], ['half', '반기']].map(([v, label]) => (
+            <button key={v} aria-pressed={volGran === v} onClick={() => setVolGran(v)}>{label}</button>
+          ))}
+        </div>
+        <div className="scroll-x">
+          <table className="data vol-table">
+            <thead>
+              <tr>
+                <th>{volGran === 'month' ? '월' : '반기'}</th>
+                {VOL_DEFS.filter(([k]) => volLines[k]).map(([k, name]) => <th key={k}>{name}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {volTable.rows.map((r) => (
+                <tr key={r.label}>
+                  <td>
+                    {r.label}
+                    {r.partial && r.partialNote.map((t) => <small key={t} className="delta">{t}</small>)}
+                  </td>
+                  {VOL_DEFS.filter(([k]) => volLines[k]).map(([k]) => (
+                    <td key={k}>
+                      {r.cells[k].v == null ? '—' : r.cells[k].v.toLocaleString()}
+                      <small className="delta">{volTable.d1Label} {delta(r.cells[k].d1)}</small>
+                      <small className="delta">전년 {delta(r.cells[k].yoy)}</small>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="sub" style={{ marginTop: 6 }}>
+          집계 중인 구간(잠정 월, 안 찬 반기)은 증감률을 내지 않습니다. 덜 채워진 숫자로
+          만든 비교는 틀린 신호가 됩니다
+        </p>
       </section>
 
       <section className="card">
