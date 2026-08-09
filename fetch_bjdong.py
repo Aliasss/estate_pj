@@ -26,6 +26,7 @@ import sys
 import urllib.parse
 import urllib.request
 
+from lawd_codes import LAWD_CODES
 from scrub import scrub
 
 BASE = "https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList"
@@ -59,12 +60,26 @@ def main() -> int:
         key = urllib.parse.unquote(key)
 
     mapping: dict[str, dict[str, str]] = {}
+    sgg_names: dict[str, str] = {}
     for region in ("서울특별시", "경기도"):
         try:
-            _collect_region(key, region, mapping)
+            _collect_region(key, region, mapping, sgg_names)
         except Exception as exc:
             print(f"법정동코드 조회 실패: {scrub(exc)}", file=sys.stderr)
             return 1
+
+    # 수집 목록(lawd_codes.py)과 공식 코드표를 대조한다. 구 신설이 생기면 MOLIT은
+    # 신설 코드로만 서빙해 옛 코드 조회가 0건 ok로 조용히 비는다. 화성시 4개 구
+    # 신설(2026-02)을 반년 가까이 그렇게 놓쳤다. 이 대조가 그 침묵을 깬다.
+    missing = sorted(set(sgg_names) - set(LAWD_CODES))
+    if missing:
+        print("경고: 공식 코드표에 있는데 수집 목록(lawd_codes.py)에 없는 시군구:")
+        for c in missing:
+            print(f"  {c} {sgg_names[c]}")
+    retired = sorted(set(LAWD_CODES) - set(sgg_names))
+    if retired:
+        print(f"참고: 수집 목록에 있는데 코드표에서 빠진 코드(개편 전 옛 코드일 수 있음): "
+              f"{', '.join(retired)}")
 
     # 지역별로 따로 검사한다. 합산 임계는 "서울 온전 + 경기 절반 유실" 같은
     # 부분 유실을 통과시킨다. 서울 460여, 경기 570여가 실측 기준이다.
@@ -85,7 +100,7 @@ def main() -> int:
     return 0
 
 
-def _collect_region(key: str, region: str, mapping: dict) -> None:
+def _collect_region(key: str, region: str, mapping: dict, sgg_names: dict) -> None:
     page, total = 1, None
     raw: list[tuple[str, str]] = []
     while True:
@@ -108,8 +123,13 @@ def _collect_region(key: str, region: str, mapping: dict) -> None:
         for r in rows:
             cd = (r.get("region_cd") or "").strip()
             name = (r.get("locallow_nm") or "").strip()
-            # 시군구 자체(읍면동 코드 000)는 건너뛴다. 동·읍·면·리는 담는다.
-            if len(cd) != 10 or cd[5:8] == "000" or not name:
+            if len(cd) != 10 or not name:
+                continue
+            # 시군구 자체(읍면동 코드 000)는 매핑에는 안 담지만 이름은 챙긴다.
+            # 구 신설(부천, 화성)을 수집 목록과 대조해 알리는 데 쓴다.
+            if cd[5:8] == "000":
+                full = (r.get("locatadd_nm") or "").strip()
+                sgg_names[cd[:5]] = full.replace(region, "").strip() or name
                 continue
             raw.append((cd, name))
         if total is None or page * 1000 >= total:
