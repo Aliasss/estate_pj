@@ -1,0 +1,45 @@
+[
+ {
+  "wolseShare": {
+   "ym": "2026-06",
+   "value": 0.5453
+  },
+  "saleYoy": {
+   "ym": "2026-06",
+   "now": 24760,
+   "prev": 33400
+  },
+  "kkangtong": {
+   "top": [
+    {
+     "name": "강동구",
+     "count": 17
+    },
+    {
+     "name": "영등포구",
+     "count": 13
+    },
+    {
+     "name": "강서구",
+     "count": 11
+    },
+    {
+     "name": "동대문구",
+     "count": 7
+    },
+    {
+     "name": "동작구",
+     "count": 7
+    }
+   ],
+   "total": 112
+  },
+  "reverse": {
+   "seoul": 0.0732,
+   "seoulN": 45495,
+   "gg": null,
+   "ggN": 0
+  },
+  "date": "2026-08-09"
+ }
+]

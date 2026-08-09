@@ -178,6 +178,40 @@ export default function Insight({ onGoFind }) {
         </section>
       )}
 
+      {data.history && (() => {
+        // 마지막 기록은 지금 화면의 값과 같은 회차라 "지난" 기록은 그 앞까지다
+        const past = data.history.slice(0, -1).reverse().slice(0, 24)
+        return (
+          <section className="card">
+            <h2>지난 인사이트</h2>
+            <p className="sub">
+              데이터가 갱신되어 수치가 바뀔 때마다 그 시점의 기록을 남깁니다.
+              위 지표들이 어디서 와서 어디로 가는지 볼 수 있습니다
+            </p>
+            {past.length ? (
+              <ul className="ins-archive">
+                {past.map((h, i) => (
+                  <li key={`${h.date}-${i}`}>
+                    <em>{h.date}</em>
+                    <span>
+                      월세 비중 {pctPt(h.wolseShare?.value)}({ymKo(h.wolseShare?.ym)})
+                      {' · '}매매 {h.saleYoy?.now?.toLocaleString()}건({ymKo(h.saleYoy?.ym)})
+                      {' · '}확인된 깡통 {h.kkangtong?.total?.toLocaleString()}개 건물
+                      {' · '}역전세 서울 {pctPt(h.reverse?.seoul)}
+                      {h.reverse?.gg != null && <> · 경기 {pctPt(h.reverse.gg)}</>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted-line">
+                아직 지난 기록이 없습니다. 다음 데이터 갱신부터 이 자리에 쌓입니다.
+              </p>
+            )}
+          </section>
+        )
+      })()}
+
       <p className="note">
         <strong>이 숫자들은 어떻게 갱신되나.</strong> 실거래·금리·인구는 매주 화요일
         아침 자동으로 수집되고, 그때 이 화면의 모든 지표가 같은 시점 데이터로 다시

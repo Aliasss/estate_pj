@@ -220,6 +220,14 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 }
 .ins-rank li span { flex: 1; }
 .ins-rank li em { font-style: normal; color: var(--text-secondary); font-size: 13px; }
+.ins-archive { list-style: none; margin: 6px 0 2px; padding: 0; }
+.ins-archive li {
+  padding: 9px 2px; border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ins-archive li:last-child { border-bottom: 0; }
+.ins-archive em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.ins-archive span { font-size: 13px; color: var(--text-primary); line-height: 1.55; }
 .ins-link {
   appearance: none; border: 0; background: none; color: var(--series-1); font: inherit;
   font-size: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0;

@@ -291,8 +291,75 @@ async function buildInsights(tier1) {
     }
   }
 
+  // ---- 지난 인사이트 이력 ----
+  // 이력은 리포지토리(data/insights_history.json)에 산다. Vercel 빌드는 상태가
+  // 없어서 여기서 쌓으면 매번 처음부터라, 주간 배치가 --append-history로 이
+  // 스크립트를 불러 커밋한다. 계산 코드가 하나라 방법론이 갈라질 일이 없다.
+  const histPath = path.join(repo, 'data', 'insights_history.json')
+  let history = (await readJson(histPath)) ?? []
+  if (process.argv.includes('--append-history')) {
+    const snap = snapshotOf(out.cards)
+    if (!snap) {
+      console.warn('이력 적재 생략: 카드 계산에 필요한 데이터가 부족합니다.')
+    } else if (history.length && sameSnapshot(history.at(-1), snap)) {
+      console.log('이력 적재 생략: 마지막 기록과 내용이 같습니다.')
+    } else {
+      // 날짜는 한국 시간. 배치도 화면도 한국 기준으로 말한다.
+      snap.date = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
+      history.push(snap)
+      await writeFile(histPath, JSON.stringify(history, null, 1) + '\n')
+      console.log(`이력 적재: ${snap.date} (누적 ${history.length}건)`)
+    }
+  }
+  out.history = history
+
   await writeFile(path.join(outDir, 'insights.json'), JSON.stringify(out))
-  console.log(`insights.json  카드 ${Object.keys(out.cards).length}종 · 소스 ${out.freshness.length}개`)
+  console.log(`insights.json  카드 ${Object.keys(out.cards).length}종 · 소스 ${out.freshness.length}개 · 이력 ${history.length}건`)
+}
+
+/** 카드에서 그 시점의 헤드라인 수치만 뽑는다. 시계열 전체를 이력으로 들고
+ *  가면 리포지토리가 매주 그만큼 불어나므로, 사람이 "그때는 얼마였나"를
+ *  보는 데 필요한 값만 남긴다. */
+function snapshotOf(cards) {
+  const snap = {}
+  const ws = cards.wolseShare
+  if (ws) {
+    // 화면과 같은 기준: 값이 있는 마지막 확정월
+    let idx = -1
+    for (let i = ws.values.length - 1; i >= 0; i--) {
+      if (ws.values[i] != null && !ws.provisional.includes(ws.months[i])) { idx = i; break }
+    }
+    if (idx >= 0) {
+      snap.wolseShare = { ym: ws.months[idx], value: round4(ws.values[idx]) }
+    }
+  }
+  if (cards.saleYoy) {
+    snap.saleYoy = { ym: cards.saleYoy.ym, now: cards.saleYoy.now, prev: cards.saleYoy.prev }
+  }
+  if (cards.kkangtong) {
+    snap.kkangtong = {
+      top: cards.kkangtong.top.map(({ name, count }) => ({ name, count })),
+      total: cards.kkangtong.total,
+    }
+  }
+  if (cards.reverse) {
+    snap.reverse = {
+      seoul: round4(cards.reverse.seoul), seoulN: cards.reverse.seoulN,
+      gg: round4(cards.reverse.gg), ggN: cards.reverse.ggN,
+    }
+  }
+  // 실거래(월세·매매)와 건물 판정(깡통·역전세)이 다 있어야 온전한 기록이다.
+  // 릴리스를 못 받아 반쪽으로 계산된 회차를 이력에 남기면 "그때 지표가
+  // 없었다"로 읽히므로 적재하지 않는다.
+  return snap.wolseShare && snap.saleYoy && snap.kkangtong && snap.reverse ? snap : null
+}
+
+const round4 = (v) => (v == null ? null : Math.round(v * 10000) / 10000)
+
+/** 날짜를 뺀 내용 비교. 데이터가 그대로면 기록도 늘지 않는다. */
+function sameSnapshot(a, b) {
+  const strip = ({ date, ...rest }) => JSON.stringify(rest)
+  return strip(a) === strip(b)
 }
 
 const tier1 = await buildTier1()

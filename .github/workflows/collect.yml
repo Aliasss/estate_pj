@@ -235,6 +235,20 @@ jobs:
           ls -lh units.tar.gz
           gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
 
+      # 인사이트 이력. 이번 회차의 헤드라인 수치를 data/insights_history.json에
+      # 남긴다(내용이 안 바뀌면 생략). 빌드와 같은 스크립트로 계산하므로 화면과
+      # 이력이 갈라질 수 없다. 바로 아래 커밋 스텝의 git add data가 실어 간다.
+      - name: 인사이트 이력 적재
+        if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
+        run: |
+          # 스크립트는 data/*.csv를 읽는데 이번 회차 집계는 아직 out/에만 있다.
+          # 먼저 복사하지 않으면 실거래 카드만 지난주 수치로 적재된다(세대 혼합).
+          # 아래 커밋 스텝의 같은 cp는 멱등이라 그대로 둔다.
+          mkdir -p data
+          cp out/*.csv data/
+          node web/scripts/fetch-data.mjs --append-history \
+            || echo "::warning::인사이트 이력 적재 실패. 이력 없이 진행합니다."
+
       - name: 집계 CSV 커밋
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
