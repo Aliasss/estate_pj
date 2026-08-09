@@ -9,6 +9,7 @@
   --text-muted: #5f6880;
   --series-1: #2a78d6;   /* 매매 */
   --series-2: #eb6834;   /* 전세 */
+  --series-3: #2e9e6f;   /* 월세 */
   --grid: #e9ebf0;
   --critical: #d03b3b;
   --warning: #fab219;
@@ -37,6 +38,7 @@
     --text-muted: #9aa1ae;
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #35b57f;
     --grid: #2a2a26;
     --bar: #3987e5;
     --bar-track: #26261f;
@@ -60,6 +62,7 @@
   --text-muted: #9aa1ae;
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #35b57f;
   --grid: #2a2a26;
   --bar: #3987e5;
   --bar-track: #26261f;

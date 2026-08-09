@@ -78,13 +78,20 @@ export function LineChart({ months, series, format, provisional = [], height = 1
           </g>
         ))}
 
-        {firstProv > 0 && (
-          <g>
-            <rect x={x(firstProv)} y={PAD.top} width={PAD.left + iw - x(firstProv)} height={ih}
-                  fill="var(--text-muted)" opacity="0.07" />
-            <text className="axis" x={x(firstProv) + 3} y={PAD.top + 9}>잠정</text>
-          </g>
-        )}
+        {firstProv > 0 && (() => {
+          // 잠정이 마지막 한 달뿐이면 x(firstProv)가 마지막 점이라 띠 폭이 0이
+          // 된다. 직전 달과의 중간부터 칠하되, 60개월 축에서는 반 달이 2px라
+          // 그래도 안 보인다. 최소 14px을 보장한다. 거래량 차트에서는 이 띠가
+          // "급감처럼 보이는 착시"의 유일한 방어선이다.
+          const bandX = Math.min((x(firstProv - 1) + x(firstProv)) / 2, PAD.left + iw - 14)
+          return (
+            <g>
+              <rect x={bandX} y={PAD.top} width={PAD.left + iw - bandX} height={ih}
+                    fill="var(--text-muted)" opacity="0.07" />
+              <text className="axis" x={Math.min(bandX + 3, PAD.left + iw - 20)} y={PAD.top + 9}>잠정</text>
+            </g>
+          )
+        })()}
 
         {labelIdx.map((i) => (
           <text key={i} className="axis" x={x(i)} y={H - 6}
@@ -93,21 +100,35 @@ export function LineChart({ months, series, format, provisional = [], height = 1
           </text>
         ))}
 
-        {series.map((s) => {
-          const pts = s.values.map((v, i) => (v == null ? null : [x(i), y(v)])).filter(Boolean)
-          if (!pts.length) return null
-          const last = s.values.findLastIndex((v) => v != null)
-          return (
-            <g key={s.name}>
-              <path d={pts.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join(' ')}
-                    fill="none" stroke={s.color} strokeWidth="2"
-                    strokeLinejoin="round" strokeLinecap="round" />
-              {/* 계열 끝에 직접 라벨을 붙여 색만으로 식별하지 않게 한다 */}
-              <text x={x(last) + 6} y={y(s.values[last]) + 3} fontSize="10.5"
-                    fill="var(--text-secondary)">{s.short}</text>
-            </g>
-          )
-        })}
+        {(() => {
+          // 계열 끝 직접 라벨. 색만으로 식별하지 않게 하는 장치인데, 선이
+          // 수렴하면(거래량 차트의 전세·월세) 라벨이 포개진다. y로 정렬해
+          // 최소 11px 간격으로 밀어낸다.
+          const ends = series
+            .map((s) => {
+              const li = s.values.findLastIndex((v) => v != null)
+              return li < 0 ? null : { s, li, ly: y(s.values[li]) + 3 }
+            })
+            .filter(Boolean)
+          const order = [...ends].sort((a, b) => a.ly - b.ly)
+          for (let k = 1; k < order.length; k++) {
+            if (order[k].ly - order[k - 1].ly < 11) order[k].ly = order[k - 1].ly + 11
+          }
+          return series.map((s) => {
+            const pts = s.values.map((v, i) => (v == null ? null : [x(i), y(v)])).filter(Boolean)
+            if (!pts.length) return null
+            const e = ends.find((d) => d.s === s)
+            return (
+              <g key={s.name}>
+                <path d={pts.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join(' ')}
+                      fill="none" stroke={s.color} strokeWidth="2"
+                      strokeLinejoin="round" strokeLinecap="round" />
+                <text x={x(e.li) + 6} y={e.ly} fontSize="10.5"
+                      fill="var(--text-secondary)">{s.short}</text>
+              </g>
+            )
+          })
+        })()}
 
         {hover != null && (
           <g>

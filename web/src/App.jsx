@@ -52,6 +52,7 @@ export default function App() {
   const [region, setRegion] = useState('11')  // 서울. 법정동코드 앞 2자리
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
+  const [volRegion, setVolRegion] = useState('all')  // 거래량 조망: 전체/서울/경기
   const rates = useRates()
   const pop = usePop()
 
@@ -133,6 +134,27 @@ export default function App() {
     }
   }, [data, housing, gu, region])
 
+  // 서울·경기 거래량 조망. 시장 전체가 어디로 가는지는 구 단위 차트로는 안 보인다.
+  // 전월세 행의 n_jeonse/n_wolse를 나눠 세므로 전세와 월세가 분리된다.
+  const volumes = useMemo(() => {
+    if (!data) return null
+    const want = (r) => volRegion === 'all' || r.lawd_cd.startsWith(volRegion)
+    const acc = new Map()
+    for (const r of data.panel) {
+      if (!want(r)) continue
+      let a = acc.get(r.ym)
+      if (!a) { a = { s: 0, j: 0, w: 0 }; acc.set(r.ym, a) }
+      if (r.deal_type === '매매') a.s += r.n_deals ?? 0
+      else { a.j += r.n_jeonse ?? 0; a.w += r.n_wolse ?? 0 }
+    }
+    const pick = (k) => data.months.map((m) => (acc.has(m) ? acc.get(m)[k] : null))
+    return [
+      { name: '매매', short: '매매', color: 'var(--series-1)', values: pick('s') },
+      { name: '전세', short: '전세', color: 'var(--series-2)', values: pick('j') },
+      { name: '월세', short: '월세', color: 'var(--series-3)', values: pick('w') },
+    ]
+  }, [data, volRegion])
+
   if (err) return <main className="app"><p>데이터를 불러오지 못했습니다: {err}</p></main>
   if (!data || !view) return <main className="app"><p style={{ color: 'var(--text-muted)' }}>불러오는 중…</p></main>
 
@@ -179,6 +201,31 @@ export default function App() {
       )}
 
       {tab === 'market' && view.guList.length > 0 && <>
+      {/* 서울·경기 조망. 히어로의 지역 토글과 무관하게 자기 세그로 전체/서울/경기를
+          오간다. 시장이 어디로 가는지 보고 나서 구 단위로 내려가는 순서다.
+          '수도권'이라 부르지 않는다. 인천이 없다. */}
+      <section className="card">
+        <h2>서울·경기 거래량 조망</h2>
+        <p className="sub">
+          아파트·연립다세대 실거래 신고 건수입니다({ymDot(data.months[0])}부터 월별,
+          전월세는 갱신 계약 포함, 단독·오피스텔은 수집 범위 밖). 회색 잠정 구간의
+          감소처럼 보이는 부분은 시장이 아니라 아직 안 들어온 신고입니다
+        </p>
+        <div className="seg" role="group" aria-label="거래량 범위" style={{ marginBottom: 8 }}>
+          {[['all', '전체'], ['11', '서울'], ['41', '경기']].map(([v, label]) => (
+            <button key={v} aria-pressed={volRegion === v} onClick={() => setVolRegion(v)}>{label}</button>
+          ))}
+        </div>
+        <div className="legend">
+          <span><i className="swatch" style={{ background: 'var(--series-1)' }} />매매</span>
+          <span><i className="swatch" style={{ background: 'var(--series-2)' }} />전세</span>
+          <span><i className="swatch" style={{ background: 'var(--series-3)' }} />월세</span>
+        </div>
+        <LineChart months={data.months} series={volumes} provisional={data.provisional} height={230}
+                   format={{ tick: (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}만` : v.toLocaleString(),
+                             value: (v) => `${v.toLocaleString()}건` }} />
+      </section>
+
       <section className="card">
         <h2>{REGIONS[region]} 시군구별 전세가율 ({housing})</h2>
         <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값입니다. 전세 보증금을 매매가로 나눈 값이고, 평단가 기준입니다. 막대를 누르면 그 구가 선택됩니다</p>
@@ -277,8 +324,9 @@ export default function App() {
         부동산 앱 숫자보다 20~30% 높게 나옵니다. 전세가율은 면적 구성의 차이를 걷어내려고
         평단가끼리 나눈 값입니다. 모든 통계는 중위값이며, 신고 후 해제된 거래는 제외했습니다.
         <br /><br />
-        <strong>마지막 두 달은 잠정치입니다.</strong> 계약일로부터 30일이 신고 기한이라 뒤늦게 계속
-        채워집니다. 회색 구간의 건수 감소는 시장 변화가 아니라 아직 안 들어온 신고입니다.
+        <strong>회색 구간은 잠정치입니다.</strong> 계약일로부터 30일이 신고 기한이라, 말일 기준
+        신고 기한이 안 지난 달은 뒤늦게 계속 채워집니다. 그 구간의 건수 감소는 시장 변화가
+        아니라 아직 안 들어온 신고입니다.
         <br /><br />
         <strong>이 수치는 참고용입니다.</strong> 구 단위 통계는 개별 물건의 위험을 말해주지 않습니다.
         계약 판단은 등기부등본·전입세대 확인서·보증보험 가입 가능 여부로 하셔야 합니다.
