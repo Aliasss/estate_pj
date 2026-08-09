@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sys
 import time
 import urllib.parse
@@ -181,6 +182,31 @@ def main() -> int:
 
     last_ym = month_list(1)[0]
 
+    # 시계는 여기서 켠다. 파라미터 탐색을 지나서 켜면 탐색에 매달린 시간이
+    # 예산에 안 잡힌다. 5시간 무출력으로 잘렸던 실행이 정확히 그랬다. 그때
+    # 로그에는 "파라미터 표기 확정"도 전멸 덤프도 없었다. 탐색 루프에 갇혀
+    # 있었다는 뜻이고, 그 구간을 아무도 재고 있지 않았다.
+    started = time.monotonic()
+
+    def over_budget(where: str) -> bool:
+        if time.monotonic() - started <= args.budget_min * 60:
+            return False
+        print(f"시간 예산 {args.budget_min}분 소진 ({where}). 여기서 접습니다.",
+              file=sys.stderr, flush=True)
+        return True
+
+    # 진행분을 만들기 전 구간에서 잘릴 수도 있다. 그때 저장할 것은 없지만,
+    # 최소한 어디서 죽었는지는 남겨야 한다. 아무 말 없이 사라지는 게 지난
+    # 실패를 진단 불가로 만든 원인이었다. 수집이 시작되면 아래에서 진행분까지
+    # 저장하는 핸들러로 교체한다.
+    def _on_signal_early(signum: int, _frame) -> None:
+        print(f"신호 {signum} 수신. 아직 수집 전(준비·파라미터 탐색) 구간이라 "
+              "남길 진행분이 없습니다.", file=sys.stderr, flush=True)
+        os._exit(1)
+
+    for _sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(_sig, _on_signal_early)
+
     if args.probe:
         for style in PARAM_STYLES:
             print(f"--- {style_label(style)}")
@@ -201,6 +227,11 @@ def main() -> int:
     attempts: list[str] = []
     net_fails = 0
     for cand in PARAM_STYLES:
+        # 조합마다 예산을 본다. urlopen의 timeout은 소켓 연산당 값이라 응답을
+        # 찔끔거리는 서버 하나면 요청 하나가 무한정 잡힌다. 128 x 30초라는
+        # 명목 상한이 실제 상한이 아니라는 뜻이다. 요청 사이에서라도 끊는다.
+        if over_budget(f"파라미터 탐색 {len(attempts)}/{len(PARAM_STYLES)}조합"):
+            return 1
         label = style_label(cand)
         try:
             rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
@@ -304,15 +335,30 @@ def main() -> int:
                              "source": "행정안전부 주민등록 인구통계(법정동별)",
                              "series": {c: v for c, v in series.items() if v}})
 
-    started = time.monotonic()
     done_cells = 0
     total_cells = sum(1 for ym in months for c in sggs if ym not in series[c])
 
+    # 여기부터는 잃을 진행분이 있다. 준비 구간용 핸들러를 저장하는 핸들러로
+    # 바꾼다. 러너 타임아웃과 취소는 SIGINT나 SIGTERM으로 오는데, SIGINT가
+    # 일으키는 KeyboardInterrupt는 BaseException이라 아래 except Exception이
+    # 못 잡고 SIGTERM은 파이썬 예외조차 아니다. 예산만으로는 못 지킨다.
+    #
+    # 저장을 출력보다 먼저 한다. 본체가 stderr에 쓰는 도중 신호가 들어오면
+    # print가 재진입 오류를 낼 수 있는데, 그때도 데이터는 이미 디스크에 있다.
+    # 순서를 뒤집지 말 것.
+    def _on_signal(signum: int, _frame) -> None:
+        _save_partial()
+        print(f"신호 {signum} 수신. 진행분 {done_cells}/{total_cells}구간을 "
+              f"{partial_path}에 남기고 종료합니다.", file=sys.stderr, flush=True)
+        os._exit(1)
+
+    for _sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(_sig, _on_signal)
+
     def _collect_all() -> None:
         nonlocal done_cells
-        # 시간 예산. 첫 실전에서 5시간 무출력 후 러너 타임아웃으로 강제 종료돼
-        # 진행분을 통째로 잃었다. 강제 종료는 partial도 못 남긴다. 예산을 넘기면
-        # 스스로 멈춰서, 커버리지 가드의 partial 저장 경로를 타고 커밋까지 간다.
+        # 시간 예산은 탐색 구간과 같은 시계(started)를 쓴다. 여기서 다시 켜면
+        # 워크플로가 배정한 시간을 탐색과 수집이 각각 한 번씩 두 번 쓴다.
         def over_budget() -> bool:
             if time.monotonic() - started > args.budget_min * 60:
                 print(f"시간 예산 {args.budget_min}분 소진 ({done_cells}/{total_cells} 구간). "
