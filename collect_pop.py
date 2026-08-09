@@ -290,6 +290,10 @@ def main() -> int:
         acc[1] += int(float(h.replace(",", "")))
         acc[2] = True
 
+    started = time.monotonic()
+    done_cells = 0
+    total_cells = sum(1 for ym in months for c in sggs if ym not in series[c])
+
     for ym in months:
         todo = [c for c in sggs if ym not in series[c]]
         if not todo:
@@ -315,6 +319,11 @@ def main() -> int:
                     time.sleep(args.sleep)
                 if acc[2]:
                     series[code][ym] = [acc[0], acc[1]]
+                done_cells += 1
+                # 두 시간짜리 백필이 무소식이면 밖에서는 폭주와 구분이 안 된다
+                if done_cells % 200 == 0:
+                    el = time.monotonic() - started
+                    print(f"진행 {done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과", flush=True)
                 time.sleep(args.sleep)
         else:
             # 전국 모드: 한 달을 통째로 페이지네이션해 접두사로 나눈다.
@@ -342,6 +351,9 @@ def main() -> int:
             for c, acc in accs.items():
                 if acc[2]:
                     series[c][ym] = [acc[0], acc[1]]
+            done_cells += len(todo)
+            el = time.monotonic() - started
+            print(f"진행 {ym} 완료 ({done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과)", flush=True)
             time.sleep(args.sleep)
 
     def _dump(path: str, payload: dict) -> None:

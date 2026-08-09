@@ -38,6 +38,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # 이게 없으면 파이썬 stdout이 블록 버퍼링돼서 실행 중 로그가 안 보인다.
+  # 인구 백필 첫 실행을 두 시간 동안 깜깜이로 지켜본 원인이 이것이었다.
+  PYTHONUNBUFFERED: '1'
   MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SNAPSHOT_TAG: data-latest
