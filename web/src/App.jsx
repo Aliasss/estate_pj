@@ -239,19 +239,6 @@ export default function App() {
         )}
       </header>
 
-      {tab === 'market' && view.guList.length > 0 && (
-        <div className="controls">
-          <div className="seg" role="group" aria-label="주택 유형">
-            {['연립다세대', '아파트'].map((t) => (
-              <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
-            ))}
-          </div>
-          <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="시군구">
-            {view.guList.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
-          </select>
-        </div>
-      )}
-
       {tab === 'verify' && <Verify guNames={view.guNames} region={region} />}
       {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
       {tab === 'law' && <Law />}
@@ -341,6 +328,39 @@ export default function App() {
         </p>
       </section>
 
+      {rates?.series?.base && (
+        <section className="card">
+          <h2>기준금리</h2>
+          <p className="sub">
+            한국은행 기준금리입니다. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은
+            그 뒤에 옵니다. 위 전세가율 차트와 월이 나란합니다
+          </p>
+          <LineChart months={data.months} provisional={data.provisional} height={160}
+                     series={[{ name: '기준금리', short: '기준금리', color: 'var(--series-1)',
+                                values: data.months.map((m) => rates.series.base[m.replace('-', '')] ?? null) }]}
+                     format={{ tick: (v) => `${v}%`, value: (v) => `${v.toFixed(2)}%` }} />
+        </section>
+      )}
+
+
+      {/* 여기부터 시군구 상세. 유형·시군구 필터는 자기가 지배하는 카드들 바로 위에
+          앉는다. 조망 카드 위에 두면 "아파트를 눌렀는데 첫 차트가 안 움직이는"
+          경험이 된다. 화면 순서가 조망(전체) -> 상세(선택한 구)라는 위계와 같아진다. */}
+      <div className="detail-head">
+        <h2>시군구 상세</h2>
+        <p>여기서 고른 시군구와 유형이 아래 차트에 적용됩니다 (세대수는 유형 구분이 없습니다)</p>
+      </div>
+      <div className="controls detail-controls">
+        <div className="seg" role="group" aria-label="주택 유형">
+          {['연립다세대', '아파트'].map((t) => (
+            <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
+          ))}
+        </div>
+        <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="시군구">
+          {view.guList.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}
+        </select>
+      </div>
+
       <section className="card">
         <h2>{REGIONS[region]} 시군구별 전세가율 ({housing})</h2>
         <p className="sub">최근 12개월({ymDot(view.lastSolid)} 기준) 중위값입니다. 전세 보증금을 매매가로 나눈 값이고, 평단가 기준입니다. 막대를 누르면 그 구가 선택됩니다</p>
@@ -364,20 +384,6 @@ export default function App() {
         <LineChart months={data.months} series={view.ratio} provisional={data.provisional} height={210}
                    format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pct }} />
       </section>
-
-      {rates?.series?.base && (
-        <section className="card">
-          <h2>기준금리</h2>
-          <p className="sub">
-            한국은행 기준금리입니다. 금리가 오르면 매매가가 먼저 식고, 전세가율 위험은
-            그 뒤에 옵니다. 위 전세가율 차트와 월이 나란합니다
-          </p>
-          <LineChart months={data.months} provisional={data.provisional} height={160}
-                     series={[{ name: '기준금리', short: '기준금리', color: 'var(--series-1)',
-                                values: data.months.map((m) => rates.series.base[m.replace('-', '')] ?? null) }]}
-                     format={{ tick: (v) => `${v}%`, value: (v) => `${v.toFixed(2)}%` }} />
-        </section>
-      )}
 
       <section className="card">
         <h2>{view.guName} 거래건수</h2>
