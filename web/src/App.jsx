@@ -191,7 +191,7 @@ export default function App() {
     const halves = []
     for (let i = 0; i < months.length; i++) {
       const [y, mm] = months[i].split('-')
-      const label = `${y} ${+mm <= 6 ? '상' : '하'}`
+      const label = `${y} ${+mm <= 6 ? '상반기' : '하반기'}`
       let e = halves.at(-1)
       if (!e || e.label !== label) {
         e = { label, n: 0, prov: false, sums: { s: 0, j: 0, w: 0 }, any: false }
