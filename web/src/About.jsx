@@ -118,9 +118,11 @@ export default function About({ onBack }) {
       <section className="card about-vision">
         <h2>비전</h2>
         <p>
-          전세 계약의 정보 비대칭을 없애는 것. 계약서에 도장을 찍기 전, 누구나
+          부동산 계약의 정보 비대칭을 없애는 것. 계약서에 도장을 찍기 전, 누구나
           공공데이터가 이미 알고 있는 위험을 3분 안에 확인할 수 있게 하는 것.
-          우리는 그 확인이 <strong>당연한 절차</strong>가 되는 세상을 만들고 싶습니다.
+          지금은 전세 보증금에서 시작하지만, 궁극적으로는 매매와 월세를 포함한
+          모든 부동산 계약으로 넓혀갑니다. 우리는 그 확인이{' '}
+          <strong>당연한 절차</strong>가 되는 세상을 만들고 싶습니다.
         </p>
         {onBack && <button className="more" onClick={onBack}>확인하러 가기</button>}
       </section>
