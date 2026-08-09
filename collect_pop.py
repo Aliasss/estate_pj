@@ -168,6 +168,8 @@ def main() -> int:
     ap.add_argument("--months", type=int, default=36)
     ap.add_argument("--probe", action="store_true", help="한 페이지만 받아 원 응답을 출력")
     ap.add_argument("--sleep", type=float, default=0.15)
+    ap.add_argument("--budget-min", type=int, default=240,
+                    help="이 시간을 넘기면 받은 만큼 저장하고 스스로 멈춘다")
     args = ap.parse_args()
 
     key = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
@@ -308,12 +310,25 @@ def main() -> int:
 
     def _collect_all() -> None:
         nonlocal done_cells
+        # 시간 예산. 첫 실전에서 5시간 무출력 후 러너 타임아웃으로 강제 종료돼
+        # 진행분을 통째로 잃었다. 강제 종료는 partial도 못 남긴다. 예산을 넘기면
+        # 스스로 멈춰서, 커버리지 가드의 partial 저장 경로를 타고 커밋까지 간다.
+        def over_budget() -> bool:
+            if time.monotonic() - started > args.budget_min * 60:
+                print(f"시간 예산 {args.budget_min}분 소진 ({done_cells}/{total_cells} 구간). "
+                      "받은 만큼 저장하고 다음 실행이 이어받습니다.", flush=True)
+                return True
+            return False
         for ym in months:
             todo = [c for c in sggs if ym not in series[c]]
             if not todo:
                 continue
+            if over_budget():
+                return
             if filter_ok:
                 for code in todo:
+                    if over_budget():
+                        return
                     acc = [0, 0, False]
                     page = 1
                     while True:
