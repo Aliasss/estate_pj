@@ -290,78 +290,95 @@ def main() -> int:
         acc[1] += int(float(h.replace(",", "")))
         acc[2] = True
 
-    started = time.monotonic()
-    done_cells = 0
-    total_cells = sum(1 for ym in months for c in sggs if ym not in series[c])
-
-    for ym in months:
-        todo = [c for c in sggs if ym not in series[c]]
-        if not todo:
-            continue
-        if filter_ok:
-            for code in todo:
-                acc = [0, 0, False]
-                page = 1
-                while True:
-                    rows, raw = fetch_page(key, style, ym, code, page)
-                    if not rows:
-                        if page == 1 and raw and not raw.lstrip().startswith(("{", "[")):
-                            print(f"{ym} {code}: 비정상 응답 {scrub(raw)[:160]}", file=sys.stderr)
-                        break
-                    for r in rows:
-                        cd = _pick(r, CODE_KEYS) or ""
-                        if cd and not cd.startswith(code):
-                            continue      # 필터가 어긋난 행은 계상하지 않는다
-                        _add(acc, cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
-                    if len(rows) < 1000:
-                        break
-                    page += 1
-                    time.sleep(args.sleep)
-                if acc[2]:
-                    series[code][ym] = [acc[0], acc[1]]
-                done_cells += 1
-                # 두 시간짜리 백필이 무소식이면 밖에서는 폭주와 구분이 안 된다
-                if done_cells % 200 == 0:
-                    el = time.monotonic() - started
-                    print(f"진행 {done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과", flush=True)
-                time.sleep(args.sleep)
-        else:
-            # 전국 모드: 한 달을 통째로 페이지네이션해 접두사로 나눈다.
-            accs = {c: [0, 0, False] for c in todo}
-            page = 1
-            while True:
-                rows, raw = fetch_page(key, style, ym, None, page)
-                if not rows:
-                    if page == 1 and raw:
-                        print(f"{ym}: 행 없음 {scrub(raw)[:160]}", file=sys.stderr)
-                    break
-                for r in rows:
-                    cd = _pick(r, CODE_KEYS) or ""
-                    if cd[:5] in accs:
-                        _add(accs[cd[:5]], cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
-                if len(rows) < 1000:
-                    break
-                page += 1
-                if page > 120:
-                    # 12만 행을 넘기면 통반 레벨 전국 응답이다. 이 모드로 받을 물건이 아니다.
-                    print(f"{ym}: 페이지가 120을 넘습니다. 응답 레벨이 너무 깊어 중단합니다.",
-                          file=sys.stderr)
-                    return 1
-                time.sleep(args.sleep)
-            for c, acc in accs.items():
-                if acc[2]:
-                    series[c][ym] = [acc[0], acc[1]]
-            done_cells += len(todo)
-            el = time.monotonic() - started
-            print(f"진행 {ym} 완료 ({done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과)", flush=True)
-            time.sleep(args.sleep)
-
     def _dump(path: str, payload: dict) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         tmp = f"{path}.tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
         os.replace(tmp, path)
+
+    def _save_partial() -> None:
+        _dump(partial_path, {"asof": last_ym,
+                             "source": "행정안전부 주민등록 인구통계(법정동별)",
+                             "series": {c: v for c, v in series.items() if v}})
+
+    started = time.monotonic()
+    done_cells = 0
+    total_cells = sum(1 for ym in months for c in sggs if ym not in series[c])
+
+    def _collect_all() -> None:
+        nonlocal done_cells
+        for ym in months:
+            todo = [c for c in sggs if ym not in series[c]]
+            if not todo:
+                continue
+            if filter_ok:
+                for code in todo:
+                    acc = [0, 0, False]
+                    page = 1
+                    while True:
+                        rows, raw = fetch_page(key, style, ym, code, page)
+                        if not rows:
+                            if page == 1 and raw and not raw.lstrip().startswith(("{", "[")):
+                                print(f"{ym} {code}: 비정상 응답 {scrub(raw)[:160]}", file=sys.stderr)
+                            break
+                        for r in rows:
+                            cd = _pick(r, CODE_KEYS) or ""
+                            if cd and not cd.startswith(code):
+                                continue      # 필터가 어긋난 행은 계상하지 않는다
+                            _add(acc, cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
+                        if len(rows) < 1000:
+                            break
+                        page += 1
+                        time.sleep(args.sleep)
+                    if acc[2]:
+                        series[code][ym] = [acc[0], acc[1]]
+                    done_cells += 1
+                    # 두 시간짜리 백필이 무소식이면 밖에서는 폭주와 구분이 안 된다
+                    if done_cells % 200 == 0:
+                        el = time.monotonic() - started
+                        print(f"진행 {done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과", flush=True)
+                    time.sleep(args.sleep)
+            else:
+                # 전국 모드: 한 달을 통째로 페이지네이션해 접두사로 나눈다.
+                accs = {c: [0, 0, False] for c in todo}
+                page = 1
+                while True:
+                    rows, raw = fetch_page(key, style, ym, None, page)
+                    if not rows:
+                        if page == 1 and raw:
+                            print(f"{ym}: 행 없음 {scrub(raw)[:160]}", file=sys.stderr)
+                        break
+                    for r in rows:
+                        cd = _pick(r, CODE_KEYS) or ""
+                        if cd[:5] in accs:
+                            _add(accs[cd[:5]], cd, _pick(r, POP_KEYS), _pick(r, HH_KEYS))
+                    if len(rows) < 1000:
+                        break
+                    page += 1
+                    if page > 120:
+                        # 12만 행을 넘기면 통반 레벨 전국 응답이다. 이 모드로 받을 물건이 아니다.
+                        raise RuntimeError(f"{ym}: 페이지가 120을 넘습니다. 응답 레벨이 너무 깊습니다.")
+                    time.sleep(args.sleep)
+                for c, acc in accs.items():
+                    if acc[2]:
+                        series[c][ym] = [acc[0], acc[1]]
+                done_cells += len(todo)
+                el = time.monotonic() - started
+                print(f"진행 {ym} 완료 ({done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과)", flush=True)
+                time.sleep(args.sleep)
+
+
+    try:
+        _collect_all()
+    except Exception as exc:
+        # 어떤 예외로 죽어도 받은 만큼은 partial로 남긴다. 워크플로의 데이터
+        # 커밋이 partial까지 실어 가므로 다음 실행이 그 지점부터 이어받는다.
+        # 몇 시간짜리 백필이 마지막 예외 하나로 통째로 증발하면 안 된다.
+        _save_partial()
+        print(f"수집 중 오류로 중단, 진행분 {done_cells}/{total_cells}구간을 "
+              f"{partial_path}에 남겼습니다: {scrub(exc)}", file=sys.stderr)
+        return 1
 
     payload = {"asof": last_ym, "source": "행정안전부 주민등록 인구통계(법정동별)",
                "series": {c: v for c, v in series.items() if v}}

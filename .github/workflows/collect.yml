@@ -48,7 +48,7 @@ env:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 300   # 경기 백필(60개월 × 45개 시군구) 첫 실행 여유
+    timeout-minutes: 350   # 첫 백필(실거래·인구) 여유. 인구 2,520호출이 지연 4.5초면 195분
     permissions:
       contents: write   # data/ 커밋 + 릴리스 자산 업로드
 
