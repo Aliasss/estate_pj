@@ -3,6 +3,8 @@ import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
 import Law from './Law.jsx'
 import Verify from './Verify.jsx'
+import Insight from './Insight.jsx'
+import About from './About.jsx'
 import { REGIONS, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
@@ -33,6 +35,8 @@ const TABS = [
    'M12 21s-6.5-5.2-6.5-10A6.5 6.5 0 0 1 12 4.5 6.5 6.5 0 0 1 18.5 11c0 4.8-6.5 10-6.5 10z M12 13a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z'],
   ['market', '시세',
    'M4 19h16 M4 15l4-4 3 3 5-6 4 4'],
+  ['insight', '인사이트',
+   'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.5h6c0-1.1.3-1.9 1-2.5A6 6 0 0 0 12 3z'],
   ['law', '법·제도',
    'M12 4v16 M6 7h12 M6 7l-2.5 5a2.7 2.7 0 0 0 5 0L6 7z M18 7l-2.5 5a2.7 2.7 0 0 0 5 0L18 7z M9 20h6'],
 ]
@@ -229,8 +233,13 @@ export default function App() {
       <header className="hero">
         <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
         <h1>내 집 내놔</h1>
-        {/* 법·제도는 전국 공통이라 지역 토글이 소음이다 */}
-        {tab !== 'law' && (
+        {tab !== 'about' && (
+          <button className="about-link" onClick={() => setTab('about')}>
+            어떤 서비스인가요 →
+          </button>
+        )}
+        {/* 법·제도는 전국 공통, 인사이트·소개는 서울·경기 통합이라 지역 토글이 소음이다 */}
+        {['verify', 'find', 'market'].includes(tab) && (
           <div className="seg region-seg" role="group" aria-label="지역">
             {Object.entries(REGIONS).map(([code, label]) => (
               <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
@@ -242,6 +251,8 @@ export default function App() {
       {tab === 'verify' && <Verify guNames={view.guNames} region={region} />}
       {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
       {tab === 'law' && <Law />}
+      {tab === 'insight' && <Insight onGoFind={() => setTab('find')} />}
+      {tab === 'about' && <About onBack={() => setTab('verify')} />}
 
       {tab === 'market' && view.guList.length === 0 && (
         <section className="card">

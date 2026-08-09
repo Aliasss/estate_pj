@@ -91,6 +91,7 @@ async function buildTier1() {
   )
   const bytes = (await readFile(path.join(outDir, 'tier1.json'))).length
   console.log(`tier1.json  ${months.length}개월 · ${gu.length}개 구 · ${(bytes / 1e6).toFixed(2)}MB`)
+  return { months, provisional, gu, panel }
 }
 
 async function buildTier2() {
@@ -162,8 +163,141 @@ async function copySmall(name, offMessage) {
   console.log(`${name} 복사`)
 }
 
-await buildTier1()
+/**
+ * 인사이트와 데이터 시의성을 빌드 시점에 계산해 insights.json으로 굽는다.
+ *
+ * 재빌드를 부르는 것은 주간 collect 배치다(대장은 매일 수집되지만 물건에
+ * 결합되는 건 주간 재계산에서다). 그때마다 여기서 계산한 "언제까지의
+ * 데이터인가"가 데이터와 같은 시점으로 저절로 따라온다. 화면이 따로 계산하지 않는 이유는 둘이다. finder 13MB를 인사이트
+ * 한 번 보자고 내려받게 할 수 없고, 시의성 표기는 데이터와 같은 시점에 같은
+ * 손으로 만들어져야 어긋나지 않는다.
+ */
+async function buildInsights(tier1) {
+  const out = { generatedAt: new Date().toISOString(), freshness: [], cards: {} }
+
+  // ---- 시의성: 소스별 최신 시점 ----
+  const lastSolid = tier1 ? tier1.months.filter((m) => !tier1.provisional.includes(m)).at(-1) : null
+  if (tier1) {
+    out.freshness.push({
+      key: 'rt', name: '국토교통부 실거래가', cycle: '매주 화요일 갱신',
+      asof: tier1.months.at(-1), note: `확정 구간 ~${lastSolid}, 이후는 잠정`,
+    })
+  }
+  const readJson = async (p) => {
+    try { return JSON.parse(await readFile(p, 'utf8')) } catch { return null }
+  }
+  const fin11 = await readJson(path.join(outDir, 'units', 'finder-11.json'))
+    ?? await readJson(path.join(outDir, 'units', 'finder.json'))
+  const fin41 = await readJson(path.join(outDir, 'units', 'finder-41.json'))
+  if (fin11) {
+    const n = (fin11.n ?? 0) + (fin41?.n ?? 0)
+    out.freshness.push({
+      key: 'units', name: '건물 단위 위험 판정', cycle: '매주 화요일 재계산',
+      asof: `${fin11.window[0].slice(0, 4)}-${fin11.window[0].slice(4)} ~ ${fin11.window[1].slice(0, 4)}-${fin11.window[1].slice(4)}`,
+      note: `건물 ${n.toLocaleString()}개 (서울 ${fin11.n.toLocaleString()}${fin41 ? ` + 경기 ${fin41.n.toLocaleString()}` : ''})`,
+    })
+    // 건축물대장 커버리지: 승강기 열이 붙은 비율로 근사한다
+    let elvt = 0
+    for (const f of [fin11, fin41].filter(Boolean)) {
+      const col = Object.fromEntries(f.cols.map((c, i) => [c, f.columns[i]]))
+      if (col.elvt) elvt += col.elvt.filter((v) => v != null).length
+    }
+    out.freshness.push({
+      key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 수집 · 화요일 반영',
+      asof: null, note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
+    })
+  }
+  const rates = await readJson(path.join(repo, 'data', 'rates.json'))
+  if (rates?.asof) {
+    out.freshness.push({
+      key: 'rates', name: '한국은행 ECOS 금리', cycle: '매주 화요일 갱신',
+      asof: `${rates.asof.slice(0, 4)}-${rates.asof.slice(4)}`, note: '기준금리·정기예금(1년)·전세자금대출',
+    })
+  }
+  const pop = await readJson(path.join(repo, 'data', 'pop.json'))
+  if (pop?.asof) {
+    out.freshness.push({
+      key: 'pop', name: '행정안전부 주민등록 인구·세대', cycle: '매주 화요일 갱신 (월간 통계)',
+      asof: `${pop.asof.slice(0, 4)}-${pop.asof.slice(4)}`, note: '법정동별 원천을 시군구로 합산',
+    })
+  }
+
+  // ---- 인사이트 카드 (고정 방법론, 배치마다 재계산) ----
+  if (tier1) {
+    const { months, provisional, panel } = tier1
+    const solidMonths = months.filter((m) => !provisional.includes(m))
+    const sum = (pred, field) => {
+      const acc = new Map()
+      for (const r of panel) {
+        if (!pred(r)) continue
+        acc.set(r.ym, (acc.get(r.ym) ?? 0) + (r[field] ?? 0))
+      }
+      return months.map((m) => acc.get(m) ?? 0)
+    }
+    const jeonse = sum((r) => r.deal_type === '전월세', 'n_jeonse')
+    const wolse = sum((r) => r.deal_type === '전월세', 'n_wolse')
+    const sale = sum((r) => r.deal_type === '매매', 'n_deals')
+    // 1) 전세의 월세화: 전월세 신고 중 월세 비중
+    const solidIdx = months.map((m, i) => (provisional.includes(m) ? -1 : i)).filter((i) => i >= 0)
+    const last12 = solidIdx.slice(-12), prev12 = solidIdx.slice(-24, -12)
+    const sumIdx = (arr, idx) => idx.reduce((a, i) => a + arr[i], 0)
+    out.cards.wolseShare = {
+      months, provisional,
+      values: months.map((m, i) => {
+        const t = jeonse[i] + wolse[i]
+        return t ? wolse[i] / t : null
+      }),
+      // 전세 절대량 변화. "전세는 줄고"라는 제목을 데이터가 뒷받침할 때만
+      // 화면이 그 문장을 쓴다. 최근 12확정월 합 대 직전 12개월 합.
+      jeonseChange: prev12.length === 12 && sumIdx(jeonse, prev12)
+        ? sumIdx(jeonse, last12) / sumIdx(jeonse, prev12) - 1 : null,
+    }
+    // 2) 매매 회복: 최근 확정월과 전년 동월
+    const li = months.indexOf(solidMonths.at(-1))
+    if (li >= 12) {
+      out.cards.saleYoy = {
+        ym: months[li], now: sale[li], prev: sale[li - 12], series: sale, months, provisional,
+      }
+    }
+  }
+  if (fin11) {
+    // 3) 확인된 깡통(그 건물 매매 3건 이상, 전세가율 100% 이상)과 역전세(갱신
+    //    보증금 5% 이상 인하)를 구별로 센다. 화면의 위험 필터와 같은 정의다.
+    const guNames = Object.fromEntries((tier1?.gu ?? []).map((g) => [g.lawd_cd, g.sgg_nm]))
+    const kk = [], rev = { seoul: [0, 0], gg: [0, 0] }
+    for (const f of [fin11, fin41].filter(Boolean)) {
+      const col = Object.fromEntries(f.cols.map((c, i) => [c, f.columns[i]]))
+      const counts = new Map()
+      for (let i = 0; i < f.n; i++) {
+        const lawd = f.gus[col.g[i]]
+        if (col.stage[i] === 0 && (col.ns[i] ?? 0) >= 3
+            && col.ratio[i] != null && col.ratio[i] >= 1 && col.ratio[i] < 1.5) {
+          counts.set(lawd, (counts.get(lawd) ?? 0) + 1)
+        }
+        const h = col.hike?.[i]
+        if (h != null) {
+          const bucket = lawd.startsWith('11') ? rev.seoul : rev.gg
+          bucket[1]++
+          if (h <= -0.05) bucket[0]++
+        }
+      }
+      for (const [lawd, c] of counts) kk.push({ lawd, name: guNames[lawd] ?? lawd, count: c })
+    }
+    kk.sort((a, b) => b.count - a.count)
+    out.cards.kkangtong = { top: kk.slice(0, 5), total: kk.reduce((a, b) => a + b.count, 0) }
+    out.cards.reverse = {
+      seoul: rev.seoul[1] ? rev.seoul[0] / rev.seoul[1] : null, seoulN: rev.seoul[1],
+      gg: rev.gg[1] ? rev.gg[0] / rev.gg[1] : null, ggN: rev.gg[1],
+    }
+  }
+
+  await writeFile(path.join(outDir, 'insights.json'), JSON.stringify(out))
+  console.log(`insights.json  카드 ${Object.keys(out.cards).length}종 · 소스 ${out.freshness.length}개`)
+}
+
+const tier1 = await buildTier1()
 await buildTier2()
 await buildSubway()
 await copySmall('rates.json', '금리 표시는 꺼진 채 빌드합니다.')
 await copySmall('pop.json', '세대수 추이는 꺼진 채 빌드합니다.')
+await buildInsights(tier1)

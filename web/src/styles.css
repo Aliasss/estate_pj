@@ -185,6 +185,58 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 .vol-table .delta { display: block; font-size: 11px; color: var(--text-muted); font-weight: 400; white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
 
+/* --- 인사이트 / 소개 --- */
+.about-link {
+  appearance: none; border: 1px solid rgb(255 255 255 / 0.35); background: transparent;
+  color: var(--on-brand-dim); font: inherit; font-size: 12px; padding: 4px 10px;
+  border-radius: 999px; cursor: pointer; margin-top: 12px; display: inline-block;
+}
+.about-link:hover { color: var(--on-brand); border-color: rgb(255 255 255 / 0.6); }
+.method {
+  font-size: 11.5px; color: var(--text-muted); border-top: 1px dashed var(--border);
+  padding-top: 8px; margin: 12px 0 2px; line-height: 1.5;
+}
+.ins-stat { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 10px; flex-wrap: wrap; }
+.ins-stat em { font-style: normal; font-size: 34px; font-weight: 700; color: var(--text-primary); }
+.ins-stat span { font-size: 13px; color: var(--text-muted); }
+.ins-pair { display: flex; gap: 12px; margin: 6px 0 4px; }
+.ins-pair > div {
+  flex: 1; background: var(--surface-0); border-radius: 12px; padding: 14px 14px 12px;
+}
+.ins-pair em { display: block; font-style: normal; font-size: 26px; font-weight: 700; }
+.ins-pair span { font-size: 12px; color: var(--text-muted); }
+.ins-rank { list-style: none; margin: 6px 0 10px; padding: 0; counter-reset: rk; }
+.ins-rank li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 14px;
+  counter-increment: rk;
+}
+.ins-rank li::before {
+  content: counter(rk); width: 22px; height: 22px; border-radius: 50%;
+  background: var(--brand); color: var(--on-brand); font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; margin-right: 10px;
+}
+.ins-rank li span { flex: 1; }
+.ins-rank li em { font-style: normal; color: var(--text-secondary); font-size: 13px; }
+.ins-link {
+  appearance: none; border: 0; background: none; color: var(--series-1); font: inherit;
+  font-size: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0;
+}
+.about-item { margin: 12px 0; }
+.about-item b { display: block; font-size: 14.5px; margin-bottom: 2px; }
+.about-item span { font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+.about-item.rule b { color: var(--brand-ink); }
+.about-feats { list-style: none; margin: 4px 0 0; padding: 0; }
+.about-feats li { padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.about-feats li:last-child { border-bottom: 0; }
+.about-feats b { display: block; font-size: 14px; margin-bottom: 1px; }
+.about-feats span { color: var(--text-muted); }
+.about-refuse { margin: 4px 0 4px; padding-left: 18px; font-size: 13px; color: var(--text-muted); }
+.about-refuse li { margin: 7px 0; line-height: 1.5; }
+.fresh-table td small.delta { max-width: 200px; white-space: normal; }
+.about-vision p { font-size: 14.5px; line-height: 1.7; color: var(--text-secondary); }
+.about-vision strong { color: var(--text-primary); }
+
 /* --- 물건 조회 --- */
 .search {
   width: 100%; font: inherit; font-size: 15px; padding: 12px 14px; min-height: 48px;
