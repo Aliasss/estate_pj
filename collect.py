@@ -441,6 +441,9 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.1, help="호출 간 대기(초)")
     parser.add_argument("--rows-per-page", type=int, default=1000)
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한. 일일 트래픽 보호용")
+    parser.add_argument("--abort-after", type=int, default=5,
+                        help="연속 N개 구간이 전부 실패하면 접속 문제로 보고 중단. "
+                             "구간마다 재시도 5회를 이미 품고 있어 5면 약 15분이다")
     parser.add_argument("--refresh-recent", type=int, default=0, help="최근 N개월은 이미 받았어도 재수집")
     parser.add_argument("--force", action="store_true", help="fetch_log 무시하고 전 구간 재수집")
     args = parser.parse_args()
@@ -494,6 +497,8 @@ def main() -> int:
     # 시군구부터 매번 굶는다. 소진된 소스만 접고 나머지는 계속 간다.
     exhausted: set[str] = set()
     starved = 0
+    consecutive = 0   # 연속으로 실패한 구간 수. 성공 하나면 0으로 돌아간다
+    aborted = False   # 접속 문제로 계획을 포기했는가
 
     try:
         for index, (source, code, ym) in enumerate(plan, start=1):
@@ -526,6 +531,11 @@ def main() -> int:
                 print(f"\n{prefix} 일일 한도 소진 ({scrub(exc)}). 이 소스만 접고 계속합니다.",
                       flush=True)
                 exhausted.add(source.key)
+                # 쿼터 응답은 왕복과 파싱이 성공했다는 뜻이라 호스트 생존의
+                # 증거다. 성공과 똑같이 카운터를 푼다. 안 그러면 소스 경계를
+                # 사이에 두고 "실패 4 + 쿼터 + 실패 1"이 연속 5로 잘못 세어져
+                # 실효 임계가 1까지 내려간다.
+                consecutive = 0
                 continue
             except Exception as exc:
                 print(f"{prefix} 실패: {scrub(exc)}", file=sys.stderr)
@@ -539,8 +549,23 @@ def main() -> int:
                 conn.commit()
                 calls += 1
                 errors += 1
+                consecutive += 1
+                # 아래 20% 오류율 가드는 순회를 다 끝낸 뒤에야 검사한다. 그래서
+                # 호스트가 통째로 죽은 날에는 아무도 멈추지 않는다. 실제로 한 번
+                # 그랬다. 1,800구간 계획에서 114구간을 100% 실패하며 5시간 49분을
+                # 태우고 러너 한도에 잘렸고 적재는 0건이었다. 구간 하나가 이미
+                # 재시도 5회를 품고 있으니, 그게 연속으로 무너지면 개별 구간
+                # 문제가 아니라 접속 문제다. 인구 수집기와 같은 규율이다.
+                if args.abort_after and consecutive >= args.abort_after:
+                    print(f"\n연속 {consecutive}개 구간이 모두 실패했습니다"
+                          f"(구간마다 재시도 5회 포함). 개별 구간이 아니라 접속"
+                          f" 문제로 보고 중단합니다. 받은 구간은 다음 실행이"
+                          f" 건너뜁니다.", file=sys.stderr)
+                    aborted = True
+                    break
                 continue
 
+            consecutive = 0
             rows = build_rows(items, source, code, ym)
             conn.executemany(INSERT_SQL, rows)
             conn.execute(
@@ -586,6 +611,16 @@ def main() -> int:
     if truncated_now:
         print(f"경고: 이번 실행에서 totalCount와 적재 행 수가 다른 구간이 {truncated_now}개 "
               "생겼습니다. 조용한 절단이므로 실패로 종료합니다.", file=sys.stderr)
+        return 1
+    # 접속 중단은 오류율과 무관하게 그 자체로 실패다. 20% 가드에 판정을 맡기면
+    # errors가 abort_after로 고정되므로 성공 20구간만 넘겨도 비율이 20% 아래로
+    # 떨어져 초록불이 된다. 주간 계획이 888구간이니 사실상 모든 장애가 초록불로
+    # 새고, 그 초록불이 집계·릴리스·배포 체인을 통째로 연다. 남은 구간의 성패를
+    # 모른다는 것이 곧 실패의 정의다.
+    if aborted:
+        left = len(plan) - index
+        print(f"::error::접속 문제로 {index}/{len(plan)} 구간에서 중단했습니다. "
+              f"{left}구간을 받지 못했습니다. 원인이 해소되면 재실행하세요.")
         return 1
     # 오류 회계가 쿼터의 정상 종료보다 먼저다. 쿼터 소진과 40% 오류가 같이
     # 있었던 실행을 초록불로 끝내면 안 된다.

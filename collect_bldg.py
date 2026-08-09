@@ -479,6 +479,7 @@ def main() -> int:
     endpoint_idx = [0]
     calls = inserted = empty = errors = streak = 0
     quota_hit = False
+    aborted = False   # 연속 실패로 계획을 포기했는가
     started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
@@ -530,6 +531,7 @@ def main() -> int:
                           file=sys.stderr)
                     print("429가 계속되면 --rate를 낮추세요. 접속 자체가 안 되는 것 같으면 "
                           "--probe로 한 건만 쏴서 응답이 오는지 확인하세요.", file=sys.stderr)
+                    aborted = True
                     break
                 continue
             streak = 0
@@ -570,6 +572,14 @@ def main() -> int:
         ):
             print(f"  {strct}: {n:,}")
     conn.close()
+    # 연속 실패 중단은 오류율과 무관하게 그 자체로 실패다. 비율 가드에 맡기면
+    # 이미 성공을 쌓아 둔 실행에서 errors가 상한(연속 실패 수)으로 고정돼 20%
+    # 아래로 떨어지고, 계획을 포기했는데 초록불이 된다 (collect.py와 같은 구멍).
+    if aborted:
+        left = len(plan) - calls
+        print(f"::error::연속 실패로 {calls:,}/{len(plan):,}건에서 중단했습니다. "
+              f"{left:,}건을 받지 못했습니다. 원인이 해소되면 재실행하세요.")
+        return 1
     # 오류 회계가 쿼터의 정상 종료보다 먼저다. 429 폭풍으로 20%를 넘긴 실행이
     # 쿼터 소진과 겹쳤다고 초록으로 끝나면 안 된다 (collect.py와 같은 원칙).
     # 표본이 작을 때의 헛 빨간불은 최소 호출 수 50으로 거른다.
