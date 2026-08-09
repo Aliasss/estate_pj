@@ -100,8 +100,10 @@ body {
 .hero-hi { margin: 0 0 3px; font-size: 13px; color: var(--on-brand-dim); }
 .hero h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; line-height: 1.2; color: #fff; }
 .hero + .card { margin-top: -30px; box-shadow: var(--shadow-float); }
-/* 지역 토글. 히어로 안에서 화면 전체의 범위를 정한다 */
+/* 지역 토글. 히어로 안에서 화면 전체의 범위를 정한다.
+   소개 링크와 같은 줄에 붙지 않도록 줄을 내린다 */
 .region-seg { margin-top: 14px; }
+.hero .region-seg { display: flex; width: fit-content; }
 .region-seg button { min-width: 64px; }
 
 /* 시군구 상세 구역 머리. 필터가 지배하는 구역의 시작을 알린다 */

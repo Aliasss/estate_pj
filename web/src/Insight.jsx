@@ -63,7 +63,7 @@ export default function Insight({ onGoFind }) {
       <section className="card">
         <h2>인사이트</h2>
         <p className="sub">
-          우리가 수집한 실거래·인구 데이터에서 방법론을 고정해 자동으로 다시 계산하는
+          우리가 수집한 실거래·인구 데이터를 고정된 방법론으로 자동 계산한
           지표입니다. 데이터가 갱신되면 이 화면도 함께 갱신됩니다
         </p>
       </section>
@@ -84,8 +84,8 @@ export default function Insight({ onGoFind }) {
             ))}
           </ol>
           <p className="muted-line">
-            지금 데이터가 닿는 범위에서 {cards.kkangtong.total.toLocaleString()}개 건물이
-            이 기준에 걸립니다. 동네 탭의 "확인된 깡통" 필터로 하나하나 보실 수 있습니다.
+            지금 데이터가 확보된 범위에서 {cards.kkangtong.total.toLocaleString()}개 건물이
+            이 기준에 해당합니다. 동네 탭의 "확인된 깡통" 필터로 하나씩 확인하실 수 있습니다.
             {onGoFind && <> <button className="ins-link" onClick={onGoFind}>동네 탭으로 →</button></>}
           </p>
           <Method>
@@ -99,8 +99,8 @@ export default function Insight({ onGoFind }) {
         <section className="card">
           <h2>갱신에서 보증금이 내려간 건물의 비율</h2>
           <p className="sub">
-            역전세의 직접 신호입니다. 집주인이 보증금을 돌려주고 있다는 뜻이고,
-            다음 세입자의 협상 근거이기도 합니다
+            역전세의 직접적인 신호입니다. 집주인이 보증금 일부를 돌려주고 있다는
+            뜻이고, 다음 세입자에게는 협상 근거가 됩니다
           </p>
           <div className="ins-pair">
             {cards.reverse.seoul != null && (
@@ -130,8 +130,8 @@ export default function Insight({ onGoFind }) {
         <section className="card">
           <h2>전세는 줄고, 월세가 늘고 있습니다</h2>
           <p className="sub">
-            서울·경기 전월세 신고에서 월세가 차지하는 비중입니다. 보증금 위험의
-            무게중심이 어디로 움직이는지 보여줍니다
+            서울·경기 전월세 신고에서 월세가 차지하는 비중입니다. 임대차 시장의
+            중심이 전세에서 월세로 얼마나 옮겨갔는지 보여줍니다
           </p>
           <div className="ins-stat">
             <em>{pctPt(wsLast)}</em>
@@ -157,10 +157,10 @@ export default function Insight({ onGoFind }) {
 
       {cards.saleYoy && (
         <section className="card">
-          <h2>매매는 검증의 원료입니다</h2>
+          <h2>매매 거래량은 검증의 기반입니다</h2>
           <p className="sub">
-            매매 실거래는 보증금을 맞대볼 기준선입니다. 매매가 마르면 "확인된
-            안전"을 확인할 근거도 함께 마릅니다
+            매매 실거래는 보증금을 비교할 기준이 됩니다. 매매 거래가 줄면
+            "확인된 안전"을 판정할 근거도 함께 줄어듭니다
           </p>
           <div className="ins-stat">
             <em>{cards.saleYoy.now.toLocaleString()}건</em>
@@ -182,7 +182,8 @@ export default function Insight({ onGoFind }) {
         <strong>이 숫자들은 어떻게 갱신되나.</strong> 실거래·금리·인구는 매주 화요일
         아침 자동으로 수집되고, 그때 이 화면의 모든 지표가 같은 시점 데이터로 다시
         계산됩니다. 건축물대장은 매일 수집되어 화요일 재계산 때 함께 반영됩니다.
-        사람 손을 거치지 않으므로 편집자의 관점이 아니라 방법론이 말합니다.
+        사람 손을 거치지 않고 고정된 방법론으로만 계산되므로, 어제와 오늘을 같은
+        기준으로 비교할 수 있습니다.
       </p>
     </>
   )
