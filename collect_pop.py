@@ -38,6 +38,10 @@ from scrub import scrub
 
 BASE = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus"
 
+# 이번 실행에서 넘긴 일시 오류 수. 실행 끝에 한 줄로 요약한다. 0이 아니면
+# API가 흔들리고 있다는 뜻이고, 그 신호가 로그에 남아야 다음에 원인을 안다.
+RETRIES = {"n": 0}
+
 # 파라미터 격자. 실전 두 번의 실측으로 좁혔다. 1차: 활용신청 유효(JSON 응답).
 # 2차: 월 파라미터가 statsYm일 때만 오류가 NO_MANDATORY(필수 누락)에서
 # INVALID(값·이름 하나가 틀림)로 바뀌었다. 즉 월 표기는 statsYm이 유력하고,
@@ -124,7 +128,7 @@ def _pick(row: dict, keys: tuple[str, ...]) -> str | None:
 
 
 def fetch_page(key: str, style: dict, ym: str, code: str | None, page: int,
-               rows: int = 1000, level: int = 3) -> tuple[list[dict], str]:
+               rows: int = 1000, level: int = 3, retries: int = 4) -> tuple[list[dict], str]:
     qs = {
         "serviceKey": key, "type": style.get("type", "JSON"),
         "pageNo": page, "numOfRows": rows,
@@ -139,9 +143,27 @@ def fetch_page(key: str, style: dict, ym: str, code: str | None, page: int,
     if code and style.get("code_key"):
         qs[style["code_key"]] = code if style.get("code_len") == 5 else f"{code:0<10}"
     url = f"{BASE}?{urllib.parse.urlencode(qs)}"
-    req = urllib.request.Request(url, headers={"User-Agent": "estate-pj"})
-    with urllib.request.urlopen(req, timeout=30) as res:
-        text = res.read().decode("utf-8")
+    # 일시적인 네트워크 오류는 넘긴다. 재시도가 없던 판에서는 SSL 핸드셰이크
+    # 타임아웃 한 번이 2,664구간짜리 수집을 124구간에서 통째로 끝냈다. 몇 시간을
+    # 걸어 놓고 깜빡임 하나에 접을 이유가 없다. 단, 파라미터 탐색은 retries=1로
+    # 부른다. 거기서 재시도를 돌면 "호스트가 죽었다"는 판정이 몇 분씩 늦어진다.
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "estate-pj"})
+            with urllib.request.urlopen(req, timeout=30) as res:
+                text = res.read().decode("utf-8")
+            break
+        except Exception as exc:
+            if attempt == retries - 1:
+                raise
+            # 재시도를 조용히 넘기면 다음 장애가 로그에서 사라진다. 8월 11일
+            # 사고를 다시 겪어도 "그냥 느린 실행"으로만 보일 것이다. URL에
+            # serviceKey가 실려 있고 예외 문자열이 URL을 물고 오는 경우가
+            # 있으므로 반드시 scrub을 통과시킨다. 공개 저장소다.
+            RETRIES["n"] += 1
+            print(f"  재시도 {attempt + 1}/{retries - 1} ({scrub(exc)[:120]})",
+                  file=sys.stderr, flush=True)
+            time.sleep(min(2 ** attempt, 15))
     if not text.lstrip().startswith(("{", "[")):
         # 활용신청 전이거나 파라미터 오류면 XML이 온다
         return [], text
@@ -211,7 +233,7 @@ def main() -> int:
         for style in PARAM_STYLES:
             print(f"--- {style_label(style)}")
             try:
-                rows, raw = fetch_page(key, style, last_ym, "11110", 1, rows=5)
+                rows, raw = fetch_page(key, style, last_ym, "11110", 1, rows=5, retries=1)
             except Exception as exc:
                 print(f"요청 실패: {scrub(exc)}")
                 continue
@@ -234,7 +256,7 @@ def main() -> int:
             return 1
         label = style_label(cand)
         try:
-            rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5)
+            rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5, retries=1)
         except Exception as exc:
             net_fails += 1
             attempts.append(f"{label}: 요청 실패 {scrub(exc)}"[:200])
@@ -396,7 +418,7 @@ def main() -> int:
                         series[code][ym] = [acc[0], acc[1]]
                     done_cells += 1
                     # 두 시간짜리 백필이 무소식이면 밖에서는 폭주와 구분이 안 된다
-                    if done_cells % 200 == 0:
+                    if done_cells % 50 == 0:
                         el = time.monotonic() - started
                         print(f"진행 {done_cells}/{total_cells} 구간, {el / 60:.0f}분 경과", flush=True)
                     time.sleep(args.sleep)
@@ -430,6 +452,9 @@ def main() -> int:
                 time.sleep(args.sleep)
 
 
+    def _retry_note() -> str:
+        return f" (일시 오류 {RETRIES['n']}회를 재시도로 넘겼습니다)" if RETRIES["n"] else ""
+
     try:
         _collect_all()
     except Exception as exc:
@@ -438,8 +463,13 @@ def main() -> int:
         # 몇 시간짜리 백필이 마지막 예외 하나로 통째로 증발하면 안 된다.
         _save_partial()
         print(f"수집 중 오류로 중단, 진행분 {done_cells}/{total_cells}구간을 "
-              f"{partial_path}에 남겼습니다: {scrub(exc)}", file=sys.stderr)
+              f"{partial_path}에 남겼습니다{_retry_note()}: {scrub(exc)}", file=sys.stderr)
         return 1
+
+    # "완료"라고 쓰지 않는다. 예산 소진이나 전국 모드 조기 종료로 여기 오는
+    # 경로가 있어서, 그때 "수집 완료"가 찍히면 바로 위의 "예산 소진"과 정면으로
+    # 어긋난다. 받은 구간 수만 말하면 두 경우 다 사실이다.
+    print(f"수집 구간 {done_cells}/{total_cells}{_retry_note()}", flush=True)
 
     payload = {"asof": last_ym, "source": "행정안전부 주민등록 인구통계(법정동별)",
                "series": {c: v for c, v in series.items() if v}}
