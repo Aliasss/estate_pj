@@ -42,14 +42,27 @@ BASE = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus"
 # API가 흔들리고 있다는 뜻이고, 그 신호가 로그에 남아야 다음에 원인을 안다.
 RETRIES = {"n": 0}
 
-# 파라미터 격자. 실전 두 번의 실측으로 좁혔다. 1차: 활용신청 유효(JSON 응답).
-# 2차: 월 파라미터가 statsYm일 때만 오류가 NO_MANDATORY(필수 누락)에서
-# INVALID(값·이름 하나가 틀림)로 바뀌었다. 즉 월 표기는 statsYm이 유력하고,
-# 남은 변수는 type 대소문자, lv 유무, 지역코드 파라미터의 이름·자릿수,
-# 등록구분 유무다. 전부 격자로 돌리되 유력 조합을 앞세워 조기 종료를 노린다.
+# 파라미터 격자. 문서 접근이 막힌 채 실측으로 좁혔다. 1차: 활용신청 유효(JSON
+# 응답). 2차: 월 파라미터가 statsYm일 때만 오류가 NO_MANDATORY(필수 누락)에서
+# INVALID(값·이름 하나가 틀림)로 바뀌어 statsYm을 유력하게 봤다. 3차 실행이
+# 그 추정을 뒤집었다. 실제로 행을 돌려준 것은 srchFrYm/srchToYm 쌍이다.
+# 남은 변수였던 type 대소문자, lv 유무, 지역코드 이름·자릿수, 등록구분 유무도
+# 그때 함께 확정됐다. 격자는 그대로 남긴다. 표기가 또 바뀔 때 다시 찾아야 한다.
 # 오류 응답이 head.resultMsg로 즉시 오므로 조합당 1행 호출이면 판별된다.
+#
+# 확정된 조합은 격자 맨 앞에 못박는다. 8월 11일 실행이 이걸 안 해서
+# 죽었다. 격자 순서상 앞의 세 조합이 하필 접속이 흔들리는 순간에 걸렸고,
+# 이미 아는 정답을 시도해 보지도 못한 채 "호스트 무응답"으로 접었다. 정답을
+# 매번 처음부터 다시 찾는 구조 자체가 사고 면적이다. 확정 조합이 언젠가
+# 바뀌더라도 뒤의 격자가 그대로 남아 있으므로 탐색 능력은 잃지 않는다.
+CONFIRMED_STYLE = {
+    "month": "srchFrYm", "month_to": "srchToYm", "type": "JSON",
+    "use_lv": True, "code_key": "stdgCd", "code_len": 10, "reg_val": None,
+}
+
+
 def _styles() -> list[dict]:
-    out = []
+    out = [dict(CONFIRMED_STYLE)]
     for month, month_to in (("statsYm", None), ("stats_ym", None),
                             ("srchFrYm", "srchToYm"), ("srch_fr_ym", "srch_to_ym")):
         for type_val in ("JSON", "json"):
@@ -57,15 +70,24 @@ def _styles() -> list[dict]:
                 for code_key, code_len in (("stdgCd", 5), ("stdgCd", 10),
                                            ("admmCd", 5), (None, 0)):
                     for reg_val in (None, "1"):
-                        out.append({
+                        cand = {
                             "month": month, "month_to": month_to, "type": type_val,
                             "use_lv": use_lv, "code_key": code_key,
                             "code_len": code_len, "reg_val": reg_val,
-                        })
+                        }
+                        if cand != CONFIRMED_STYLE:   # 앞에 못박은 것과 중복 금지
+                            out.append(cand)
     return out
 
 
 PARAM_STYLES = _styles()
+
+# 격자에 축을 하나 더하면서 CONFIRMED_STYLE을 안 고치면 중복 제거가 깨지고
+# 같은 조합이 두 번 돈다. 저장소에 테스트가 없으니 여기서 지킨다. import만
+# 해도 걸린다.
+assert PARAM_STYLES[0] == CONFIRMED_STYLE, "확정 조합이 격자 맨 앞이 아닙니다"
+assert len({json.dumps(s, sort_keys=True) for s in PARAM_STYLES}) == len(PARAM_STYLES), \
+    "격자에 중복 조합이 있습니다"
 
 
 def style_label(s: dict) -> str:
@@ -248,6 +270,11 @@ def main() -> int:
     style = None
     attempts: list[str] = []
     net_fails = 0
+    probe_started = time.monotonic()
+    probe_retries0 = RETRIES["n"]
+    # 확정 조합이 왜 탈락했는지. 연결이 끊긴 것과 표기가 낡은 것은 다른 소식이고,
+    # 경고가 둘을 뭉뚱그리면 다음 사람이 엉뚱한 데를 고친다.
+    confirmed_fell = "탈락해"
     for cand in PARAM_STYLES:
         # 조합마다 예산을 본다. urlopen의 timeout은 소켓 연산당 값이라 응답을
         # 찔끔거리는 서버 하나면 요청 하나가 무한정 잡힌다. 128 x 30초라는
@@ -255,14 +282,26 @@ def main() -> int:
         if over_budget(f"파라미터 탐색 {len(attempts)}/{len(PARAM_STYLES)}조합"):
             return 1
         label = style_label(cand)
+        # 확정 조합은 재시도를 준다. 아는 정답이 깜빡임 한 번에 탈락하면 뒤의
+        # 격자가 아무리 길어도 소용이 없다. 나머지 조합은 retries=1 그대로다.
+        # 거기서 재시도를 돌면 "호스트가 죽었다"는 판정이 몇 분씩 늦어진다.
+        tries = 4 if cand == CONFIRMED_STYLE else 1
         try:
-            rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5, retries=1)
+            rows, raw = fetch_page(key, cand, last_ym, "11110", 1, rows=5, retries=tries)
         except Exception as exc:
             net_fails += 1
+            if cand == CONFIRMED_STYLE:
+                confirmed_fell = "연결에 실패해"
             attempts.append(f"{label}: 요청 실패 {scrub(exc)}"[:200])
             if net_fails >= 3 and net_fails == len(attempts):
-                print("호스트가 응답하지 않습니다 (연속 3회 요청 실패). 파라미터 문제가 "
-                      "아니라 접속 문제입니다. 시간대를 바꿔 재실행하세요.", file=sys.stderr)
+                # 조합 수와 요청 수는 이제 다르다. 확정 조합만 재시도를 받기
+                # 때문이다. "3회 실패"라고만 적으면 3분 걸린 실행을 90초짜리로
+                # 오해하게 만든다. 진단 문구가 스스로를 반박하면 안 된다.
+                reqs = len(attempts) + (RETRIES["n"] - probe_retries0)
+                secs = int(time.monotonic() - probe_started)
+                print(f"호스트가 응답하지 않습니다 ({len(attempts)}개 조합 연속 실패, "
+                      f"요청 {reqs}회, {secs}초). 파라미터 문제가 아니라 접속 "
+                      "문제입니다. 시간대를 바꿔 재실행하세요.", file=sys.stderr)
                 for a in attempts:
                     print(f"  {a}", file=sys.stderr)
                 return 1
@@ -270,7 +309,17 @@ def main() -> int:
         if rows:
             style = cand
             print(f"파라미터 표기 확정: {label}")
+            # 못박은 값은 언젠가 반드시 낡는다. 낡는 순간 침묵하면 다음 사람은
+            # 로그 라벨과 소스의 상수를 눈으로 대조해야 알아챈다. 그건 규율이
+            # 아니라 운이다. 격자가 다른 조합을 찾아냈다는 것 자체가 소식이다.
+            if cand != CONFIRMED_STYLE:
+                print(f"경고: 못박은 확정 조합({style_label(CONFIRMED_STYLE)})이 "
+                      f"{confirmed_fell} 격자가 {label}을 찾았습니다. "
+                      "collect_pop.py의 CONFIRMED_STYLE을 이 조합으로 갱신하세요.",
+                      file=sys.stderr)
             break
+        if cand == CONFIRMED_STYLE:
+            confirmed_fell = "더 이상 행을 주지 않아"
         attempts.append(f"{label}: {scrub(raw)[:160]}")
         time.sleep(0.1)
     if style is None:
@@ -293,7 +342,24 @@ def main() -> int:
         return 1
 
     # 필드 확정: 표본 행에서 코드·인구·세대 필드를 찾는다. 못 찾으면 행을 보여주고 멈춘다.
-    sample_rows, _ = fetch_page(key, style, last_ym, "11110", 1, rows=5)
+    #
+    # 바로 위에서 행을 받은 조합이라도 이 재요청은 두 갈래로 어긋날 수 있다.
+    # 빈 응답이면 [0]에서 IndexError로 죽고, 네 번 다 연결에 실패하면 예외가
+    # main()을 뚫고 나가 트레이스백에 URL이 실린다. 그 URL에는 serviceKey가
+    # 인코딩된 꼴(+ / = 가 %2B %2F %3D)로 붙어 있어 깃허브 시크릿 마스킹이
+    # 가려 주지 못한다. 공개 저장소의 초록불 로그에 키가 남는다는 뜻이다.
+    # 두 갈래 모두 여기서 잡아 진단 문장으로 바꾼다.
+    try:
+        sample_rows, _ = fetch_page(key, style, last_ym, "11110", 1, rows=5)
+    except Exception as exc:
+        print(f"표기({style_label(style)})는 확정했는데 표본 재요청이 실패했습니다. "
+              f"API가 흔들리는 중입니다. 재실행하세요. ({scrub(exc)[:200]})",
+              file=sys.stderr)
+        return 1
+    if not sample_rows:
+        print(f"표기({style_label(style)})는 확정했는데 표본 재요청이 빈 응답을 "
+              "돌려줬습니다. API가 흔들리는 중입니다. 재실행하세요.", file=sys.stderr)
+        return 1
     sample = sample_rows[0]
     if not (_pick(sample, CODE_KEYS) and _pick(sample, POP_KEYS) and _pick(sample, HH_KEYS)):
         print("응답 필드명이 후보와 다릅니다. 표본 행:", file=sys.stderr)
