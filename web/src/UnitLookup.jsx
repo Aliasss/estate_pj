@@ -296,6 +296,8 @@ function BuildingFacts({ u }) {
     u.elvt != null && ['승강기', u.elvt ? `${u.elvt}대` : '없음'],
     u.park != null && ['주차', u.park ? `${u.park}대` : '없음'],
     u.n_dong && ['단지 규모', `${u.n_dong}개 동`],
+    // 좌표 수집이 끝난 물건부터 하나씩 붙는다. 직선거리 기반 도보 환산이다.
+    u.walk != null && ['가까운 역', `${u.stn} 도보 ${u.walk}분`],
   ].filter(Boolean)
   return (
     <>

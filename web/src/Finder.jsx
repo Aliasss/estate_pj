@@ -88,6 +88,8 @@ export default function Finder({ guNames, region = '11' }) {
   const fin = useFinder(region)
   const stationPins = useSubway()
   const [budget, setBudget] = useState('')       // 억
+  const [saleCapIn, setSaleCapIn] = useState('') // 억. 매매가 상한
+  const [maxWalk, setMaxWalk] = useState(0)      // 분. 0이면 무관
   const [minPy, setMinPy] = useState('')         // 평
   const [minYear, setMinYear] = useState(0)
   const [ht, setHt] = useState('')               // '' 전체 / 'A' / 'R'
@@ -107,19 +109,24 @@ export default function Finder({ guNames, region = '11' }) {
   useEffect(() => { setGus([]); setOpen(null) }, [region])
 
   const cap = budget === '' ? null : Math.round(Number(budget) * 10000)
+  const saleCap = saleCapIn === '' ? null : Math.round(Number(saleCapIn) * 10000)
   const minArea = minPy === '' ? null : Number(minPy) * PYEONG
+  // 새 열은 데이터보다 코드가 먼저 배포될 수 있다. 열이 정말 실려 왔는지는
+  // FILL로 채워진 col이 아니라 원본 cols 목록이 말해 준다.
+  const hasSale = fin.status === 'ready' && fin.d.cols.includes('sale')
 
   // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
   // 렌더마다 8만 행을 두 번 훑지 않도록 데이터가 바뀔 때만 센다.
-  const { coverage, geoCoverage } = useMemo(() => {
-    if (fin.status !== 'ready') return { coverage: 0, geoCoverage: 0 }
+  const { coverage, geoCoverage, walkCoverage } = useMemo(() => {
+    if (fin.status !== 'ready') return { coverage: 0, geoCoverage: 0, walkCoverage: 0 }
     const { col, d } = fin
-    let e = 0, g = 0
+    let e = 0, g = 0, w = 0
     for (let i = 0; i < d.n; i++) {
       if (col.elvt[i] != null) e++
       if (col.lat[i] != null) g++
+      if (col.walk[i] != null) w++
     }
-    return { coverage: e / d.n, geoCoverage: g / d.n }
+    return { coverage: e / d.n, geoCoverage: g / d.n, walkCoverage: w / d.n }
   }, [fin])
 
   // 예산 역산. "내 보증금이면 어느 동네에 안전한 선택지가 많은가"는 전 물건의
@@ -151,6 +158,10 @@ export default function Finder({ guNames, region = '11' }) {
       if (ht && col.ht[i] !== ht) continue
       if (guSet && !guSet.has(col.g[i])) continue
       if (cap != null && !(col.jeonse[i] <= cap)) continue
+      // 매매가 필터는 매매 사례가 있는 물건만 통과시킨다. "3억 이하"를 물은
+      // 사람에게 값을 모르는 물건을 끼워 주면 필터가 거짓말이 된다.
+      if (saleCap != null && !(col.sale[i] != null && col.sale[i] <= saleCap)) continue
+      if (maxWalk && !(col.walk[i] != null && col.walk[i] <= maxWalk)) continue
       if (minArea != null && !(col.area[i] >= minArea)) continue
       if (minYear && !(col.by[i] >= minYear)) continue
       if (needSale && !col.ns[i]) continue
@@ -168,9 +179,9 @@ export default function Finder({ guNames, region = '11' }) {
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
+  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
-  useEffect(() => { setLimit(PAGE) }, [cap, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
+  useEffect(() => { setLimit(PAGE) }, [cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
   // 지도에 찍을 점. 좌표가 없는 물건은 뺀다. 지오코딩이 끝나기 전까지는 대부분이 그렇다.
   const pins = useMemo(() => {
@@ -284,6 +295,23 @@ export default function Finder({ guNames, region = '11' }) {
           <input type="number" inputMode="decimal" step="0.5" min="0" placeholder="예: 3"
                  value={budget} onChange={(e) => setBudget(e.target.value)} />
           <em>억</em>
+        </label>
+        <label>
+          <span>매매가 상한{hasSale ? '' : ' · 다음 데이터 갱신 후'}</span>
+          <input type="number" inputMode="decimal" step="0.5" min="0" placeholder="예: 3"
+                 disabled={!hasSale} value={saleCapIn}
+                 onChange={(e) => setSaleCapIn(e.target.value)} />
+          <em>억</em>
+        </label>
+        <label>
+          <span>역까지 도보{walkCoverage > 0 ? '' : ' · 좌표 수집 후'}</span>
+          <select disabled={walkCoverage <= 0} value={maxWalk}
+                  onChange={(e) => setMaxWalk(Number(e.target.value))}>
+            <option value={0}>무관</option>
+            <option value={5}>5분 이내</option>
+            <option value={10}>10분 이내</option>
+            <option value={15}>15분 이내</option>
+          </select>
         </label>
         <label>
           <span>최소 전용면적</span>
@@ -412,6 +440,7 @@ export default function Finder({ guNames, region = '11' }) {
                 {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} · {col.ht[i] === 'A' ? '아파트' : '연립·다세대'}
                 {' · '}전용 {col.area[i]}m²({(col.area[i] / PYEONG).toFixed(1)}평)
                 {col.by[i] ? ` · ${col.by[i]}년` : ''}
+                {col.walk[i] != null ? ` · ${col.stn[i]}역 도보 ${col.walk[i]}분` : ''}
               </span>
               <span className="u-sig">
                 <em>{eok(col.jeonse[i])}</em>

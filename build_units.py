@@ -88,8 +88,11 @@ def pct(numer: float | None, denom: float | None) -> float | None:
 #   - 법정동은 사전으로 접는다. 건물명은 고유값이 38,872개라 사전이 오히려 손해였다.
 # 상세는 어차피 구 파일에서 다시 읽으므로 여기에 담지 않는다.
 # jibun이 들어 있어야 "화곡동 123-45"로 찾을 수 있다. 검증하러 온 사람은 주소를 들고 온다.
+# sale은 매매 실거래 중위(만원). 조건 검색의 매매가 상한 필터가 쓴다. 매매
+# 사례가 없는 물건은 None이고, 열 단위 저장이라 gzip이 거의 다 먹는다.
 FINDER_COLS = ["i", "ht", "g", "u", "jibun", "name", "area", "by", "jeonse", "ratio",
-               "stage", "ns", "nj", "hike", "elvt", "apr", "lat", "lon", "stn", "walk"]
+               "stage", "ns", "nj", "hike", "elvt", "apr", "lat", "lon", "stn", "walk",
+               "sale"]
 STAGES = ["A", "B", "B-", "C"]
 
 
@@ -115,6 +118,7 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
                 # 건축물대장이 아직 안 붙은 물건은 None. 열 단위라 gzip이 거의 다 먹는다.
                 r[col["elvt"]], r[col["apr"]],
                 r[col["lat"]], r[col["lon"]], r[col["stn"]], r[col["walk"]],
+                r[col["med_sale"]],
             ])
     payload = {"build": build_id, "window": window, "gus": gus, "stages": STAGES,
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],

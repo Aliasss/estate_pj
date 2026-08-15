@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  */
 
 /** 없는 열은 비어 있는 것으로 본다. 코드가 데이터보다 먼저 배포되면 그렇게 된다. */
-const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk']
+const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk', 'sale']
 
 /**
  * 비어 있으면 안 되는 열. 이 중 하나라도 빠지면 검색·판정이 undefined 위에서
