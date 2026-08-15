@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, useCompare, useFinder, ym } from './units.js'
+import { REGIONS, useCompare, useFinder, useGuard, ym } from './units.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -101,6 +101,7 @@ export default function Finder({ guNames, region = '11' }) {
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
   const [open, setOpen] = useState(null)
   const compare = useCompare()
+  const guard = useGuard()
 
   // 지역을 바꾸면 선택한 시군구와 펼친 줄은 이전 지역 것이라 의미가 없다
   useEffect(() => { setGus([]); setOpen(null) }, [region])
@@ -424,7 +425,7 @@ export default function Finder({ guNames, region = '11' }) {
             </button>
             {open?.key === key && (
               open.u ? (
-                <UnitCard u={open.u} lawd={d.gus[col.g[i]]} compare={compare}
+                <UnitCard u={open.u} lawd={d.gus[col.g[i]]} compare={compare} guard={guard}
                           onClose={() => setOpen(null)}
                           onMap={col.lat[i] != null ? () => setView('map') : null} />
               )

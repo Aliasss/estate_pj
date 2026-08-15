@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { UnitCard, questionsFor } from './UnitLookup.jsx'
-import { REGIONS, search, useCompare, useFinder, useUnitLoader, ym } from './units.js'
+import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -60,6 +60,7 @@ export default function Verify({ guNames, region = '11' }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null)     // {lawd, u} | {error}
   const compare = useCompare()
+  const guard = useGuard()
   const [showCmp, setShowCmp] = useState(false)
 
   // 키 입력마다 8만 행을 훑으면 저사양 폰에서 입력이 끊긴다. 렌더 우선순위를 낮춰
@@ -135,8 +136,21 @@ export default function Verify({ guNames, region = '11' }) {
     history.pushState(null, '', location.pathname)
   }
 
+  // 지킴이 패널은 등록된 계약의 구 파일만 읽으므로 지역 토글의 로드 상태와
+  // 무관하다. 경기 수집이 안 끝났다고 서울 계약의 감시가 사라지면 안 된다.
+  const guardPanel = guard.items.length > 0 && (
+    <GuardPanel guard={guard} byId={byId}
+                onOpen={(lawd, u) => {
+                  setOpen({ lawd, u })
+                  history.pushState(null, '', `?u=${lawd}.${u.id}`)
+                  scrollTo({ top: 0, behavior: 'smooth' })
+                }} />
+  )
+
   if (fin.status === 'pending') {
     return (
+      <>
+      {guardPanel}
       <section className="card">
         <h2>계약 전 확인</h2>
         <p className="sub">
@@ -144,19 +158,25 @@ export default function Verify({ guNames, region = '11' }) {
           바로 검색하실 수 있습니다.
         </p>
       </section>
+      </>
     )
   }
   if (fin.status === 'error') {
     return (
+      <>
+      {guardPanel}
       <section className="card">
         <h2>계약 전 확인</h2>
         <p className="sub">데이터를 불러오지 못했습니다 ({fin.message})</p>
       </section>
+      </>
     )
   }
 
   const { col, d } = fin
   return (
+    <>
+    {guardPanel}
     <section className="card">
       <h2>계약 전 확인</h2>
       <p className="sub">
@@ -193,7 +213,7 @@ export default function Verify({ guNames, region = '11' }) {
       {open?.u && (
         <>
           <UnitCard u={open.u} lawd={open.lawd} onClose={close} rank={rank}
-                    compare={compare} pctOf={rank?.pctOf}
+                    compare={compare} guard={guard} pctOf={rank?.pctOf}
                     onSibling={(id) => byId(open.lawd, id).then((v) => {
                       if (!v) return
                       setOpen({ lawd: open.lawd, u: v })
@@ -255,6 +275,85 @@ export default function Verify({ guNames, region = '11' }) {
           <NoHit fin={fin} query={dq} />
         )
       )}
+    </section>
+    </>
+  )
+}
+
+/**
+ * 보증금 지킴이 패널. 등록된 계약이 있을 때만, 검색창보다 먼저 보인다.
+ * 계약한 사람에게는 "새로 확인할 것"이 검색보다 앞선 관심사다.
+ */
+function GuardPanel({ guard, byId, onOpen }) {
+  const [details, setDetails] = useState({})
+  useEffect(() => {
+    for (const it of guard.items) {
+      if (details[it.id] !== undefined) continue
+      byId(it.lawd, it.id)
+        .then((u) => setDetails((prev) => ({ ...prev, [it.id]: u ?? { missing: true } })))
+        // 네트워크 실패를 missing으로 오진하면 "데이터 개편" 안내가 거짓말이 된다
+        .catch(() => setDetails((prev) => ({ ...prev, [it.id]: { offline: true } })))
+    }
+    // details는 의도적으로 의존성에서 뺀다. effect가 재렌더 뒤에 실행되어 최신
+    // 값을 닫아 오므로 중복 요청은 없고, 넣으면 setDetails마다 재실행된다.
+  }, [guard.items])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <section className="card">
+      <h2>보증금 지킴이</h2>
+      <p className="sub">
+        등록하신 계약의 건물을 데이터가 갱신될 때마다 다시 봅니다. 등록 이후에
+        생긴 거래 신호, 내 보증금 기준 현재 위험도, 만기 일정을 보여드립니다
+      </p>
+      <ul className="guard-list">
+        {guard.items.map((it) => {
+          const u = details[it.id]
+          const cal = guardCalendar(it.expiry)
+          const sigs = u && !u.missing && !u.offline ? guardSignals(u, it) : []
+          return (
+            <li key={it.id} className="guard-item">
+              <div className="guard-head">
+                <button className="cmp-open"
+                        onClick={() => u && !u.missing && !u.offline && onOpen(it.lawd, u)}>
+                  {it.name}
+                  <small>{it.umd} · 전용 {it.area}m² · 보증금 {it.deposit >= 10000
+                    ? `${(it.deposit / 10000).toFixed(1)}억` : `${it.deposit.toLocaleString()}만`}</small>
+                </button>
+                <button className="cmp-del" onClick={() => guard.remove(it.id)}>해제</button>
+              </div>
+              {u === undefined && <p className="muted-line">확인 중…</p>}
+              {u?.missing && (
+                <div className="verdict serious">
+                  <strong>이 물건을 데이터에서 찾지 못했습니다</strong>
+                  <span>데이터 개편으로 식별자가 바뀌었을 수 있습니다. 해제 후 다시 검색해 등록해 주세요.</span>
+                </div>
+              )}
+              {u?.offline && (
+                <div className="verdict muted">
+                  <strong>데이터를 불러오지 못했습니다</strong>
+                  <span>네트워크 연결을 확인하고 새로고침해 주세요. 등록은 그대로 유지됩니다.</span>
+                </div>
+              )}
+              {u && !u.missing && !u.offline && sigs.length === 0 && (
+                <div className="verdict good">
+                  <strong>등록 이후 새 위험 신호가 없습니다</strong>
+                  <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
+                </div>
+              )}
+              {sigs.map((sg) => (
+                <div key={sg.head} className={`verdict ${sg.tone}`}>
+                  <strong>{sg.head}</strong><span>{sg.body}</span>
+                </div>
+              ))}
+              {cal && (
+                <div className={`verdict ${cal.tone}`}>
+                  <strong>{cal.head}</strong><span>{cal.body}</span>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }

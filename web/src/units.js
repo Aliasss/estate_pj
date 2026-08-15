@@ -233,3 +233,193 @@ export function useCompare() {
     clear: () => save([]),
   }
 }
+
+/* ── 보증금 지킴이 ────────────────────────────────────────────────────
+   계약한 뒤의 감시. 세입자는 도장을 찍는 순간 확인을 멈추지만 위험은 그 뒤
+   2년에 걸쳐 자란다. 등록해 두면 앱을 열 때마다 등록 시점과 오늘 데이터를
+   견줘 "그 사이에 생긴 신호"만 골라 보여준다.
+
+   등록은 기기(localStorage)에만 남는다 — 비교함과 같은 규율이고, 소개
+   페이지의 약속("개인 데이터를 서버에 두지 않습니다")이 그대로 지켜진다.
+   서버 알림은 다음 단계다. 그때도 이 신호 계산이 그대로 배치로 옮겨간다. */
+const GUARD_KEY = 'guard-v1'
+const guardRead = () => {
+  try { return JSON.parse(localStorage.getItem(GUARD_KEY)) || [] } catch { return [] }
+}
+
+/** 전세 확정(비잠정) 행의 마지막 관측월. "등록 이후에 생긴 일"의 기준선이다. */
+function jeonseBaselineYm(u) {
+  let max = null
+  for (const r of u.deals?.j ?? []) {
+    if (r.at(-1) === 'P') continue
+    if (!max || r[0] > max) max = r[0]
+  }
+  return max
+}
+
+export function useGuard() {
+  const [items, setItems] = useState(guardRead)
+  const save = (next) => {
+    setItems(next)
+    try { localStorage.setItem(GUARD_KEY, JSON.stringify(next)) } catch { /* 시크릿 모드 등 */ }
+  }
+  return {
+    items,
+    has: (id) => items.some((x) => x.id === id),
+    add: (lawd, u, deposit, expiry) => {
+      if (items.some((x) => x.id === u.id)) return true
+      // 가득 찼을 때 오래된 것을 조용히 밀어내면 안 된다. 비교함의 탈락은 주말
+      // 계획 하나가 빠지는 것이지만, 지킴이의 탈락은 감시받고 있다고 믿는
+      // 계약이 무감시가 되는 것이다. 거부하고 그렇다고 말한다.
+      if (items.length >= 4) return false
+      save([...items, {
+        v: 1, // 항목 스키마 버전. base 구조가 바뀔 때 마이그레이션 기준
+        lawd, id: u.id, name: u.name || u.jibun, umd: u.umd, area: u.area,
+        deposit, expiry, addedAt: new Date().toISOString().slice(0, 10),
+        // 등록 시점의 관측을 기억해야 그 뒤에 생긴 일을 골라낼 수 있다.
+        // 기준선은 전세 확정(비잠정) 행만으로 잡는다. 이번 달 월세 잠정 하나가
+        // 기준선을 이번 달로 끌어올리면, 신고 지연(30일)으로 등록 뒤에 도착하는
+        // 같은 달 전세 계약이 영구히 걸러진다.
+        base: { ym: jeonseBaselineYm(u), renewHike: u.renew_hike ?? null,
+                nSale24m: u.n_sale_24m ?? 0 },
+        seen: [], // 서버 알림 단계의 확인(ack) 자리. 지금은 비워 둔다
+      }])
+      return true
+    },
+    remove: (id) => save(items.filter((x) => x.id !== id)),
+  }
+}
+
+const gEok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
+const gYm = (s) => `${s.slice(2, 4)}.${s.slice(4, 6)}`
+
+/**
+ * 등록된 계약 하나에 대한 위험 신호. 화면과 (다음 단계의) 배치 알림이 같은
+ * 함수를 쓰도록 순수 함수로 둔다. u는 오늘의 물건 데이터, item은 등록 기록.
+ */
+export function guardSignals(u, item) {
+  const sigs = []
+  const dep = item.deposit
+  const base = item.base ?? {}
+  const after = (v) => !base.ym || v > base.ym
+
+  // 1. 등록 이후 신규 전세가 내 보증금 아래로. 다음 세입자의 보증금이 내 반환
+  //    재원인 구조에서 가장 직접적인 경보다. critical 단정은 '신규'로 신고된
+  //    행만으로 한다. 구분 미기재 행(실측 1.8%)은 갱신(기존 계약 감액)일 수
+  //    있고, 갱신은 옛 가격이라 낮은 게 정상이므로 단정하면 거짓 경보가 된다.
+  //    반지하는 이 앱이 다른 시장으로 취급하므로 그것만으로는 단정하지 않는다.
+  const lowRows = (u.deals?.j ?? []).filter((r) => after(r[0]) && r[1] < dep)
+  const fmtRow = (r) => `${gYm(r[0])}${r.at(-1) === 'P' ? '(잠정)' : ''} ${gEok(r[1])}`
+    + `${r[2] == null ? '' : r[2] <= 0 ? ' 반지하' : ` ${r[2]}층`}`
+  const newLow = lowRows.filter((r) => r[3] === '신규')
+  const ground = newLow.filter((r) => r[2] == null || r[2] > 0)
+  if (newLow.length) {
+    const pick = (rows) => rows.reduce((x, y) => (y[1] < x[1] ? y : x))
+    const worst = pick(ground.length ? ground : newLow)
+    sigs.push({
+      tone: ground.length ? 'critical' : 'serious',
+      head: ground.length ? '신규 전세가 내 보증금보다 낮게 계약됐습니다'
+                          : '반지하 신규 전세가 내 보증금보다 낮게 계약됐습니다',
+      body: `${fmtRow(worst)}에 신규 전세가 나갔습니다 (내 보증금 ${gEok(dep)}). `
+        + (ground.length
+            ? '다음 세입자의 보증금으로 내 보증금을 채우기 어렵다는 신호입니다. '
+              + '만기 전 반환 계획을 집주인에게 지금 확인하세요.'
+            : '반지하는 지상층과 시세가 달라 단정할 수는 없지만, 이 건물의 전세 '
+              + '수요를 살피는 참고 신호입니다.') })
+  } else {
+    const unk = lowRows.filter((r) => r[3] !== '신규' && r[3] !== '갱신')
+    if (unk.length) {
+      const worst = unk.reduce((x, y) => (y[1] < x[1] ? y : x))
+      sigs.push({ tone: 'serious', head: '내 보증금보다 낮은 전세 계약이 신고됐습니다',
+        body: `${fmtRow(worst)} 계약인데 신규·갱신 구분이 신고되지 않았습니다. `
+          + '갱신(기존 계약 감액)이면 오히려 협상 근거이고, 신규면 반환 재원이 '
+          + '줄고 있다는 신호입니다. 다음 갱신 데이터에서 다시 확인합니다.' })
+    }
+  }
+
+  // 2. 등록 이후 갱신에서 보증금 인하가 나타남. 역전세가 이 건물에 도착했다.
+  const newRenew = (u.deals?.j ?? []).some((r) => after(r[0]) && r[3] === '갱신')
+  const wasCut = base.renewHike != null && base.renewHike <= -0.05
+  if (newRenew && u.renew_hike != null && u.renew_hike <= -0.05 && !wasCut) {
+    sigs.push({ tone: 'serious', head: '갱신 계약에서 보증금이 내려가고 있습니다',
+      body: `이 건물 갱신 보증금이 직전 계약 대비 중위 ${Math.round(u.renew_hike * 100)}%입니다. `
+        + '집주인이 보증금 일부를 돌려주고 있다는 뜻이고, 내 만기 때 같은 협상이 '
+        + '가능하다는 근거이기도 합니다.' })
+  }
+
+  // 3. 내 보증금 기준 전세가율. 시장 중위가 아니라 "내 계약"의 위험이다.
+  //    이 건물 매매 표본이 충분할 때만 말한다. 추정으로 경보를 울리면 양치기가 된다.
+  if (u.med_sale && u.n_sale_24m >= 3) {
+    const r = dep / u.med_sale
+    if (r >= 1.0) {
+      sigs.push({ tone: 'critical', head: '내 보증금이 이 건물 매매가를 넘습니다',
+        body: `최근 2년 매매 ${u.n_sale_24m}건 기준 중위 ${gEok(u.med_sale)}. 경매로 가면 `
+          + '전액 회수가 어려운 구간입니다. 보증보험 미가입이라면 지금 가입 가능 여부를 확인하세요.' })
+    } else if (r >= 0.9) {
+      sigs.push({ tone: 'serious', head: `내 보증금이 이 건물 매매가의 ${Math.round(r * 100)}%입니다`,
+        body: `최근 2년 매매 ${u.n_sale_24m}건 기준입니다. 집값이 조금만 내려도 보증금이 `
+          + '매매가를 넘습니다. 만기 6개월 전부터는 반환 계획을 미리 확인해 두세요.' })
+    }
+  }
+
+  // 4. 검증 가능하던 건물이 검증 불능으로. 위험해졌다가 아니라 눈이 감겼다는 뜻.
+  if ((base.nSale24m ?? 0) > 0 && !u.n_sale_24m) {
+    sigs.push({ tone: 'serious', head: '매매 거래가 끊겨 시세 검증이 안 되는 상태가 됐습니다',
+      body: '등록할 때는 최근 2년 매매가 있었는데 지금은 0건입니다. 담보 가치를 실거래로 '
+        + '확인할 수 없게 됐다는 뜻입니다.' })
+  }
+  return sigs
+}
+
+/** 로컬 자정. 'YYYY-MM-DD'를 new Date()로 파싱하면 UTC 자정 = KST 오전 9시가
+    되어 매일 오전 9시에 D-day가 하루 미리 넘어간다. "지났습니다"류 단정문은
+    사실이어야 하므로 두 날짜 모두 로컬 자정으로 맞춘다. */
+function localMidnight(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** 만기 n개월 전의 실제 날짜. 법정 기한은 역월이지 n*30일이 아니다. 60일로
+    근사하면 2월이 낀 만기에서 살아 있는 갱신요구권을 소멸했다고 알리는 날이
+    생긴다. 응당일이 없는 달(4/30의 2개월 전 등)은 말일로 당긴다. */
+function monthsBefore(date, n) {
+  const y = date.getFullYear(), m = date.getMonth() - n, d = date.getDate()
+  const last = new Date(y, m + 1, 0).getDate()
+  return new Date(y, m, Math.min(d, last))
+}
+
+/**
+ * 만기 캘린더. 주택임대차보호법의 기한은 데이터와 무관하게 확정적이다.
+ * 갱신요구권 행사와 갱신거절 통지는 만기 6개월~2개월 전(§6, §6-3). 그 창이
+ * 지나도록 집주인과 나 모두 아무 통지가 없었을 때에만 묵시적 갱신이다(§6①).
+ * 신호가 없는 주에도 이 줄은 항상 나온다 — 조용한 감시가 일하고 있다는
+ * 표시이기도 하다.
+ */
+export function guardCalendar(expiry, now = new Date()) {
+  if (!expiry) return null
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const exp = localMidnight(expiry)
+  const d = Math.round((exp - today) / 86400000)
+  if (d < 0) return { d, tone: 'critical', head: '만기가 지났습니다',
+    body: '보증금을 못 받았다면 이사하기 전에 임차권등기명령부터 신청하세요. 등기 전에 '
+      + '이사하면 우선변제권이 사라집니다. 절차는 법·제도 탭에 있습니다.' }
+  // 법정 통보 창: 만기 6개월 전 ~ 2개월 전. 역월로 계산한다.
+  const window2 = monthsBefore(exp, 2)   // 이 날까지 통보해야 한다
+  const window6 = monthsBefore(exp, 6)
+  if (today > window2) {
+    if (d <= 30) return { d, tone: 'serious', head: `만기 D-${d}`,
+      body: '반환 확답이 없다면 내용증명으로 보증금 반환을 청구해 두세요. 이사 갈 집 계약은 '
+        + '반환 일정을 확정한 뒤에 하셔야 합니다.' }
+    return { d, tone: 'serious', head: `만기 D-${d} · 통보 기한이 지났습니다`,
+      body: '갱신요구·갱신거절 통지 기한(만기 2개월 전)이 지났습니다. 집주인과 나 모두 '
+        + '통보하지 않았다면 같은 조건으로 묵시적 갱신됩니다. 묵시적 갱신이면 나는 언제든 '
+        + '해지를 통보할 수 있고 3개월 뒤 효력이 생깁니다. 이미 통보된 계약이면 반환 '
+        + '일정을 확정하세요.' }
+  }
+  if (today >= window6) return { d, tone: 'warning', head: `만기 D-${d} · 결정할 시간입니다`,
+    body: '갱신요구권 행사 또는 퇴거 통보는 만기 2개월 전'
+      + `(${window2.getMonth() + 1}월 ${window2.getDate()}일)까지입니다. 더 살 생각이면 `
+      + '갱신요구권(5% 상한)을, 나갈 생각이면 통보와 함께 반환 일정을 잡으세요.' }
+  return { d, tone: 'muted', head: `만기 D-${d}`,
+    body: '다음 확인 지점은 만기 6개월 전입니다. 그때 갱신·퇴거를 결정하시면 됩니다.' }
+}

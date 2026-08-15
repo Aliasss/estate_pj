@@ -346,6 +346,69 @@ export function questionsFor(u) {
  * 않는다. 자기 광고주의 값에 "비싸다"고 쓸 수 없는 구조라서다. 우리는 쓸 수 있다.
  * 보고 온 보증금을 넣으면 이 건물의 실제 계약들과 견줘 준다. 협상 카드다.
  */
+/**
+ * 보증금 지킴이 등록. 계약 전 확인이 끝난 자리에서 바로 계약 후 감시로
+ * 이어진다. 보증금과 만기일 두 가지만 받는다 — 그 이상은 물을 이유가 없고,
+ * 두 값 모두 기기 밖으로 나가지 않는다.
+ */
+function GuardAdd({ u, lawd, guard }) {
+  const [openForm, setOpenForm] = useState(false)
+  const [dep, setDep] = useState('')
+  const [exp, setExp] = useState('')
+  const [full, setFull] = useState(false)
+  if (guard.has(u.id)) {
+    return (
+      <button className="cmp-btn" aria-pressed onClick={() => guard.remove(u.id)}>
+        ✓ 지킴이 감시 중 (해제)
+      </button>
+    )
+  }
+  if (!openForm) {
+    return (
+      <button className="cmp-btn" onClick={() => setOpenForm(true)}>
+        + 보증금 지킴이 등록
+      </button>
+    )
+  }
+  const amt = dep === '' || isNaN(Number(dep)) ? null : Math.round(Number(dep) * 10000)
+  const ok = amt > 0 && exp
+  return (
+    <div className="asking guard-add">
+      <label>
+        <b>이 집에 살고 계시거나 계약하셨나요?</b>
+      </label>
+      <p>보증금과 만기일을 등록하면, 데이터가 갱신될 때마다 이 건물의 새 위험
+         신호와 만기 일정을 계약 전 확인 탭에서 알려드립니다. 두 값 모두 이
+         기기에만 저장됩니다.</p>
+      <div className="guard-form">
+        <span className="asking-in">
+          <input inputMode="decimal" placeholder="보증금" value={dep} aria-label="보증금 (억)"
+                 onChange={(e) => setDep(e.target.value)} />
+          <em>억</em>
+        </span>
+        <span className="asking-in">
+          <input type="date" value={exp} aria-label="계약 만기일"
+                 onChange={(e) => setExp(e.target.value)} />
+        </span>
+        <button className="cmp-btn" disabled={!ok}
+                onClick={() => {
+                  if (guard.add(lawd, u, amt, exp)) setOpenForm(false)
+                  else setFull(true)
+                }}>
+          등록
+        </button>
+        <button className="cmp-btn" onClick={() => setOpenForm(false)}>취소</button>
+      </div>
+      {full && (
+        <p className="critical">
+          등록은 최대 4개입니다. 계약 전 확인 탭의 지킴이에서 기존 등록을 해제한 뒤
+          다시 시도해 주세요.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function Asking({ u, pctOf }) {
   const [raw, setRaw] = useState('')
   const amt = raw === '' || isNaN(Number(raw)) ? null : Math.round(Number(raw) * 10000)
@@ -433,7 +496,7 @@ function Actions({ tone, u }) {
   )
 }
 
-export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, pctOf }) {
+export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   return (
@@ -451,6 +514,7 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, pc
           {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
         </button>
       )}
+      {guard && lawd && <GuardAdd u={u} lawd={lawd} guard={guard} />}
 
       <div className={`verdict ${v.tone}`}>
         <strong>{v.head}</strong>
