@@ -143,7 +143,7 @@ def _juso_get(session: requests.Session, url: str, params: dict, timeout: int) -
 
 
 def fetch(session: requests.Session, key: str, target: tuple, _endpoint_idx,
-          throttle: Throttle | None = None, *, max_retries: int = 3,
+          throttle: Throttle | None = None, *, max_retries: int = 4,
           timeout: int = 15) -> list[dict]:
     """좌표 한 건. 주소가 없는 것과 호출이 실패한 것은 완전히 다르게 다뤄야 한다.
 
@@ -187,7 +187,15 @@ def fetch(session: requests.Session, key: str, target: tuple, _endpoint_idx,
             time.sleep(1)
         except Exception as exc:
             last = exc
-            time.sleep(min(1.5**attempt, 4))
+            # E0007은 서버 쪽 속도제한이다. 워커들의 호출이 우연히 겹치면 나오는데,
+            # 기본 백오프(최대 4초)로는 창이 안 끝나서 8%가 그대로 죽었다.
+            # 속도제한만 길게 물러난다. 다른 오류까지 길게 기다리면 죽은 서버
+            # 앞에서 실행 시간만 태운다. 마지막 시도 뒤에는 잘 것 없이 바로 던진다.
+            if attempt < max_retries - 1:
+                if "E0007" in str(exc):
+                    time.sleep(2.0 * (attempt + 1))
+                else:
+                    time.sleep(min(1.5**attempt, 4))
     raise RuntimeError(f"{max_retries}회 실패: {describe(last)}")
 
 
