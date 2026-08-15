@@ -5,6 +5,7 @@ import Law from './Law.jsx'
 import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
 import About from './About.jsx'
+import Wordmark from './Wordmark.jsx'
 import { REGIONS, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
@@ -232,7 +233,7 @@ export default function App() {
     <main className="app">
       <header className="hero">
         <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
-        <h1>내 집 내놔</h1>
+        <h1><Wordmark /></h1>
         {tab !== 'about' && (
           <button className="about-link" onClick={() => setTab('about')}>
             어떤 서비스인가요 →

@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="전세 위험도">
-  <rect width="64" height="64" rx="14" fill="#2a78d6"/>
-  <path d="M14 34 32 18l18 16v14a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z" fill="#fcfcfb"/>
-  <rect x="27" y="38" width="10" height="12" fill="#2a78d6"/>
-  <path d="M32 24v8m0 4v2" stroke="#e34948" stroke-width="4" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="necessities">
+<rect width="64" height="64" rx="14.5" fill="#f7f2e4"/>
+<g transform="translate(15.9,-31.0) scale(0.42)" fill="none" stroke="#191613" stroke-width="21" stroke-linecap="round" stroke-linejoin="round">
+<path d="M 0,104.0 L 0,200.0"/>
+<path d="M 0,158 C 0,114 14,100.0 39,100.0 C 64,100.0 77,116 77,152 L 77,200.0"/>
+</g></svg>

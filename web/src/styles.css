@@ -1,77 +1,96 @@
-/* 색은 역할로만 참조한다. 라이트/다크 값이 한 곳에서 바뀌도록. */
+/* 색은 역할로만 참조한다. 라이트/다크 값이 한 곳에서 바뀌도록.
+   necessities 팔레트: 크림 바탕 + 잉크. 브랜드는 무채색(잉크)이고,
+   색은 데이터(시리즈)와 판정(위험도)에만 쓴다. 로고와 같은 규율이다. */
 :root {
   color-scheme: light;
-  --surface-0: #eef0f4;
-  --surface-1: #ffffff;
-  --border: #e3e6ec;
-  --text-primary: #0b0b0b;
-  --text-secondary: #414b63;
-  --text-muted: #5f6880;
-  --series-1: #2a78d6;   /* 매매 */
-  --series-2: #eb6834;   /* 전세 */
-  --series-3: #2e9e6f;   /* 월세 */
-  --grid: #e9ebf0;
-  --critical: #d03b3b;
-  --warning: #fab219;
-  --good: #0ca30c;
-  --bar: #2a78d6;
-  --bar-track: #e6e8ee;
-  /* 브랜드 남색. CTA·활성 상태·히어로가 같은 색을 쓴다 */
-  --brand: #1e2a4a;
-  --brand-deep: #151f39;
-  --brand-ink: #1e2a4a;
-  --on-brand: #ffffff;
-  --on-brand-dim: rgb(255 255 255 / 0.62);
+  --surface-0: #f7f2e4;
+  --surface-1: #fffdf6;
+  --border: #e7dfcc;
+  --text-primary: #191613;
+  --text-secondary: #4c463a;
+  --text-muted: #70675a;
+  --series-1: #34689b;   /* 매매 */
+  --series-2: #c9663a;   /* 전세 */
+  --series-3: #4f7f54;   /* 월세 */
+  --grid: #eae3d2;
+  --critical: #bd3a2b;
+  --warning: #8a610b;
+  --good: #38713f;
+  --bar: #34689b;
+  --bar-track: #ede6d4;
+  /* 브랜드 잉크. CTA·활성 상태가 같은 색을 쓴다 */
+  --brand: #191613;
+  --brand-deep: #0f0d0a;
+  --brand-ink: #191613;
+  --on-brand: #f7f2e4;
+  --on-brand-dim: rgb(247 242 228 / 0.62);
+  /* 히어로는 라이트/다크 공통으로 잉크판. 로고 반전형과 같은 화면이다 */
+  --hero-bg: #191613;
+  --hero-fg: #f7f2e4;
+  --hero-fg-dim: rgb(247 242 228 / 0.62);
   --card-border: transparent;
-  --shadow-card: 0 6px 24px rgb(23 31 61 / 0.07), 0 1px 3px rgb(23 31 61 / 0.05);
-  --shadow-float: 0 14px 34px rgb(23 31 61 / 0.16);
+  --shadow-card: 0 6px 24px rgb(84 66 24 / 0.08), 0 1px 3px rgb(84 66 24 / 0.06);
+  --shadow-float: 0 14px 34px rgb(60 47 16 / 0.18);
   --radius: 18px;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme='light'])) {
     color-scheme: dark;
-    --surface-0: #121211;
-    --surface-1: #1a1a19;
-    --border: #34342f;
-    --text-primary: #ffffff;
-    --text-secondary: #c9cdd6;
-    --text-muted: #9aa1ae;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #35b57f;
-    --grid: #2a2a26;
-    --bar: #3987e5;
-    --bar-track: #26261f;
-    --brand: #26335c;
-    --brand-deep: #1b2645;
-    --brand-ink: #a9bdf3;
-    --on-brand: #ffffff;
-    --on-brand-dim: rgb(255 255 255 / 0.6);
-    --card-border: #34342f;
+    --surface-0: #191613;
+    --surface-1: #221f19;
+    --border: #3a352a;
+    --text-primary: #f7f2e4;
+    --text-secondary: #d8d1bf;
+    --text-muted: #a49b86;
+    --series-1: #6f9dc9;
+    --series-2: #d97f52;
+    --series-3: #7aa87f;
+    --grid: #2d2921;
+    --critical: #e06152;
+    --warning: #d9a53c;
+    --good: #74a97c;
+    --bar: #6f9dc9;
+    --bar-track: #2d2921;
+    /* 다크에서는 핀이 뒤집힌다. 크림 알약에 잉크 글씨 */
+    --brand: #f7f2e4;
+    --brand-deep: #efe8d4;
+    --brand-ink: #f7f2e4;
+    --on-brand: #191613;
+    --on-brand-dim: rgb(25 22 19 / 0.62);
+    --hero-bg: #110f0c;
+    --hero-fg: #f7f2e4;
+    --hero-fg-dim: rgb(247 242 228 / 0.62);
+    --card-border: #3a352a;
     --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
     --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --surface-0: #121211;
-  --surface-1: #1a1a19;
-  --border: #34342f;
-  --text-primary: #ffffff;
-  --text-secondary: #c9cdd6;
-  --text-muted: #9aa1ae;
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #35b57f;
-  --grid: #2a2a26;
-  --bar: #3987e5;
-  --bar-track: #26261f;
-  --brand: #26335c;
-  --brand-deep: #1b2645;
-  --brand-ink: #a9bdf3;
-  --on-brand: #ffffff;
-  --on-brand-dim: rgb(255 255 255 / 0.6);
-  --card-border: #34342f;
+  --surface-0: #191613;
+  --surface-1: #221f19;
+  --border: #3a352a;
+  --text-primary: #f7f2e4;
+  --text-secondary: #d8d1bf;
+  --text-muted: #a49b86;
+  --series-1: #6f9dc9;
+  --series-2: #d97f52;
+  --series-3: #7aa87f;
+  --grid: #2d2921;
+  --critical: #e06152;
+  --warning: #d9a53c;
+  --good: #74a97c;
+  --bar: #6f9dc9;
+  --bar-track: #2d2921;
+  --brand: #f7f2e4;
+  --brand-deep: #efe8d4;
+  --brand-ink: #f7f2e4;
+  --on-brand: #191613;
+  --on-brand-dim: rgb(25 22 19 / 0.62);
+  --hero-bg: #110f0c;
+  --hero-fg: #f7f2e4;
+  --hero-fg-dim: rgb(247 242 228 / 0.62);
+  --card-border: #3a352a;
   --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
   --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
 }
@@ -89,16 +108,19 @@ body {
 
 .app { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
 
-/* 남색 히어로. 컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
+/* 잉크 히어로. 로고 반전형(잉크 바탕에 크림 워드마크)과 같은 화면.
+   컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
 .hero {
   margin: -16px -16px 16px;
   padding: 30px 20px 46px;
-  background: linear-gradient(165deg, #2b3a63 0%, var(--brand) 55%, var(--brand-deep) 100%);
+  background: var(--hero-bg);
   border-radius: 0 0 28px 28px;
-  color: var(--on-brand);
+  color: var(--hero-fg);
 }
-.hero-hi { margin: 0 0 3px; font-size: 13px; color: var(--on-brand-dim); }
-.hero h1 { margin: 0; font-size: 27px; letter-spacing: -0.02em; line-height: 1.2; color: #fff; }
+.hero-hi { margin: 0 0 8px; font-size: 13px; color: var(--hero-fg-dim); }
+.hero h1 { margin: 0; line-height: 1; }
+/* 워드마크는 currentColor 획이라 히어로 전경색을 그대로 입는다 */
+.hero .wordmark { display: block; height: 30px; width: auto; color: var(--hero-fg); }
 .hero + .card { margin-top: -30px; box-shadow: var(--shadow-float); }
 /* 지역 토글. 히어로 안에서 화면 전체의 범위를 정한다.
    소개 링크와 같은 줄에 붙지 않도록 줄을 내린다 */
@@ -189,11 +211,11 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 
 /* --- 인사이트 / 소개 --- */
 .about-link {
-  appearance: none; border: 1px solid rgb(255 255 255 / 0.35); background: transparent;
-  color: var(--on-brand-dim); font: inherit; font-size: 12px; padding: 4px 10px;
+  appearance: none; border: 1px solid rgb(247 242 228 / 0.35); background: transparent;
+  color: var(--hero-fg-dim); font: inherit; font-size: 12px; padding: 4px 10px;
   border-radius: 999px; cursor: pointer; margin-top: 12px; display: inline-block;
 }
-.about-link:hover { color: var(--on-brand); border-color: rgb(255 255 255 / 0.6); }
+.about-link:hover { color: var(--hero-fg); border-color: rgb(247 242 228 / 0.6); }
 .method {
   font-size: 11.5px; color: var(--text-muted); border-top: 1px dashed var(--border);
   padding-top: 8px; margin: 12px 0 2px; line-height: 1.5;
@@ -322,7 +344,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
 }
 .chip .n { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 11px; }
 .chip[aria-pressed='true'] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
-.chip[aria-pressed='true'] .n { color: rgb(255 255 255 / 0.75); }
+.chip[aria-pressed='true'] .n { color: var(--on-brand-dim); }
 .chip:disabled { opacity: 0.4; cursor: default; }
 .chip.clear { border-style: dashed; }
 
@@ -464,7 +486,7 @@ details > summary { font-size: 12px; color: var(--text-muted); cursor: pointer; 
   display: grid; place-items: center; font-size: 15px; line-height: 1;
   background: var(--surface-0); border: 1px solid var(--border); color: var(--text-muted);
 }
-.law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: var(--surface-0); }
 .law-lead { margin: 5px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-muted); }
 .law-body { margin-top: 12px; }
 .law-body h4 {

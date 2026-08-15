@@ -9,14 +9,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: '내 집 내놔',
-        short_name: '내 집 내놔',
+        name: 'necessities',
+        short_name: 'necessities',
         description: '보고 온 집의 주소를 넣으면 국토교통부 실거래가로 보증금 위험을 확인해 준다',
         lang: 'ko',
         start_url: '/',
         display: 'standalone',
-        background_color: '#fcfcfb',
-        theme_color: '#2a78d6',
+        background_color: '#f7f2e4',
+        theme_color: '#f7f2e4',
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },

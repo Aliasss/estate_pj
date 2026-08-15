@@ -17,10 +17,10 @@ const MAX_PINS = 3000
 const SEOUL = [37.5665, 126.978]
 
 const TONE = {
-  critical: '#d03b3b',
-  serious: '#fab219',
-  warning: '#fab219',
-  good: '#0ca30c',
+  critical: '#bd3a2b',
+  serious: '#a06e0e',
+  warning: '#a06e0e',
+  good: '#3e7d46',
   muted: '#8f8e84',
 }
 
@@ -97,7 +97,7 @@ export default function MapView({ points, stations, selected, onPick, note }) {
     stnLayer.current.clearLayers()
     for (const s of stations ?? []) {
       L.circleMarker([s.lat, s.lon], {
-        radius: 3, weight: 0, fillColor: '#2a78d6', fillOpacity: 0.55,
+        radius: 3, weight: 0, fillColor: '#34689b', fillOpacity: 0.55,
         interactive: true,
       }).bindTooltip(s.name, { direction: 'top' }).addTo(stnLayer.current)
     }

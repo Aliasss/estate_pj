@@ -47,7 +47,7 @@ export default function About({ onBack }) {
   return (
     <>
       <section className="card">
-        <h2>내 집 내놔는 무엇이 다른가요</h2>
+        <h2>necessities는 무엇이 다른가요</h2>
         <p className="sub">
           보증금은 많은 사람에게 전 재산에 가까운 돈입니다. 그런데 그 돈의 위험을
           직접적으로 설명해주는 서비스는 없었습니다
