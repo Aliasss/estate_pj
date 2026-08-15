@@ -17,6 +17,7 @@ env:
   MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
   # 아직 없으면 해당 후보는 건너뛴다. 있으면 같이 확인한다.
   VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
+  JUSO_SEARCH_KEY: ${{ secrets.JUSO_SEARCH_KEY }}
   JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
   SEOUL_OPENAPI_KEY: ${{ secrets.SEOUL_OPENAPI_KEY }}
 
@@ -45,8 +46,8 @@ jobs:
 
       # 지오코딩은 48,226건이라 하루에 다 못 받을 수 있다. 진행분을 릴리스에 남겨
       # 다음 실행이 이어받는다. 건축물대장과 같은 방식이다.
-      - name: 좌표 수집 (VWORLD_KEY 있을 때만)
-        if: ${{ env.VWORLD_KEY != '' }}
+      - name: 좌표 수집 (JUSO_CONFM_KEY 있을 때만)
+        if: ${{ env.JUSO_CONFM_KEY != '' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,7 +70,7 @@ jobs:
             --max-calls ${{ inputs.geo_calls || 30000 }} --rate 8 --workers 4
 
       - name: 좌표 진행분 발행
-        if: ${{ always() && env.VWORLD_KEY != '' && hashFiles('geo.sqlite') != '' }}
+        if: ${{ always() && env.JUSO_CONFM_KEY != '' && hashFiles('geo.sqlite') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""지번 → 좌표. VWorld 지오코더.
+"""지번 → 좌표. 도로명주소(JUSO) 지오코더.
 
 통근 시간·인프라 거리가 전부 여기에 걸려 있다. 물건 좌표가 있어야 가장 가까운
 지하철역을 찾고, 역이 정해져야 목적지까지 시간을 잴 수 있다.
@@ -12,8 +12,18 @@
   - 시작 전에 한 건을 먼저 쏴 본다. 막혀 있으면 15초 만에 끝난다.
   - 진행분을 매번 저장한다. 하루 한도에 걸려도 다음 실행이 이어받는다.
 
+VWorld는 쓰지 않는다. 키를 발급받아 등록까지 했는데 해외 IP를 서버가
+연결 수준에서 끊는다는 것을 변형 여섯 종으로 실측했다(8월 7일, 8월 15일 재확인).
+GitHub Actions 러너는 미국에 있다. JUSO는 같은 러너에서 응답을 준다.
+
+JUSO는 두 단계다. 검색 API가 지번을 도로명 코드로 바꾸고(addrLinkApi),
+좌표 API가 그 코드로 출입구 좌표를 준다(addrCoordApi). 좌표는 EPSG:5179
+평면좌표라 WGS84로 변환해 저장한다. 한 지번 = HTTP 두 번이므로 --rate는
+지번 기준이고 실제 요청 수는 그 두 배다.
+
 사용법
-    export VWORLD_KEY="vworld.kr 인증키"
+    export JUSO_CONFM_KEY="좌표제공 API 승인키"
+    export JUSO_SEARCH_KEY="검색 API 승인키 (없으면 좌표 키로 함께 시도)"
     python geocode.py --units units --db geo.sqlite --max-calls 30000
 """
 
@@ -31,10 +41,11 @@ from datetime import datetime, timezone
 import requests
 
 from collect_bldg import MAX_CONSECUTIVE_FAILURES, Throttle, results
-from lawd_codes import SEOUL_LAWD_CODES
+from lawd_codes import LAWD_CODES
 from scrub import describe
 
-ENDPOINT = "https://api.vworld.kr/req/address"
+SEARCH_ENDPOINT = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
+COORD_ENDPOINT = "https://business.juso.go.kr/addrlink/addrCoordApi.do"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS coords (
@@ -73,7 +84,62 @@ def targets(units_dir: str) -> list[tuple]:
 
 def address_of(target: tuple) -> str:
     lawd, umd, jibun = target
-    return f"서울특별시 {SEOUL_LAWD_CODES.get(lawd, '')} {umd} {jibun}".replace("  ", " ")
+    sido = "서울특별시" if lawd.startswith("11") else "경기도"
+    return f"{sido} {LAWD_CODES.get(lawd, '')} {umd} {jibun}".replace("  ", " ")
+
+
+def _tm_inverse(x: float, y: float) -> tuple[float, float]:
+    """EPSG:5179(UTM-K, GRS80) -> WGS84 경위도. 의존성 없이 역변환한다.
+
+    시리즈 전개 기반이고 수도권에서 오차는 밀리미터급이다. pyproj를 안 쓰는
+    이유는 하나다. 이 저장소의 수집기는 표준 라이브러리 + requests로만 돈다.
+    """
+    import math
+    a, f = 6378137.0, 1 / 298.257222101       # GRS80
+    k0, lon0, lat0 = 0.9996, math.radians(127.5), math.radians(38.0)
+    x0, y0 = 1000000.0, 2000000.0
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+
+    def arc(phi):
+        return a * ((1 - e2 / 4 - 3 * e2**2 / 64 - 5 * e2**3 / 256) * phi
+                    - (3 * e2 / 8 + 3 * e2**2 / 32 + 45 * e2**3 / 1024) * math.sin(2 * phi)
+                    + (15 * e2**2 / 256 + 45 * e2**3 / 1024) * math.sin(4 * phi)
+                    - (35 * e2**3 / 3072) * math.sin(6 * phi))
+
+    m = arc(lat0) + (y - y0) / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2**2 / 64 - 5 * e2**3 / 256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    phi1 = (mu + (3 * e1 / 2 - 27 * e1**3 / 32) * math.sin(2 * mu)
+            + (21 * e1**2 / 16 - 55 * e1**4 / 32) * math.sin(4 * mu)
+            + (151 * e1**3 / 96) * math.sin(6 * mu)
+            + (1097 * e1**4 / 512) * math.sin(8 * mu))
+    sin1, cos1, tan1 = math.sin(phi1), math.cos(phi1), math.tan(phi1)
+    c1 = ep2 * cos1**2
+    t1 = tan1**2
+    n1 = a / math.sqrt(1 - e2 * sin1**2)
+    r1 = a * (1 - e2) / (1 - e2 * sin1**2) ** 1.5
+    d = (x - x0) / (n1 * k0)
+    lat = phi1 - (n1 * tan1 / r1) * (
+        d**2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1**2 - 9 * ep2) * d**4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1**2 - 252 * ep2 - 3 * c1**2) * d**6 / 720)
+    lon = lon0 + (d - (1 + 2 * t1 + c1) * d**3 / 6
+                  + (5 - 2 * c1 + 28 * t1 - 3 * c1**2 + 8 * ep2 + 24 * t1**2) * d**5 / 120) / cos1
+    return math.degrees(lon), math.degrees(lat)
+
+
+def _juso_get(session: requests.Session, url: str, params: dict, timeout: int) -> dict:
+    res = session.get(url, params=params, timeout=timeout)
+    res.raise_for_status()
+    body = res.json().get("results", {})
+    common = body.get("common", {})
+    code = common.get("errorCode")
+    if code not in ("0", 0, None):
+        # E0001 미승인 키, E0012 기간 만료 같은 것은 재시도해도 소용없지만,
+        # 어느 쪽이든 위에서 오류로 세고 연속 실패 차단이 잡는다.
+        raise RuntimeError(f"JUSO {code}: {common.get('errorMessage', '')[:120]}")
+    return body
 
 
 def fetch(session: requests.Session, key: str, target: tuple, _endpoint_idx,
@@ -83,31 +149,37 @@ def fetch(session: requests.Session, key: str, target: tuple, _endpoint_idx,
 
     없는 주소를 오류로 세면 재시도로 한도를 태우고, 오류를 '없음'으로 저장하면
     영영 다시 안 받는다. 앞의 것은 items=[]로, 뒤의 것은 예외로 낸다.
+
+    key는 "검색키|좌표키" 꼴로 온다. 두 단계가 서로 다른 승인 키를 쓸 수 있어서다.
     """
-    params = {
-        "service": "address", "request": "getcoord", "version": "2.0",
-        "crs": "epsg:4326", "type": "PARCEL", "format": "json",
-        "address": address_of(target), "key": key,
-    }
+    search_key, _, coord_key = key.partition("|")
+    coord_key = coord_key or search_key
     last: Exception | None = None
     for attempt in range(max_retries):
         try:
             if throttle:
                 throttle.wait()
-            res = session.get(ENDPOINT, params=params, timeout=timeout)
-            if res.status_code == 429 and throttle:
-                throttle.penalize()
-                raise RuntimeError("429 Too Many Requests")
-            res.raise_for_status()
-            body = res.json().get("response", {})
-            status = body.get("status")
-            if status == "NOT_FOUND":
+            # 1단계: 지번 -> 도로명 코드. 첫 결과를 쓴다. 지번 하나에 도로명이
+            # 여럿인 경우(모퉁이 건물)가 있지만 출입구 좌표 차이는 건물 폭 안이다.
+            found = _juso_get(session, SEARCH_ENDPOINT, {
+                "confmKey": search_key, "keyword": address_of(target),
+                "currentPage": 1, "countPerPage": 1, "resultType": "json",
+            }, timeout)
+            rows = found.get("juso") or []
+            if not rows:
                 return []                       # 주소가 없다. 재시도할 일이 아니다.
-            if status != "OK":
-                err = (body.get("error") or {}).get("text") or status
-                raise RuntimeError(f"VWorld {status}: {err}")
-            point = body.get("result", {}).get("point", {})
-            return [{"lon": float(point["x"]), "lat": float(point["y"])}]
+            j = rows[0]
+            # 2단계: 도로명 코드 -> 출입구 좌표(EPSG:5179)
+            got = _juso_get(session, COORD_ENDPOINT, {
+                "confmKey": coord_key, "admCd": j["admCd"], "rnMgtSn": j["rnMgtSn"],
+                "udrtYn": j["udrtYn"], "buldMnnm": j["buldMnnm"],
+                "buldSlno": j["buldSlno"], "resultType": "json",
+            }, timeout)
+            crows = got.get("juso") or []
+            if not crows or not crows[0].get("entX"):
+                return []                       # 코드에는 있는데 좌표가 없는 건물
+            lon, lat = _tm_inverse(float(crows[0]["entX"]), float(crows[0]["entY"]))
+            return [{"lon": lon, "lat": lat}]
         except requests.exceptions.ConnectionError as exc:
             last = exc
             if attempt >= 1:
@@ -128,7 +200,7 @@ def preflight(key: str, target: tuple) -> str | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="지번 → 좌표 (VWorld)")
+    parser = argparse.ArgumentParser(description="지번 → 좌표 (JUSO)")
     parser.add_argument("--units", default="units", help="물건 패널 디렉터리")
     parser.add_argument("--db", default="geo.sqlite")
     parser.add_argument("--max-calls", type=int, default=0, help="0이면 무제한")
@@ -137,10 +209,13 @@ def main() -> int:
     parser.add_argument("--retry-errors", action="store_true")
     args = parser.parse_args()
 
-    key = os.environ.get("VWORLD_KEY", "").strip()
-    if not key:
-        print("VWORLD_KEY가 없습니다. vworld.kr에서 무료로 발급됩니다.", file=sys.stderr)
+    coord_key = os.environ.get("JUSO_CONFM_KEY", "").strip()
+    search_key = os.environ.get("JUSO_SEARCH_KEY", "").strip() or coord_key
+    if not coord_key:
+        print("JUSO_CONFM_KEY가 없습니다. juso.go.kr 좌표제공 API 승인키가 필요합니다.",
+              file=sys.stderr)
         return 2
+    key = f"{search_key}|{coord_key}"
 
     conn = sqlite3.connect(args.db)
     conn.executescript(SCHEMA)
