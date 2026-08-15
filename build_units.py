@@ -29,6 +29,7 @@ import time
 from collections import Counter, defaultdict
 
 from bldg_join import Registry
+from school_join import Schools
 from subway_join import Nearest
 from match_probe import area_key, norm_jibun, norm_name
 
@@ -151,7 +152,7 @@ def trim_deals(d: dict | None) -> dict | None:
 
 
 def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
-          nearest: Nearest) -> None:
+          nearest: Nearest, schools: Schools) -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
     import datetime
     # 완성 여부는 달력이 정하고, 수집이 거기 못 미치면 수집된 데까지만 쓴다
@@ -290,10 +291,14 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             "apr", "strct", "hhld", "flr", "elvt", "park", "n_dong",
             # 좌표·최근접역. 지오코딩이 안 된 물건은 전부 None으로 나간다.
             "lat", "lon", "stn", "walk",
+            # 인근 학교 수 (초·중·고 반경 1km, 대학 2km). 좌표 없는 물건은 None.
+            "sch_e", "sch_m", "sch_h", "sch_u",
             # 개별 거래 내역. 최신순으로 잘라서 낸다.
             "deals"]
-    BLDG_COLS = COLS[-12:-5]
-    GEO_COLS = COLS[-5:-1]
+    # 음수 슬라이스는 열을 하나만 보태도 소리 없이 어긋난다. 이름으로 못박는다.
+    BLDG_COLS = ["apr", "strct", "hhld", "flr", "elvt", "park", "n_dong"]
+    GEO_COLS = ["lat", "lon", "stn", "walk"]
+    SCH_COLS = ["sch_e", "sch_m", "sch_h", "sch_u"]
 
     by_gu: dict[str, list[list]] = defaultdict(list)
     stage_count = Counter()
@@ -332,6 +337,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         name = names[key].most_common(1)[0][0] if names[key] else ""
         bldg = registry.lookup(lawd, umd, info["jibun"], name)
         geo = nearest.lookup(lawd, umd, info["jibun"])
+        sch = schools.counts(geo.get("lat"), geo.get("lon"))
         by_gu[lawd].append([
             unit_id(key),
             "A" if ht == "아파트" else "R",
@@ -346,6 +352,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             round(st.median(hike), 4) if hike else None,
             *(bldg.get(c) for c in BLDG_COLS),
             *(geo.get(c) for c in GEO_COLS),
+            *(sch.get(c) for c in SCH_COLS),
             trim_deals(deals.get(key)),
         ])
 
@@ -382,6 +389,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
 
     print(registry.report())
     print(nearest.report())
+    print(schools.report())
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")
     print("\n폴백 단계 분포 (최근 전세가 있는 물건 기준):")
@@ -400,6 +408,7 @@ def main() -> int:
     parser.add_argument("--bldg", default="", help="건축물대장 DB. 없으면 해당 열은 비워 둔다")
     parser.add_argument("--geo", default="", help="좌표 DB (geocode.py 결과)")
     parser.add_argument("--subway", default="", help="지하철 subway.json")
+    parser.add_argument("--schools", default="", help="학교 schools.json")
     args = parser.parse_args()
 
     bldg = args.bldg if args.bldg and os.path.exists(args.bldg) else None
@@ -407,10 +416,13 @@ def main() -> int:
         print(f"건축물대장 DB가 없습니다: {args.bldg} — 해당 열 없이 생성합니다")
     geo = args.geo if args.geo and os.path.exists(args.geo) else None
     sub = args.subway if args.subway and os.path.exists(args.subway) else None
+    sch = args.schools if args.schools and os.path.exists(args.schools) else None
     if args.geo and not geo:
         print(f"좌표 DB가 없습니다: {args.geo} — 지도·통근 열 없이 생성합니다")
+    if args.schools and not sch:
+        print(f"학교 자료가 없습니다: {args.schools} — 학교 열 없이 생성합니다")
     conn = sqlite3.connect(args.db)
-    build(conn, args.out, Registry(bldg), Nearest(geo, sub))
+    build(conn, args.out, Registry(bldg), Nearest(geo, sub), Schools(sch))
     conn.close()
     return 0
 

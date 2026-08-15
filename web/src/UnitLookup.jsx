@@ -298,6 +298,9 @@ function BuildingFacts({ u }) {
     u.n_dong && ['단지 규모', `${u.n_dong}개 동`],
     // 좌표 수집이 끝난 물건부터 하나씩 붙는다. 직선거리 기반 도보 환산이다.
     u.walk != null && ['가까운 역', `${u.stn} 도보 ${u.walk}분`],
+    // 학교 개수도 좌표가 있어야 센다. 0은 "없다"는 뜻이므로 그대로 보여 준다.
+    u.sch_e != null && ['학교 (반경 1km)', `초 ${u.sch_e} · 중 ${u.sch_m} · 고 ${u.sch_h}`],
+    u.sch_u != null && ['대학 (반경 2km)', u.sch_u ? `${u.sch_u}곳` : '없음'],
   ].filter(Boolean)
   return (
     <>

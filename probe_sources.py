@@ -99,6 +99,18 @@ CANDIDATES = [
         {"menu": "matchArea"},
         None,
     ),
+    (
+        "초중고 위치 (전국초중등학교위치표준데이터)",
+        "https://api.data.go.kr/openapi/tn_pubr_public_elesch_mskul_lc_api",
+        {"type": "json", "pageNo": 1, "numOfRows": 2},
+        "service",
+    ),
+    (
+        "대학 정보 (전국대학및전문대학정보표준데이터)",
+        "https://api.data.go.kr/openapi/tn_pubr_public_univ_info_api",
+        {"type": "json", "pageNo": 1, "numOfRows": 2},
+        "service",
+    ),
 ]
 
 

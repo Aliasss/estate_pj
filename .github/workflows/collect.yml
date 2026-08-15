@@ -198,6 +198,11 @@ jobs:
           else
             echo "지하철 없음."
           fi
+          if echo "$assets" | grep -qx 'schools.json'; then
+            gh release download "$SNAPSHOT_TAG" --pattern 'schools.json' --clobber
+          else
+            echo "학교 없음."
+          fi
 
       - name: 금리 시계열 수집 (ECOS)
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
@@ -261,7 +266,8 @@ jobs:
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
         run: |
           python build_units.py --db seoul_rt.sqlite --out units \
-            --bldg bldg.sqlite --geo geo.sqlite --subway subway.json
+            --bldg bldg.sqlite --geo geo.sqlite --subway subway.json \
+            --schools schools.json
           tar -czf units.tar.gz -C units .
           ls -lh units.tar.gz
           gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
