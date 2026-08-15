@@ -1,6 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
+ * 지하철역 목록. 물건 데이터의 stn 열은 이 배열의 번호다 — 이름을 물건마다
+ * 박으면 구 파일이 문자열 반복으로 불어나서, 번호를 싣고 화면에서 이름으로
+ * 바꾼다. 파일이 43KB뿐이라 한 번 받아 모듈에 캐시한다.
+ */
+let _subwayCache = null
+export function useSubway() {
+  const [stations, setStations] = useState(_subwayCache ?? [])
+  useEffect(() => {
+    if (_subwayCache) return
+    fetch(`${import.meta.env.BASE_URL}data/subway.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return
+        _subwayCache = d.stations.map((name, i) => ({ name, lat: d.coords[i][0], lon: d.coords[i][1] }))
+        setStations(_subwayCache)
+      })
+      .catch(() => {})          // 역 자료가 없어도 화면은 떠야 한다
+  }, [])
+  return stations
+}
+
+/**
  * 물건 데이터 접근. 화면 두 곳이 같은 파일을 쓰므로 여기 모아 둔다.
  *
  * finder.json  서울 전체 요약(열 단위, gzip 1MB). 검색과 조건 걸기에 쓴다.

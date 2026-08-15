@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, useCompare, useFinder, useGuard, ym } from './units.js'
+import { REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -70,18 +70,6 @@ function safety(ratio, stage, ns) {
 }
 
 /** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
-export function useSubway() {
-  const [stations, setStations] = useState([])
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/subway.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setStations(
-        d.stations.map((name, i) => ({ name, lat: d.coords[i][0], lon: d.coords[i][1] }))))
-      .catch(() => {})          // 역 자료가 없어도 지도는 떠야 한다
-  }, [])
-  return stations
-}
-
 const PAGE = 60
 
 export default function Finder({ guNames, region = '11' }) {
@@ -454,7 +442,8 @@ export default function Finder({ guNames, region = '11' }) {
                 {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} · {col.ht[i] === 'A' ? '아파트' : '연립·다세대'}
                 {' · '}전용 {col.area[i]}m²({(col.area[i] / PYEONG).toFixed(1)}평)
                 {col.by[i] ? ` · ${col.by[i]}년` : ''}
-                {col.walk[i] != null ? ` · ${col.stn[i]}역 도보 ${col.walk[i]}분` : ''}
+                {/* stn은 역 번호다. 이름이 아직 안 왔으면 역 이름 없이 도보만 적는다. */}
+                {col.walk[i] != null ? ` · ${stationPins[col.stn[i]] ? `${stationPins[col.stn[i]].name}역 ` : ''}도보 ${col.walk[i]}분` : ''}
               </span>
               <span className="u-sig">
                 <em>{eok(col.jeonse[i])}</em>

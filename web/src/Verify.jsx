@@ -1,8 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { useSubway } from './Finder.jsx'
 import MapView from './MapView.jsx'
 import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useUnitLoader, ym } from './units.js'
+import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.

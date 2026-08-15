@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { latestRate, useRates, ym as ymKor } from './units.js'
+import { latestRate, useRates, ym as ymKor, useSubway } from './units.js'
 
 export const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -284,6 +284,8 @@ function Wolse({ deals, jeonse }) {
 
 /** 건축물대장. 수집이 끝나기 전까지는 없는 물건이 더 많아서 상태를 분명히 밝힌다. */
 function BuildingFacts({ u }) {
+  // stn 열은 역 번호다. 이름은 지하철 목록에서 찾는다.
+  const stations = useSubway()
   const has = u.apr != null || u.hhld != null || u.elvt != null
   if (!has) {
     return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
@@ -297,7 +299,7 @@ function BuildingFacts({ u }) {
     u.park != null && ['주차', u.park ? `${u.park}대` : '없음'],
     u.n_dong && ['단지 규모', `${u.n_dong}개 동`],
     // 좌표 수집이 끝난 물건부터 하나씩 붙는다. 직선거리 기반 도보 환산이다.
-    u.walk != null && ['가까운 역', `${u.stn} 도보 ${u.walk}분`],
+    u.walk != null && ['가까운 역', `${stations[u.stn] ? `${stations[u.stn].name}역 ` : ''}도보 ${u.walk}분`],
     // 학교 개수도 좌표가 있어야 센다. 0은 "없다"는 뜻이므로 그대로 보여 준다.
     u.sch_e != null && ['학교 (반경 1km)', `초 ${u.sch_e} · 중 ${u.sch_m} · 고 ${u.sch_h}`],
     u.sch_u != null && ['대학 (반경 2km)', u.sch_u ? `${u.sch_u}곳` : '없음'],
