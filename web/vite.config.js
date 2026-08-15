@@ -11,7 +11,7 @@ export default defineConfig({
       manifest: {
         name: 'necessities',
         short_name: 'necessities',
-        description: '보고 온 집의 주소를 넣으면 국토교통부 실거래가로 보증금 위험을 확인해 준다',
+        description: '계약 전에 꼭 필요한 것들. 실거래가로 보증금 위험을 확인해 드립니다',
         lang: 'ko',
         start_url: '/',
         display: 'standalone',

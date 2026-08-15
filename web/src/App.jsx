@@ -232,7 +232,7 @@ export default function App() {
   return (
     <main className="app">
       <header className="hero">
-        <p className="hero-hi">전세 계약, 도장 찍기 전에</p>
+        <p className="hero-hi">계약 전에 꼭 필요한 것들</p>
         <h1><Wordmark /></h1>
         {tab !== 'about' && (
           <button className="about-link" onClick={() => setTab('about')}>
