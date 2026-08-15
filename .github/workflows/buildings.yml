@@ -19,7 +19,11 @@ on:
         default: ''
       max_calls:
         description: '이번 실행 최대 호출 수'
-        default: '9000'
+        # 9,000에서 내렸다. 22시 시작 회차는 자정을 걸치므로 하루 쿼터(1만)를
+        # 어제 실행의 새벽 꼬리와 나눠 쓴다. 9,000이면 페이지·재시도까지 합쳐
+        # 상한에 딱 붙고, 실제로 8/15 밤 정기 1회차가 2,490건 만에 429 절벽을
+        # 맞았다(전날 수동 실행 꼬리 약 6,700건 + 당일분). 8,000이면 여유가 남는다.
+        default: '8000'
       workers:
         description: '동시 호출 수. 응답 대기를 겹치는 용도'
         default: '2'
@@ -132,7 +136,7 @@ jobs:
           IN_PROBE: ${{ inputs.probe == true && '1' || '' }}
         run: |
           python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite \
-            --lawd "$IN_LAWD" --max-calls "${IN_MAX_CALLS:-9000}" \
+            --lawd "$IN_LAWD" --max-calls "${IN_MAX_CALLS:-8000}" \
             --workers "${IN_WORKERS:-2}" --rate "${IN_RATE:-1}" \
             ${IN_PROBE:+--probe}
 
