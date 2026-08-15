@@ -132,11 +132,31 @@ function withSiblings(g, u) {
  * 반드시 전수를 훑은 뒤에 자른다. 앞에서 끊고 정렬하면 파일 순서상 앞에 몰린
  * 무명 빌라들이 결과를 차지한다. 실측: "화곡동" 검색이 실제 상위 40개와 0개 겹쳤다.
  */
+/**
+ * 생활권 별칭. 신도시 이름은 법정동과 다르다 — 평촌신도시 단지 대부분은
+ * 관양·비산·호계동에 있어서, "평촌" 검색에 평촌동 84건만 주면 신도시를
+ * 통째로 숨기는 것이다. 별칭은 (시군구, 법정동들)로 푼다. 법정동은 생활권의
+ * 근사라 신도시 밖 구역도 일부 섞인다 — 좁게 숨기는 것보다 넓게 보여주고
+ * 이름·동으로 다시 좁히게 하는 쪽이 낫다. 동 목록은 실데이터로 검증했다.
+ */
+const AREA_ALIASES = {
+  평촌: [{ lawd: '41173', umds: ['평촌동', '관양동', '비산동', '호계동'] }],
+  산본: [{ lawd: '41410', umds: ['산본동', '금정동'] }],
+  판교: [{ lawd: '41135', umds: ['판교동', '백현동', '삼평동', '운중동', '하산운동'] }],
+  광교: [{ lawd: '41117', umds: ['이의동', '원천동', '하동'] },
+         { lawd: '41465', umds: ['상현동'] }],
+  위례: [{ lawd: '11710', umds: ['장지동'] },
+         { lawd: '41131', umds: ['창곡동'] },
+         { lawd: '41450', umds: ['학암동'] }],
+}
+
 export function search(fin, query, limit = 40, guNames = null) {
   const raw = query.trim()
   const { col, d, flat } = fin
 
   let gset = null
+  let area = null        // (구 인덱스, 동 인덱스) 합성 키의 집합
+  const aliasWords = []
   const kept = []
   for (const t of raw.split(/\s+/)) {
     if (/^(서울(특별시|시)?|경기도?)$/.test(t)) continue
@@ -151,24 +171,53 @@ export function search(fin, query, limit = 40, guNames = null) {
         continue
       }
     }
+    // "평촌"도 "평촌신도시"도 같은 곳이다. 다른 지역 파인더에서는 해당 구가
+    // 없어 조용히 빠진다(위례는 서울 파인더에서 장지동만 잡힌다).
+    const aliasKey = t.replace(/신도시$/, '')
+    if (AREA_ALIASES[aliasKey]) {
+      let hit = false
+      for (const seg of AREA_ALIASES[aliasKey]) {
+        const gi = d.gus.indexOf(seg.lawd)
+        if (gi < 0) continue
+        for (const name of seg.umds) {
+          const ui = d.umds.indexOf(name)
+          if (ui >= 0) { (area ??= new Set()).add(gi * 100000 + ui); hit = true }
+        }
+      }
+      if (hit) { aliasWords.push(aliasKey); continue }
+    }
     kept.push(t)
   }
   const q = kept.join('').replace(/\s+/g, '')
   // 구 이름만 넣은 경우("강서구")는 그 구에서 전세가 많은 순으로 보여 준다
-  if (q.length < 2 && gset == null) return { idx: [], total: 0 }
+  if (q.length < 2 && gset == null && area == null) return { idx: [], total: 0 }
 
   const out = []
   for (let i = 0; i < d.n; i++) {
     if (gset != null && !gset.has(col.g[i])) continue
+    const inArea = area != null && area.has(col.g[i] * 100000 + col.u[i])
     if (q.length >= 2) {
+      // 별칭 + 텍스트("평촌 무궁화")면 생활권 안에서 텍스트로 좁힌다.
+      // 알려진 한계: 권역 밖인데 건물명이 별칭으로 시작하는 조합("판교 밸리호반",
+      // 고등동)은 여기서 빠진다. 붙여 치거나 별칭만 치면 잡히므로 감수한다.
+      if (area != null && !inArea) continue
       const umd = d.umds[col.u[i]] || ''
       if (!flat[i].includes(q) && !(umd + (col.jibun?.[i] ?? '')).includes(q)) continue
+    } else if (area != null) {
+      // 별칭만("평촌")이면 생활권 전부에, 이름에 그 말이 든 인접 건물을 더한다
+      if (!inArea && !aliasWords.some((w) => flat[i].includes(w))) continue
     }
     out.push(i)
   }
   // 같은 건물의 평형이 여럿이면 전세 계약이 많은 것부터. 사람들이 실제로 사는 평형이다.
   out.sort((a, b) => (col.nj[b] ?? 0) - (col.nj[a] ?? 0))
-  return { idx: out.slice(0, limit), total: out.length }
+  // 생활권 확장이 일어났으면 무엇으로 넓혔는지 함께 돌려준다. "평촌을 쳤는데
+  // 왜 비산동이 나오지"의 답은 결과 상단 한 줄이 내는 것이 맞다.
+  const areaNote = area != null
+    ? { words: aliasWords,
+        umds: [...area].map((k) => d.umds[k % 100000]).filter((v, i, arr) => arr.indexOf(v) === i) }
+    : null
+  return { idx: out.slice(0, limit), total: out.length, areaNote }
 }
 
 /**

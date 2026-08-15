@@ -247,6 +247,12 @@ export default function Verify({ guNames, region = '11' }) {
           </p>
         ) : hits.idx.length ? (
           <>
+          {hits.areaNote && (
+            <p className="muted-line">
+              {hits.areaNote.words.join('·')} 생활권({hits.areaNote.umds.join('·')})
+              전체의 결과입니다. 신도시는 법정동 이름과 달라서 권역으로 함께 찾아드립니다.
+            </p>
+          )}
           {hits.total > hits.idx.length && (
             <p className="muted-line">
               {hits.total.toLocaleString()}개가 맞습니다. 전세 계약이 많은 순으로
