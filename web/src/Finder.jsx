@@ -304,7 +304,10 @@ export default function Finder({ guNames, region = '11' }) {
           <em>억</em>
         </label>
         <label>
-          <span>역까지 도보{walkCoverage > 0 ? '' : ' · 좌표 수집 후'}</span>
+          {/* 좌표가 일부만 수집된 동안에는 이 필터가 좌표 없는 건물을 걸러낸다는
+              사실을 숨기지 않는다. 수집이 끝나면 백분율 표기는 저절로 사라진다. */}
+          <span>역까지 도보{walkCoverage <= 0 ? ' · 좌표 수집 후'
+            : walkCoverage < 0.95 ? ` · 좌표 있는 ${Math.round(walkCoverage * 100)}%만 검색됨` : ''}</span>
           <select disabled={walkCoverage <= 0} value={maxWalk}
                   onChange={(e) => setMaxWalk(Number(e.target.value))}>
             <option value={0}>무관</option>
