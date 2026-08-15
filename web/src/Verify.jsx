@@ -1,5 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { UnitCard, questionsFor } from './UnitLookup.jsx'
+import { useSubway } from './Finder.jsx'
+import MapView from './MapView.jsx'
+import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useUnitLoader, ym } from './units.js'
 
 /**
@@ -62,6 +64,10 @@ export default function Verify({ guNames, region = '11' }) {
   const compare = useCompare()
   const guard = useGuard()
   const [showCmp, setShowCmp] = useState(false)
+  // 리포트 안의 위치 지도. 물건이 바뀌면 접는다 — 이전 물건 지도가 새 리포트에 남으면 오독한다.
+  const [showMap, setShowMap] = useState(false)
+  const stationPins = useSubway()
+  useEffect(() => { setShowMap(false) }, [open?.u?.id])
 
   // 키 입력마다 8만 행을 훑으면 저사양 폰에서 입력이 끊긴다. 렌더 우선순위를 낮춰
   // 타이핑을 먼저 그리게 한다.
@@ -214,12 +220,20 @@ export default function Verify({ guNames, region = '11' }) {
         <>
           <UnitCard u={open.u} lawd={open.lawd} onClose={close} rank={rank}
                     compare={compare} guard={guard} pctOf={rank?.pctOf}
+                    onMap={open.u.lat != null ? () => setShowMap((v) => !v) : null}
                     onSibling={(id) => byId(open.lawd, id).then((v) => {
                       if (!v) return
                       setOpen({ lawd: open.lawd, u: v })
                       history.pushState(null, '', `?u=${open.lawd}.${id}`)
                       scrollTo({ top: 0, behavior: 'smooth' })
                     })} />
+          {showMap && open.u.lat != null && (
+            <MapView points={[{
+                       lat: open.u.lat, lon: open.u.lon, tone: ratioTone(open.u.ratio),
+                       label: `${open.u.name || '(이름 없음)'} · ${eok(open.u.med_jeonse)}`,
+                     }]}
+                     stations={stationPins} note="파란 점은 지하철역입니다" />
+          )}
           <ShareRow lawd={open.lawd} id={open.u.id} />
 
           <h3 className="facts-h">이 앱이 답하지 못하는 것</h3>

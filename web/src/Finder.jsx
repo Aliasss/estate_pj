@@ -70,7 +70,7 @@ function safety(ratio, stage, ns) {
 }
 
 /** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
-function useSubway() {
+export function useSubway() {
   const [stations, setStations] = useState([])
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/subway.json`)
@@ -419,8 +419,10 @@ export default function Finder({ guNames, region = '11' }) {
 
       {view === 'map' && (
         <>
+          {/* 마커를 누르면 지도에 머문 채 아래에 카드를 편다. 목록으로 튕기면
+              방금 보던 자리를 잃는다 — 지도는 위치 감각이 전부인 화면이다. */}
           <MapView points={pins} stations={stationPins} selected={picked}
-                   onPick={(p) => { setView('list'); toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`) }}
+                   onPick={(p) => toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`)}
                    note={pins.length ? `좌표를 ${pct0(geoCoverage)} 확보했습니다` : '파란 점은 지하철역입니다'} />
           {!pins.length && (
             <p className="warnline">
@@ -428,6 +430,15 @@ export default function Finder({ guNames, region = '11' }) {
               남았습니다 ({d.n.toLocaleString()}건). 파란 점은 지하철역이고, 좌표가 붙으면
               조건에 맞는 물건이 그 위에 뜹니다.
             </p>
+          )}
+          {open && (
+            open.u ? (
+              // open.key 앞자리가 구 인덱스다. 목록과 같은 카드를 지도 아래에 편다.
+              <UnitCard u={open.u} lawd={d.gus[+open.key.split('-')[0]]} compare={compare}
+                        guard={guard} onClose={() => setOpen(null)} />
+            )
+            : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>
+            : <p className="muted-line">불러오는 중…</p>
           )}
         </>
       )}
