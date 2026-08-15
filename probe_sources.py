@@ -72,6 +72,13 @@ CANDIDATES = [
         "service",
     ),
     (
+        "도로명주소 검색 API (juso, 같은 키로 되는지)",
+        "https://business.juso.go.kr/addrlink/addrLinkApi.do",
+        {"currentPage": 1, "countPerPage": 3, "keyword": "서울특별시 중구 남창동 205-18",
+         "resultType": "json"},
+        "confm",
+    ),
+    (
         "도로명주소 좌표제공 API (juso)",
         "https://business.juso.go.kr/addrlink/addrCoordApi.do",
         {"currentPage": 1, "countPerPage": 3, "keyword": "서울특별시 중구 남창동 205-18",

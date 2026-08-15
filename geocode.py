@@ -55,7 +55,10 @@ def targets(units_dir: str) -> list[tuple]:
     """앱에 뜨는 물건의 고유 지번. (시군구코드, 법정동, 지번) 순."""
     seen = set()
     for path in sorted(glob.glob(os.path.join(units_dir, "*.json"))):
-        if os.path.basename(path) in ("index.json", "finder.json"):
+        base = os.path.basename(path)
+        # finder-11/finder-41 같은 분할 요약 파일에는 rows가 없다. 물건 파일은
+        # 다섯 자리 시군구 코드 이름뿐이다.
+        if not (base[:5].isdigit() and base.endswith(".json")):
             continue
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
