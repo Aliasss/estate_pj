@@ -232,8 +232,11 @@ export default function App() {
   return (
     <main className="app">
       <header className="hero">
-        <p className="hero-hi">계약 전에 꼭 필요한 것들</p>
+        <p className="hero-hi">부동산 계약의 세컨드 오피니언</p>
         <h1><Wordmark /></h1>
+        {/* 처음 온 사람이 3초 안에 "고르는 앱이 아니라 확인하는 앱"임을 알아야 한다.
+            브랜드 태그라인("계약 전에 꼭 필요한 것들")은 소개와 앱 설명에 산다. */}
+        <p className="hero-tag">계약하고 나서야 알게 되는 것들을, 계약하기 전에</p>
         {tab !== 'about' && (
           <button className="about-link" onClick={() => setTab('about')}>
             어떤 서비스인가요 →

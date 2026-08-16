@@ -130,12 +130,14 @@ body {
    컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
 .hero {
   margin: -16px -16px 16px;
-  padding: 30px 20px 46px;
+  padding: 36px 20px 48px;
   background: var(--hero-bg);
   border-radius: 0 0 28px 28px;
   color: var(--hero-fg);
 }
-.hero-hi { margin: 0 0 8px; font-size: var(--fs-sub); color: var(--hero-fg-dim); }
+.hero-hi { margin: 0 0 14px; font-size: var(--fs-sub); color: var(--hero-fg-dim); }
+/* 워드마크 아래 가치 문장. 답답하지 않게 위아래로 숨을 준다. */
+.hero-tag { margin: 16px 0 20px; font-size: var(--fs-sub); color: var(--hero-fg-dim); line-height: 1.6; }
 .hero h1 { margin: 0; line-height: 1; }
 /* 워드마크는 currentColor 획이라 히어로 전경색을 그대로 입는다 */
 .hero .wordmark { display: block; height: 30px; width: auto; color: var(--hero-fg); }
