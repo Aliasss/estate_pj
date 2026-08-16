@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
+import ContractPlan from './ContractPlan.jsx'
 import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 
@@ -296,6 +297,9 @@ export default function Verify({ guNames, region = '11' }) {
         )
       )}
     </section>
+
+    {/* 검증을 마치고 계약을 결정한 사람의 다음 단계. 검색보다 아래가 맞다. */}
+    <ContractPlan />
     </>
   )
 }

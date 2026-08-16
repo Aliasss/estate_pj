@@ -588,6 +588,27 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* 손가락으로 누르는 링크다. 글자는 작아도 누를 자리는 작지 않게. */
 .site-foot a { color: var(--text-secondary); display: inline-block; padding: 6px 4px; }
 
+/* --- 계약 일정 만들기 --- */
+.plan-in { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 6px; }
+.plan-in label { display: flex; flex-direction: column; gap: 4px; }
+.plan-in span { font-size: var(--fs-tiny); color: var(--text-muted); }
+.plan-in input {
+  font: inherit; font-size: var(--fs-input); padding: 7px 10px; width: 160px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-0); color: var(--text-primary);
+}
+.plan { list-style: none; margin: 10px 0 12px; padding: 0; }
+.plan li { display: flex; gap: 12px; padding: 10px 2px; }
+.plan li + li { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+/* 지난 일정은 지운 게 아니라 흐려진다. 놓친 것을 알아채는 것도 정보다. */
+.plan li.past { opacity: 0.55; }
+.plan-when { flex-shrink: 0; width: 64px; display: flex; flex-direction: column; gap: 1px; }
+.plan-when b { font-size: var(--fs-sub); font-variant-numeric: tabular-nums; }
+.plan-when small { font-size: var(--fs-tiny); color: var(--text-muted); }
+.plan-what { display: flex; flex-direction: column; gap: 3px; }
+.plan-what > b { font-size: var(--fs-sub); }
+.plan-what > span { font-size: var(--fs-small); color: var(--text-secondary); line-height: 1.6; }
+
 /* 갱신 시점 한 줄. 부제 아래 붙어 언제 계산됐고 언제 다시 도는지 말한다. */
 .ins-when { margin: 8px 0 0; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.6; }
 .ins-when b { color: var(--text-secondary); font-weight: 600; }
