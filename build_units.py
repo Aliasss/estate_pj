@@ -345,7 +345,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         ter = terrain.lookup(lawd, umd, info["jibun"], geo.get("stn"))
         by_gu[lawd].append([
             unit_id(key),
-            "A" if ht == "아파트" else "R",
+            {"아파트": "A", "오피스텔": "O"}.get(ht, "R"),
             name,
             umd, info["jibun"],
             round(info["area"], 2) if info["area"] else None,
@@ -400,7 +400,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")
     print("\n폴백 단계 분포 (최근 전세가 있는 물건 기준):")
-    for ht in ("아파트", "연립다세대"):
+    for ht in ("아파트", "연립다세대", "오피스텔"):
         tot = sum(v for (h, _), v in stage_count.items() if h == ht)
         if tot:
             parts = "  ".join(f"{s}={stage_count[(ht, s)]:,}({stage_count[(ht, s)] / tot:.0%})"

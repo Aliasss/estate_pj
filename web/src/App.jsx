@@ -275,8 +275,8 @@ export default function App() {
       <section className="card">
         <h2>서울·경기 거래량 조망</h2>
         <p className="sub">
-          아파트·연립다세대 실거래 신고 건수입니다({ymDot(data.months[0])}부터 월별,
-          전월세는 갱신 계약 포함, 단독·오피스텔은 수집 범위에 포함되지 않습니다).
+          아파트·연립다세대·오피스텔 실거래 신고 건수입니다({ymDot(data.months[0])}부터
+          월별, 전월세는 갱신 계약 포함, 단독주택은 수집 범위에 포함되지 않습니다).
           회색 잠정 구간에서 줄어드는 것처럼 보이는 부분은 실제 감소가 아니라
           아직 접수되지 않은 신고입니다
         </p>
@@ -368,9 +368,13 @@ export default function App() {
       </div>
       <div className="controls detail-controls">
         <div className="seg" role="group" aria-label="주택 유형">
-          {['연립다세대', '아파트'].map((t) => (
-            <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
-          ))}
+          {/* 오피스텔은 데이터가 실제로 있을 때만 버튼을 낸다. 백필이 끝나기 전
+              빈 차트로 안내하는 것보다 없는 편이 낫다. */}
+          {['연립다세대', '아파트', '오피스텔']
+            .filter((t) => t !== '오피스텔' || data.panel.some((p) => p.housing_type === t))
+            .map((t) => (
+              <button key={t} aria-pressed={housing === t} onClick={() => setHousing(t)}>{t}</button>
+            ))}
         </div>
         <select value={gu} onChange={(e) => setGu(e.target.value)} aria-label="시군구">
           {view.guList.map((g) => <option key={g.lawd_cd} value={g.lawd_cd}>{g.sgg_nm}</option>)}

@@ -85,6 +85,22 @@ SOURCES = {
             "전월세",
             "연립다세대 전월세 실거래가",
         ),
+        # 오피스텔은 fetch_log가 비어 있으므로 추가된 첫 실행이 60개월을 통째로
+        # 백필한다. API 쿼터가 소스별이라 기존 수집과 한도를 나누지 않는다.
+        Source(
+            "offi_trade",
+            "RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade",
+            "오피스텔",
+            "매매",
+            "오피스텔 매매 실거래가",
+        ),
+        Source(
+            "offi_rent",
+            "RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent",
+            "오피스텔",
+            "전월세",
+            "오피스텔 전월세 실거래가",
+        ),
     ]
 }
 

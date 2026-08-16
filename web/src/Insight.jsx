@@ -146,7 +146,7 @@ export default function Insight({ onGoFind }) {
                      format={{ tick: (v) => `${Math.round(v * 100)}%`, value: pctPt }} />
           <Method>
             방법론: 월별 전월세 신고 중 월세액이 있는 계약의 비율. 갱신 계약 포함,
-            아파트·연립다세대 기준.
+            아파트·연립다세대·오피스텔 기준.
             {ws.jeonseChange != null && ws.jeonseChange < -0.02 && (
               <> 같은 기간 전세 신고 절대량도 {signed(ws.jeonseChange)} 줄어,
               비중 상승이 분모 착시가 아닙니다.</>

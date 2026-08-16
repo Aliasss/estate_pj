@@ -18,9 +18,15 @@ export const STAGE = {
  *  - 검증 가능성: 이 건물 매매 사례가 있느냐. 없으면 담보 가치를 확인할 방법이 없다.
  *  - 전세가율 수준: 있느냐 없느냐를 통과했을 때만 의미가 있다.
  * 연립다세대에서는 첫째 축이 사실상 위험 그 자체라 화면 맨 위에 온다.
+ * 오피스텔도 같은 결이다: 개별 호실 매매가 얇고, 신축에 전세만 채우는
+ * 전세사기 패턴이 다세대와 함께 가장 잦은 유형이다.
  */
 function verdict(u) {
-  const villa = u.ht === 'R'
+  const villa = u.ht === 'R' || u.ht === 'O'
+  // 아래 수치 문장("빌라 중 1%" 등)은 전부 연립다세대 실측이다. 오피스텔에
+  // 그대로 인용하면 지어낸 숫자가 되므로, 수치는 R에만 붙인다. 오피스텔
+  // 실측은 백필이 끝난 뒤 재서 따로 단다.
+  const isR = u.ht === 'R'
   const year = u.apr ?? u.build_year
   const young = year >= 2018
   // 비교 기준이 깨진 값(≥150%)은 위험 판정에 쓰지 않는다. 아래에서 따로 "판단 보류"로 나간다.
@@ -48,7 +54,8 @@ function verdict(u) {
   if (villa && !u.n_sale_24m && young && u.n_jeonse_24m >= 5) {
     return { tone: 'critical', head: '신축인데 매매가 없고 전세만 여럿입니다',
       body: `${year}년 준공, 최근 2년 전세 ${u.n_jeonse_24m}건, 매매 0건. `
-        + '빌라 중 1%만 이 모양입니다. 시세를 확인할 길이 없는 상태에서 보증금만 '
+        + (isR ? '빌라 중 1%만 이 모양입니다. ' : '')
+        + '시세를 확인할 길이 없는 상태에서 보증금만 '
         + '들어오는 구조라, 전세사기 물건에서 반복적으로 나타난 패턴입니다.' }
   }
 
@@ -63,7 +70,9 @@ function verdict(u) {
     // 빌라에서 매매 0건은 열에 일곱이다. 여기에 빨간불을 켜면 정보가 아니라 벽지가 된다.
     return villa
       ? { tone: 'muted', head: '이 건물 최근 2년 매매 0건',
-          body: '빌라에서는 흔한 일입니다. 열에 일곱이 그렇습니다. 이 집이 위험하다는 '
+          body: (isR ? '빌라에서는 흔한 일입니다. 열에 일곱이 그렇습니다. '
+                     : '오피스텔에서 개별 호실 매매는 드뭅니다. ')
+            + '이 집이 위험하다는 '
             + '뜻이 아니라, 담보 가치를 실거래로 확인해 드릴 수 없다는 뜻입니다. '
             + '아래 확인 항목을 직접 보셔야 합니다.' }
       : { tone: 'serious', head: '이 건물 최근 2년 매매 0건',
@@ -93,8 +102,8 @@ function verdict(u) {
   }
 
   return { tone: 'good', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-    body: (villa ? '빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
-                 : '실거래로 가격을 확인할 수 있는 물건입니다.')
+    body: (isR ? '빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
+               : '실거래로 가격을 확인할 수 있는 물건입니다.')
       + (r != null ? ` 전세가율 ${pct0(r)}${r >= 0.8 ? ', 여유가 넉넉하지는 않습니다.' : '.'}` : '') }
 }
 
@@ -139,6 +148,10 @@ export function ratioTone(ratio) {
  * 점수를 매기지 않고 무엇을 보고 하는 말인지를 그대로 낸다.
  */
 function quietNote(u) {
+  // 표준바닥구조 의무화(2005)는 주택법 계열 공동주택 기준이다. 건축법상
+  // 업무시설인 오피스텔은 당시 적용 대상이 아니었으므로, 준공연도로 좋은
+  // 신호를 켜면 근거 없는 안심이 된다. 오피스텔은 말하지 않는다.
+  if (u.ht === 'O') return null
   if (u.strct === 'BR') return { tone: 'serious', text: '벽돌조입니다. 차음에 가장 불리한 구조입니다' }
   if (!u.apr) return null
   // 의무화(2005.7)는 사업계획승인 기준이고 준공은 그보다 2~3년 늦다. 2005~2008년
@@ -352,7 +365,7 @@ export function questionsFor(u) {
   if (u.stage === 'A' && u.n_sale_24m >= 3 && r >= 0.9) {
     q.push('보증금이 이 건물 매매가에 육박합니다. 근저당 잔액과 감액(말소) 조건을 먼저 물어보세요')
   }
-  if (u.ht === 'R' && !u.n_sale_24m && year >= 2018 && u.n_jeonse_24m >= 5) {
+  if ((u.ht === 'R' || u.ht === 'O') && !u.n_sale_24m && year >= 2018 && u.n_jeonse_24m >= 5) {
     q.push('신축인데 매매 없이 전세만 여럿인 패턴입니다. 보증보험 가입 가능 확인을 계약 조건(특약)으로 거세요')
   } else if (!u.n_sale_24m) {
     q.push('매매 사례가 없어 시세 검증이 안 되는 건물입니다. 등기부 을구와 건축물대장 위반 여부를 현장에서 확인하세요')
@@ -782,7 +795,7 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
     if (state.status !== 'ready') return Object.assign([], { total: 0 })
     const needle = q.trim()
     // ht 없이 만들어진 예전 스냅샷이 배포에 실려도 빈 목록이 되지 않게 한다
-    const wantHt = housing === '아파트' ? 'A' : 'R'
+    const wantHt = housing === '아파트' ? 'A' : housing === '오피스텔' ? 'O' : 'R'
     const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
     const tests = FILTERS.filter((f) => active.includes(f.key)).map((f) => f.test)
     const rows = typed.filter((r) =>
@@ -816,7 +829,7 @@ export default function UnitLookup({ lawdCd, guName, housing }) {
 
   const facets = useMemo(() => {
     if (state.status !== 'ready') return { umds: [], counts: {} }
-    const wantHt = housing === '아파트' ? 'A' : 'R'
+    const wantHt = housing === '아파트' ? 'A' : housing === '오피스텔' ? 'O' : 'R'
     const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
     const scoped = umd ? typed.filter((r) => r.umd === umd) : typed
     return {

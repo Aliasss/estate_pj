@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
+import { htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -439,7 +439,7 @@ export default function Finder({ guNames, region = '11' }) {
             <button aria-expanded={open?.key === key} onClick={() => toggle(i, key)}>
               <span className="u-name">{col.name[i] || '(이름 없음)'}</span>
               <span className="u-meta">
-                {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} · {col.ht[i] === 'A' ? '아파트' : '연립·다세대'}
+                {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} · {htName(col.ht[i])}
                 {' · '}전용 {col.area[i]}m²({(col.area[i] / PYEONG).toFixed(1)}평)
                 {col.by[i] ? ` · ${col.by[i]}년` : ''}
                 {/* stn은 역 번호다. 이름이 아직 안 왔으면 역 이름 없이 도보만 적는다. */}

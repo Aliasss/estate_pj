@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
 import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
+import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -280,7 +280,7 @@ export default function Verify({ guNames, region = '11' }) {
                   <span className="u-name">{col.name[i] || '(이름 없음)'}</span>
                   <span className="u-meta">
                     {guNames[d.gus[col.g[i]]] ?? ''} {d.umds[col.u[i]]} {col.jibun?.[i] ?? ''}
-                    {' · '}{col.ht[i] === 'A' ? '아파트' : '연립·다세대'} 전용 {col.area[i]}m²
+                    {' · '}{htName(col.ht[i])} 전용 {col.area[i]}m²
                   </span>
                   <span className="u-sig">
                     <em>{eok(col.jeonse[i])}</em>

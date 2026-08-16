@@ -44,6 +44,8 @@ export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '-')
 
 /** 지역 코드(법정동 앞 2자리)와 표시 이름. 토글·문구가 다 여기서 나온다. */
 export const REGIONS = { 11: '서울', 41: '경기' }
+// 유형 코드 -> 화면 이름. 목록 줄에 쓰는 짧은 표기다.
+export const htName = (c) => (c === 'A' ? '아파트' : c === 'O' ? '오피스텔' : '연립·다세대')
 
 export function useFinder(region = '11') {
   const [state, setState] = useState({ status: 'loading' })
