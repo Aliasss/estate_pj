@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { latestRate, useRates, ym as ymKor, useSubway } from './units.js'
+import { fdTrack } from './fakedoor.js'
 
 export const pct0 = (v) => (v == null ? '-' : `${Math.round(v * 100)}%`)
 const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -521,6 +522,70 @@ function Actions({ tone, u }) {
   )
 }
 
+/** 계약 패키지 가짜 문. 실제 결제는 없다 — 관심을 익명으로 세어 유료화를
+ *  결정한다(수익 모델 v2 검증). 누르면 준비 중임을 바로 정직하게 밝힌다. */
+const PKG_PRICE = 19900
+
+function PkgOffer({ u }) {
+  const [open, setOpen] = useState(false)
+  const [wait, setWait] = useState(() => {
+    try { return !!localStorage.getItem('nec-pkg-wait') } catch { return false }
+  })
+  // view는 "카드가 열림"이 아니라 "제안이 실제로 화면에 보임"을 센다.
+  // 카드가 길어서 여기까지 스크롤하지 않은 사람을 노출로 치면 클릭률이 왜곡된다.
+  const boxRef = useRef(null)
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      fdTrack('view', u.id, PKG_PRICE)
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        fdTrack('view', u.id, PKG_PRICE)
+        io.disconnect()
+      }
+    }, { threshold: 0.5 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [u.id])
+  const onWait = () => {
+    fdTrack('notify', u.id, PKG_PRICE)
+    try { localStorage.setItem('nec-pkg-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
+    setWait(true)
+  }
+  return (
+    <div className="pkg" ref={boxRef}>
+      <b>계약 패키지 · 심층 리포트와 2년 감시</b>
+      <p>
+        이 물건의 판정 근거 전체와 임장 질문, 등기부에서 확인할 목록, 특약 문구
+        제안을 한 부의 리포트로 정리해 드리고, 계약 후 2년 동안 실거래 전량을
+        감시해 위험 신호를 알려 드립니다.
+      </p>
+      <div className="pkg-row">
+        <span className="pkg-price">{PKG_PRICE.toLocaleString()}원 <small>한 번 결제</small></span>
+        <button className="cmp-btn" onClick={() => { fdTrack('click', u.id, PKG_PRICE); setOpen(true) }}>
+          패키지 신청하기
+        </button>
+      </div>
+      {open && (
+        <div className="pkg-note">
+          <b>아직 준비 중인 기능입니다</b>
+          <p>
+            지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
+            관심은 기기를 구분하는 무작위 번호와 함께 익명 숫자로만 집계되어
+            출시를 결정하는 근거가 됩니다. 판정 근거는 지금도 이 화면에서 전부
+            무료로 보실 수 있습니다.
+          </p>
+          {wait
+            ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>
+            : <button className="more" onClick={onWait}>출시되면 알려주세요</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
@@ -628,6 +693,8 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
 
       {/* 좌표가 있는 물건에서만 낸다. 눌렀는데 아무 데도 안 가면 안 만든 것만 못하다. */}
       {onMap && <button className="more" onClick={onMap}>지도에서 위치 보기</button>}
+
+      <PkgOffer u={u} />
     </div>
   )
 }

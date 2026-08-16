@@ -420,6 +420,23 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .facts b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .facts li.full { grid-column: 1 / -1; }
 
+/* --- 계약 패키지 (가짜 문) --- */
+.pkg {
+  margin-top: 16px; padding: 14px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1);
+}
+.pkg > b { font-size: var(--fs-sub); }
+.pkg > p { margin: 6px 0 12px; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
+.pkg-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pkg-price { font-weight: 700; font-size: var(--fs-num); font-variant-numeric: tabular-nums; }
+.pkg-price small { font-weight: 400; color: var(--text-muted); font-size: var(--fs-tiny); margin-left: 4px; }
+.pkg-note {
+  margin-top: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-0);
+}
+.pkg-note > b { font-size: var(--fs-small); }
+.pkg-note > p { margin: 6px 0 8px; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
+
 /* --- 지도 --- */
 .mapwrap { margin: 0 0 8px; }
 .map {
