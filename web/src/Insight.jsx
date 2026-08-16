@@ -82,13 +82,13 @@ export default function Insight({ onGoFind }) {
           우리가 수집한 실거래·인구 데이터를 고정된 방법론으로 자동 계산한
           지표입니다. 데이터가 갱신되면 이 화면도 함께 갱신됩니다
         </p>
+        {/* 날짜만 적는다. 시각까지 적으면 수집이 끝나는 때와 어긋난다. */}
         <p className="ins-when">
-          {rtAsof && <>실거래 자료 <b>{ymKo(rtAsof)}분까지</b> · </>}
+          {rtAsof && <>자료는 <b>{ymKo(rtAsof)}분까지</b> 반영했습니다. </>}
           {data.generatedAt && (
-            <>이 화면을 계산한 시각 <b>{kst(new Date(data.generatedAt), { dateStyle: 'long', timeStyle: 'short' })}</b> · </>
+            <>마지막 갱신 <b>{kst(new Date(data.generatedAt), { month: 'long', day: 'numeric' })}</b>, </>
           )}
-          다음 수집 <b>{kst(nextCollect(), { dateStyle: 'long' })} 오전 6시</b>부터,
-          화면 반영은 수집이 끝나는 몇 시간 뒤입니다
+          다음 갱신은 <b>{kst(nextCollect(), { month: 'long', day: 'numeric', weekday: 'long' })}</b>입니다
         </p>
       </section>
 

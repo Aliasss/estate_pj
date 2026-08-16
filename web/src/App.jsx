@@ -477,6 +477,12 @@ export default function App() {
         계약 판단은 등기부등본·전입세대 확인서·보증보험 가입 가능 여부로 하셔야 합니다.
       </p>}
 
+      {/* 어느 탭에서든 보이는 연락처. 틀린 판정을 알려 줄 길이 있어야 한다. */}
+      <footer className="site-foot">
+        문의와 건의는{' '}
+        <a href="mailto:necessities.qna@gmail.com">necessities.qna@gmail.com</a>
+      </footer>
+
       <TabBar tab={tab} onTab={setTab} />
     </main>
   )

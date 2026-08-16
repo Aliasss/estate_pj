@@ -580,6 +580,14 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .gloss-item dt { font-weight: 650; font-size: var(--fs-sub); margin-bottom: 3px; }
 .gloss-item dd { margin: 0; font-size: var(--fs-sub); line-height: 1.65; color: var(--text-secondary); }
 
+/* 연락처. 탭바 위에 앉되 마지막 카드와 붙지 않게 띄운다. */
+.site-foot {
+  margin: 18px 4px 4px; text-align: center;
+  font-size: var(--fs-tiny); color: var(--text-muted); line-height: 1.7;
+}
+/* 손가락으로 누르는 링크다. 글자는 작아도 누를 자리는 작지 않게. */
+.site-foot a { color: var(--text-secondary); display: inline-block; padding: 6px 4px; }
+
 /* 갱신 시점 한 줄. 부제 아래 붙어 언제 계산됐고 언제 다시 도는지 말한다. */
 .ins-when { margin: 8px 0 0; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.6; }
 .ins-when b { color: var(--text-secondary); font-weight: 600; }
