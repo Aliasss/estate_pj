@@ -77,7 +77,7 @@ export default function About({ onBack }) {
       <section className="card">
         <h2>무엇을 확인해 드리나요</h2>
         <p className="sub">
-          계약하고 나서야 알게 되는 것들을, 계약하기 전에. 부동산 계약의 후회는
+          계약하고 나서야 알게 되는 것들을 계약하기 전에. 부동산 계약의 후회는
           두 가지이고, 둘 다 미리 확인할 수 있습니다
         </p>
         <div className="about-item">
