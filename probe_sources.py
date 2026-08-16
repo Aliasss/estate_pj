@@ -111,6 +111,14 @@ CANDIDATES = [
         {"type": "json", "pageNo": 1, "numOfRows": 2},
         "service",
     ),
+    # 건축물대장 월간 전체 파일(마트데이터) 경로. API 쿼터 없이 한 번에 받는
+    # 길이 열리는지 본다. 러너(해외 IP)에서 접속 자체가 되는지가 관건이다.
+    (
+        "건축데이터 민간개방 시스템 (open.eais.go.kr)",
+        "https://open.eais.go.kr/main/mainView.do",
+        {},
+        None,
+    ),
 ]
 
 
