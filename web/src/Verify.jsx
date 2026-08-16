@@ -323,7 +323,7 @@ function GuardNotifyToggle() {
   if (state === 'on') {
     return (
       <p className="muted-line">
-        백그라운드 알림 켜짐 — 앱을 열지 않아도 만기 일정과 위험 신호를 알려드립니다.{' '}
+        백그라운드 알림이 켜져 있습니다. 앱을 열지 않아도 만기 일정과 위험 신호를 알려드립니다.{' '}
         <button className="about-link" onClick={() => disableBgNotify().then(() => setState('off'))}>끄기</button>
       </p>
     )
