@@ -580,6 +580,10 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .gloss-item dt { font-weight: 650; font-size: var(--fs-sub); margin-bottom: 3px; }
 .gloss-item dd { margin: 0; font-size: var(--fs-sub); line-height: 1.65; color: var(--text-secondary); }
 
+/* 갱신 시점 한 줄. 부제 아래 붙어 언제 계산됐고 언제 다시 도는지 말한다. */
+.ins-when { margin: 8px 0 0; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.6; }
+.ins-when b { color: var(--text-secondary); font-weight: 600; }
+
 /* 판례 목록 위 안내라 카드 안쪽 여백을 law-note 기본값보다 조금 넉넉히 준다. */
 .prec-age { margin-bottom: 14px; }
 

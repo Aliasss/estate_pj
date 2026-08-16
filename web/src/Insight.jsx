@@ -30,6 +30,20 @@ function Method({ children }) {
   return <p className="method">{children}</p>
 }
 
+/* 갱신 시점 안내. 수집 워크플로는 월요일 21:00 UTC(화요일 06:00 KST)에 돈다.
+   다음 갱신은 빌드 때 박아 두지 않고 화면에서 계산한다. 박아 두면 그 시각이
+   지난 뒤로는 지나간 날짜를 "다음"이라고 말하게 된다. */
+const kst = (d, opts) =>
+  new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', ...opts }).format(d)
+
+function nextCollect(now = new Date()) {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 21, 0, 0))
+  let add = (1 - d.getUTCDay() + 7) % 7          // 다음 월요일까지
+  if (add === 0 && now.getTime() >= d.getTime()) add = 7   // 오늘 것이 이미 지났다
+  d.setUTCDate(d.getUTCDate() + add)
+  return d
+}
+
 export default function Insight({ onGoFind }) {
   const { data, err } = useInsights()
 
@@ -46,6 +60,8 @@ export default function Insight({ onGoFind }) {
   }
 
   const { cards } = data
+  // 사용자가 "최근 업데이트"로 실제 궁금해하는 것은 자료가 어느 달까지 들어왔는지다.
+  const rtAsof = data.freshness?.find((f) => f.key === 'rt')?.asof
   const ws = cards.wolseShare
   // 헤드라인 수치는 확정월 기준이다. 잠정월 값으로 1년 증감을 말하면
   // "잠정 구간은 증감률을 내지 않는다"는 우리 약속을 첫 카드가 어긴다.
@@ -65,6 +81,14 @@ export default function Insight({ onGoFind }) {
         <p className="sub">
           우리가 수집한 실거래·인구 데이터를 고정된 방법론으로 자동 계산한
           지표입니다. 데이터가 갱신되면 이 화면도 함께 갱신됩니다
+        </p>
+        <p className="ins-when">
+          {rtAsof && <>실거래 자료 <b>{ymKo(rtAsof)}분까지</b> · </>}
+          {data.generatedAt && (
+            <>이 화면을 계산한 시각 <b>{kst(new Date(data.generatedAt), { dateStyle: 'long', timeStyle: 'short' })}</b> · </>
+          )}
+          다음 수집 <b>{kst(nextCollect(), { dateStyle: 'long' })} 오전 6시</b>부터,
+          화면 반영은 수집이 끝나는 몇 시간 뒤입니다
         </p>
       </section>
 
