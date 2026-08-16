@@ -526,8 +526,22 @@ function Actions({ tone, u }) {
  *  결정한다(수익 모델 v2 검증). 누르면 준비 중임을 바로 정직하게 밝힌다. */
 const PKG_PRICE = 19900
 
+/** 리포트·감시에 담기는 것. 카드의 상세와 소개 탭이 같은 내용을 말해야 한다. */
+export const PKG_REPORT_ITEMS = [
+  '판정 근거 전체와 계산 과정',
+  '이 물건에 맞춘 임장 질문',
+  '등기부등본에서 확인할 목록',
+  '계약서에 넣을 특약 문구 제안',
+]
+export const PKG_GUARD_ITEMS = [
+  '실거래 전량을 만기까지 상시 감시',
+  '내 보증금보다 낮은 신규 전세 즉시 경보',
+  '갱신요구권 통보 기한 등 만기 일정 알림',
+]
+
 function PkgOffer({ u }) {
-  const [open, setOpen] = useState(false)
+  // idle(제안만) -> detail(자세히 펼침) -> applied(준비 중 공개)
+  const [stage, setStage] = useState('idle')
   const [wait, setWait] = useState(() => {
     try { return !!localStorage.getItem('nec-pkg-wait') } catch { return false }
   })
@@ -564,18 +578,40 @@ function PkgOffer({ u }) {
       </p>
       <div className="pkg-row">
         <span className="pkg-price">{PKG_PRICE.toLocaleString()}원 <small>한 번 결제</small></span>
-        <button className="cmp-btn" onClick={() => { fdTrack('click', u.id, PKG_PRICE); setOpen(true) }}>
-          패키지 신청하기
-        </button>
+        {stage === 'idle' && (
+          <button className="cmp-btn" onClick={() => { fdTrack('click', u.id, PKG_PRICE); setStage('detail') }}>
+            패키지 신청하기
+          </button>
+        )}
       </div>
-      {open && (
+      {stage !== 'idle' && (
+        <div className="pkg-detail">
+          <b>리포트에 담기는 것</b>
+          <ul className="pkg-list">
+            {PKG_REPORT_ITEMS.map((t) => <li key={t}>{t}</li>)}
+          </ul>
+          <b>2년 감시가 하는 일</b>
+          <ul className="pkg-list">
+            {PKG_GUARD_ITEMS.map((t) => <li key={t}>{t}</li>)}
+          </ul>
+          {/* cid가 실린 click이 이미 나갔다. 고지는 수집과 같은 화면에 있어야 한다. */}
+          <p className="muted-line">관심은 기기를 구분하는 무작위 번호와 함께 익명
+            숫자로만 집계되어 출시를 결정하는 근거가 됩니다.</p>
+          {stage === 'detail' && (
+            <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, PKG_PRICE); setStage('applied') }}>
+              신청하기
+            </button>
+          )}
+        </div>
+      )}
+      {stage === 'applied' && (
         <div className="pkg-note">
+          {/* 집계 고지는 바로 위 pkg-detail에 이미 떠 있다. 같은 말을 두 번 하지 않는다. */}
           <b>아직 준비 중인 기능입니다</b>
           <p>
             지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
-            관심은 기기를 구분하는 무작위 번호와 함께 익명 숫자로만 집계되어
-            출시를 결정하는 근거가 됩니다. 판정 근거는 지금도 이 화면에서 전부
-            무료로 보실 수 있습니다.
+            관심은 출시를 결정하는 근거가 됩니다. 판정 근거는 지금도 이 화면에서
+            전부 무료로 보실 수 있습니다.
           </p>
           {wait
             ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>

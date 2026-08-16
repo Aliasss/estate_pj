@@ -1,4 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import { useInsights } from './Insight.jsx'
+import { fdTrack } from './fakedoor.js'
+import { PKG_REPORT_ITEMS, PKG_GUARD_ITEMS } from './UnitLookup.jsx'
 
 /**
  * 서비스 소개. 기존 앱들이 간과하는 것, 우리가 다른 이유, 핵심 기능, 그리고
@@ -44,6 +47,58 @@ const REFUSALS = [
   '개인 데이터를 서버에 두지 않습니다. 비교함과 지킴이 등록은 이 기기에만 저장되고 계정도 없습니다.',
   '해석 기준이 없는 숫자(유동인구 등)는 싣지 않습니다. 해석을 사용자에게 떠넘기는 지표는 혼란만 더합니다.',
 ]
+
+/** 계약 패키지 준비 소식. 가짜 문 테스트의 소개 탭 진입점이라 처음부터
+ *  준비 중임을 밝히고, 관심(출시 알림 신청)만 익명으로 센다. */
+function PkgPlan() {
+  const [wait, setWait] = useState(() => {
+    try { return !!localStorage.getItem('nec-pkg-wait') } catch { return false }
+  })
+  const boxRef = useRef(null)
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      fdTrack('about_view')
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        fdTrack('about_view')
+        io.disconnect()
+      }
+    }, { threshold: 0.5 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  const onWait = () => {
+    fdTrack('about_notify')
+    try { localStorage.setItem('nec-pkg-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
+    setWait(true)
+  }
+  return (
+    <section className="card" ref={boxRef}>
+      <h2>준비하고 있는 것 · 계약 패키지</h2>
+      <p className="sub">
+        계약하는 날 한 번 결제하면, 그 물건의 심층 리포트를 바로 받고 계약 후
+        2년 동안 감시가 이어지는 유료 상품을 준비하고 있습니다. 아직 출시
+        전이며, 지금은 관심을 익명 숫자로만 세어 출시를 결정하는 단계입니다
+      </p>
+      <div className="about-item">
+        <b>심층 리포트</b>
+        <span>{PKG_REPORT_ITEMS.join(', ')}.</span>
+      </div>
+      <div className="about-item">
+        <b>2년 감시</b>
+        <span>{PKG_GUARD_ITEMS.join(', ')}.</span>
+      </div>
+      <p className="sub">예상 가격은 19,900원, 한 번 결제입니다. 지금 보시는
+        판정과 근거는 출시와 무관하게 계속 무료입니다</p>
+      {wait
+        ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>
+        : <button className="more" onClick={onWait}>출시되면 알려주세요</button>}
+    </section>
+  )
+}
 
 export default function About({ onBack }) {
   const { data, err } = useInsights()
@@ -102,6 +157,8 @@ export default function About({ onBack }) {
           ))}
         </ul>
       </section>
+
+      <PkgPlan />
 
       <section className="card">
         <h2>데이터의 출처와 시의성</h2>
