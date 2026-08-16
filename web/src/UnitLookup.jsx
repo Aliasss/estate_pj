@@ -282,15 +282,16 @@ function Wolse({ deals, jeonse }) {
   )
 }
 
-/** 건축물대장. 수집이 끝나기 전까지는 없는 물건이 더 많아서 상태를 분명히 밝힌다. */
+/** 건물 정보. 건축물대장과 좌표 기반 생활정보(역·학교·지형)는 수집 경로가
+ *  달라서 따로 왔다 따로 빠진다. 대장이 아직 없어도 생활정보가 있으면
+ *  보여 준다 — 대장을 기다리느라 이미 아는 것까지 숨기면 안 된다. */
 function BuildingFacts({ u }) {
   // stn 열은 역 번호다. 이름은 지하철 목록에서 찾는다.
   const stations = useSubway()
-  const has = u.apr != null || u.hhld != null || u.elvt != null
-  if (!has) {
-    return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
-  }
-  const note = quietNote(u)
+  // 대장 유무는 대장에서 오는 열 전체로 판정한다. 일부만 보면 "층수는
+  // 보이는데 대장은 수집 전"이라는 자기모순 화면이 나올 수 있다.
+  const hasBldg = [u.apr, u.strct, u.hhld, u.flr, u.elvt, u.park, u.n_dong]
+    .some((v) => v != null)
   const items = [
     u.apr && ['준공', `${u.apr}년`],
     u.hhld && ['세대수', `${u.hhld}세대`],
@@ -310,6 +311,10 @@ function BuildingFacts({ u }) {
       u.stn_dh != null && Math.abs(u.stn_dh) >= 10
         ? ` · 역보다 약 ${Math.abs(u.stn_dh)}m ${u.stn_dh > 0 ? '높음' : '낮음'}` : ''}`],
   ].filter(Boolean)
+  if (!items.length) {
+    return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
+  }
+  const note = hasBldg ? quietNote(u) : null
   return (
     <>
       <h3 className="facts-h">건물</h3>
@@ -318,6 +323,9 @@ function BuildingFacts({ u }) {
           <li key={k}><span>{k}</span><b>{v}</b></li>
         ))}
       </ul>
+      {!hasBldg && (
+        <p className="muted-line">건축물대장(준공·세대수·승강기 등)은 아직 수집 전입니다. 수집되는 대로 이 자리에 붙습니다.</p>
+      )}
       {note && (
         <p className="warnline">
           <strong className={note.tone}>층간소음 추정</strong>: {note.text}.{' '}
