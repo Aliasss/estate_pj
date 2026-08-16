@@ -580,6 +580,21 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .gloss-item dt { font-weight: 650; font-size: var(--fs-sub); margin-bottom: 3px; }
 .gloss-item dd { margin: 0; font-size: var(--fs-sub); line-height: 1.65; color: var(--text-secondary); }
 
+/* 판례 항목. 상황 -> 판단 -> 의미의 세 겹 구조가 한눈에 잡히게 라벨을 단다. */
+.prec { padding: 10px 2px 12px; }
+.prec + .prec { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.prec > b { font-size: var(--fs-sub); }
+.prec-row {
+  display: flex; gap: 8px; margin: 6px 0 0;
+  font-size: var(--fs-sub); line-height: 1.6; color: var(--text-secondary);
+}
+.prec-row > span {
+  flex-shrink: 0; align-self: flex-start; margin-top: 2px;
+  font-size: var(--fs-tiny); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+}
+.prec .law-src { margin-top: 8px; }
+
 /* 용어 그림. 의미는 글이 지고 그림은 보조라서 전부 aria-hidden이다. */
 .g-fig { margin: 8px 0 2px; }
 .g-bar {
