@@ -1,18 +1,20 @@
 /* 계약 패키지 가짜 문 테스트. 실제 결제는 없다 — 유료화 여부를 결정하기 위해
    수요(노출·클릭·알림 신청)를 익명 숫자로만 잰다.
 
-   프라이버시 규칙: 기기 id(cid)는 사용자가 버튼을 누른 이벤트, 즉 AUTO 집합
-   밖의 모든 이벤트에만 싣는다. AUTO(view/about_view)는 자동으로 나가므로 순수
-   카운트만 보낸다. 자동 수집에 영속 식별자를 붙이면 "어느 기기가 어느 물건을
-   봤나"라는 열람 이력이 되고, 그건 이 서비스가 하지 않기로 약속한 일이다.
-   cid가 실리는 이벤트는 같은 화면에 집계 고지가 있어야 한다.
+   프라이버시 규칙: 기기 id(cid)는 집계 고지가 같은 화면에 떠 있는 이벤트
+   (CARRIES_CID)에만 싣는다. apply와 notify는 고지가 있는 준비 중 공개 화면에서,
+   about_notify는 준비 중임을 먼저 밝힌 소개 섹션에서 발생한다. 그 밖의 이벤트
+   (view/click/about_view)는 순수 카운트만 보낸다. 고지 없는 수집에 영속
+   식별자를 붙이면 "어느 기기가 어느 물건을 봤나"라는 열람 이력이 되고, 그건
+   이 서비스가 하지 않기로 약속한 일이다. 새 이벤트에 cid를 실으려면 그 화면에
+   고지부터 넣어야 한다.
 
    퍼널 정의(집계 쿼리 기준): view -> click(상세 펼침) -> apply(신청, 가장 강한
    지불 의사). notify는 별선(출시 알림). about_view -> about_notify는 소개 탭의
    별도 퍼널. 2026-08-16 배포 이전 행은 의미가 달라 집계에서 잘라낸다.
 
-   보내는 것: 이벤트명, 물건 id(공개 데이터), 표시 가격, (버튼 이벤트만) 무작위
-   id. 키는 쓰기 전용 정책(RLS)이라 이 클라이언트로는 읽을 수 없고, 공개
+   보내는 것: 이벤트명, 물건 id(공개 데이터), 표시 가격, (CARRIES_CID 이벤트만)
+   무작위 id. 키는 쓰기 전용 정책(RLS)이라 이 클라이언트로는 읽을 수 없고, 공개
    저장소에 있어도 되는 값이다. 집계 실패는 조용히 삼킨다 — 카운터가 앱을
    방해하면 본말이 뒤집힌다. */
 
@@ -33,11 +35,14 @@ function cid() {
   }
 }
 
-const AUTO = new Set(['view', 'about_view']) // 사용자 행위 없이 나가는 자동 이벤트
-const seen = new Set() // 같은 세션에서 같은 노출을 두 번 세지 않는다
+const CARRIES_CID = new Set(['apply', 'notify', 'about_notify']) // 고지 화면의 이벤트만
+// 세션당 1회만 세는 이벤트. click도 포함한다 — 카드를 닫았다 열 때마다 세면
+// cid 없는 click은 서버에서 걸러낼 수도 없어 view 대비 비율이 부풀어 오른다.
+const ONCE = new Set(['view', 'about_view', 'click'])
+const seen = new Set()
 
 export function fdTrack(event, unitId, price) {
-  if (AUTO.has(event)) {
+  if (ONCE.has(event)) {
     const k = `${event}:${unitId ?? ''}`
     if (seen.has(k)) return
     seen.add(k)
@@ -57,7 +62,7 @@ export function fdTrack(event, unitId, price) {
         event,
         unit_id: unitId == null ? null : String(unitId),
         price,
-        cid: AUTO.has(event) ? null : cid(),
+        cid: CARRIES_CID.has(event) ? cid() : null,
       }),
     }).catch(() => {})
   } catch { /* 위 주석 참조 */ }

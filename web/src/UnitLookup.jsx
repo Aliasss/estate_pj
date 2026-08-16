@@ -594,9 +594,6 @@ function PkgOffer({ u }) {
           <ul className="pkg-list">
             {PKG_GUARD_ITEMS.map((t) => <li key={t}>{t}</li>)}
           </ul>
-          {/* cid가 실린 click이 이미 나갔다. 고지는 수집과 같은 화면에 있어야 한다. */}
-          <p className="muted-line">관심은 기기를 구분하는 무작위 번호와 함께 익명
-            숫자로만 집계되어 출시를 결정하는 근거가 됩니다.</p>
           {stage === 'detail' && (
             <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, PKG_PRICE); setStage('applied') }}>
               신청하기
@@ -606,12 +603,12 @@ function PkgOffer({ u }) {
       )}
       {stage === 'applied' && (
         <div className="pkg-note">
-          {/* 집계 고지는 바로 위 pkg-detail에 이미 떠 있다. 같은 말을 두 번 하지 않는다. */}
+          {/* 기기 번호(cid)는 이 화면의 이벤트에만 실린다. 이 고지가 그 근거다. */}
           <b>아직 준비 중인 기능입니다</b>
           <p>
             지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
-            관심은 출시를 결정하는 근거가 됩니다. 판정 근거는 지금도 이 화면에서
-            전부 무료로 보실 수 있습니다.
+            관심은 익명으로 집계되어 출시를 결정하는 근거가 됩니다. 판정 근거는
+            지금도 이 화면에서 전부 무료로 보실 수 있습니다.
           </p>
           {wait
             ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>

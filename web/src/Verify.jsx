@@ -361,60 +361,98 @@ function GuardPanel({ guard, byId, onOpen }) {
     <section className="card">
       <h2>보증금 지킴이</h2>
       <p className="sub">
-        등록하신 계약의 건물을 데이터가 갱신될 때마다 다시 봅니다. 등록 이후에
-        생긴 거래 신호, 내 보증금 기준 현재 위험도, 만기 일정을 보여드립니다
+        등록하신 계약의 건물을 데이터가 갱신될 때마다 다시 봅니다
       </p>
-      <GuardNotifyToggle />
       <ul className="guard-list">
-        {guard.items.map((it) => {
-          const u = details[it.id]
-          const cal = guardCalendar(it.expiry)
-          const sigs = u && !u.missing && !u.offline ? guardSignals(u, it) : []
-          return (
-            <li key={it.id} className="guard-item">
-              <div className="guard-head">
-                <button className="cmp-open"
-                        onClick={() => u && !u.missing && !u.offline && onOpen(it.lawd, u)}>
-                  {it.name}
-                  <small>{it.umd} · 전용 {it.area}m² · 보증금 {it.deposit >= 10000
-                    ? `${(it.deposit / 10000).toFixed(1)}억` : `${it.deposit.toLocaleString()}만`}</small>
-                </button>
-                <button className="cmp-del" onClick={() => guard.remove(it.id)}>해제</button>
-              </div>
-              {u === undefined && <p className="muted-line">확인 중…</p>}
-              {u?.missing && (
-                <div className="verdict serious">
-                  <strong>이 물건을 데이터에서 찾지 못했습니다</strong>
-                  <span>데이터 개편으로 식별자가 바뀌었을 수 있습니다. 해제 후 다시 검색해 등록해 주세요.</span>
-                </div>
-              )}
-              {u?.offline && (
-                <div className="verdict muted">
-                  <strong>데이터를 불러오지 못했습니다</strong>
-                  <span>네트워크 연결을 확인하고 새로고침해 주세요. 등록은 그대로 유지됩니다.</span>
-                </div>
-              )}
-              {u && !u.missing && !u.offline && sigs.length === 0 && (
-                <div className="verdict good">
-                  <strong>등록 이후 새 위험 신호가 없습니다</strong>
-                  <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
-                </div>
-              )}
-              {sigs.map((sg) => (
-                <div key={sg.head} className={`verdict ${sg.tone}`}>
-                  <strong>{sg.head}</strong><span>{sg.body}</span>
-                </div>
-              ))}
-              {cal && (
-                <div className={`verdict ${cal.tone}`}>
-                  <strong>{cal.head}</strong><span>{cal.body}</span>
-                </div>
-              )}
-            </li>
-          )
-        })}
+        {guard.items.map((it) => (
+          <GuardItem key={it.id} it={it} u={details[it.id]} onOpen={onOpen}
+                     onRemove={() => guard.remove(it.id)} />
+        ))}
       </ul>
+      <GuardNotifyToggle />
     </section>
+  )
+}
+
+/** 접힌 줄에 띄울 상태 하나. 위험한 것부터 잡는다. */
+function guardStatus(u, sigs, cal) {
+  if (u === undefined) return { tone: 'muted', label: '확인 중' }
+  // 오프라인은 위험이 아니라 연결 문제다. 경고색을 쓰면 톤이 거짓말을 한다.
+  if (u.offline) return { tone: 'muted', label: '연결 없음' }
+  if (u.missing) return { tone: 'serious', label: '확인 필요' }
+  if (sigs.length) {
+    // 만기 지남(critical 캘린더)이 신호와 겹치면 칩도 최악값을 따른다
+    const critical = sigs.some((s) => s.tone === 'critical') || cal?.tone === 'critical'
+    return { tone: critical ? 'critical' : 'serious', label: `신호 ${sigs.length}건` }
+  }
+  if (cal && cal.tone !== 'muted') {
+    return { tone: cal.tone, label: cal.d < 0 ? '만기 지남' : `만기 D-${cal.d}` }
+  }
+  return { tone: 'good', label: '이상 없음' }
+}
+
+/**
+ * 지킴이 한 물건. 평소에는 한 줄 요약으로 접혀 있다가, 새 신호나 만기 일정처럼
+ * 지금 읽어야 할 것이 생기면 스스로 펼쳐진다. 사용자가 손으로 접으면 그 선택이
+ * 우선한다 — 위험을 숨기지 않되, 매일 보는 화면을 위험 설명이 점령하지 않게.
+ */
+function GuardItem({ it, u, onOpen, onRemove }) {
+  const cal = guardCalendar(it.expiry)
+  const sigs = u && !u.missing && !u.offline ? guardSignals(u, it) : []
+  const st = guardStatus(u, sigs, cal)
+  const attention = st.tone === 'critical' || st.tone === 'serious' || st.tone === 'warning'
+  const [manual, setManual] = useState(null)
+  const open = manual ?? attention
+  return (
+    <li className="guard-item">
+      <button className="guard-sum" aria-expanded={open} onClick={() => setManual(!open)}>
+        <span className={`guard-chip ${st.tone}`}>{st.label}</span>
+        <span className="guard-name">
+          {it.name}
+          <small>{it.umd} · 전용 {it.area}m² · 보증금 {it.deposit >= 10000
+            ? `${(it.deposit / 10000).toFixed(1)}억` : `${it.deposit.toLocaleString()}만`}</small>
+        </span>
+        <span className="guard-arrow" aria-hidden>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="guard-body">
+          {u?.missing && (
+            <div className="verdict serious">
+              <strong>이 물건을 데이터에서 찾지 못했습니다</strong>
+              <span>데이터 개편으로 식별자가 바뀌었을 수 있습니다. 해제 후 다시 검색해 등록해 주세요.</span>
+            </div>
+          )}
+          {u?.offline && (
+            <div className="verdict muted">
+              <strong>데이터를 불러오지 못했습니다</strong>
+              <span>네트워크 연결을 확인하고 새로고침해 주세요. 등록은 그대로 유지됩니다.</span>
+            </div>
+          )}
+          {u && !u.missing && !u.offline && sigs.length === 0 && (
+            <div className="verdict good">
+              <strong>등록 이후 새 위험 신호가 없습니다</strong>
+              <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
+            </div>
+          )}
+          {sigs.map((sg) => (
+            <div key={sg.head} className={`verdict ${sg.tone}`}>
+              <strong>{sg.head}</strong><span>{sg.body}</span>
+            </div>
+          ))}
+          {cal && (
+            <div className={`verdict ${cal.tone}`}>
+              <strong>{cal.head}</strong><span>{cal.body}</span>
+            </div>
+          )}
+          <div className="guard-actions">
+            {u && !u.missing && !u.offline && (
+              <button className="cmp-btn" onClick={() => onOpen(it.lawd, u)}>물건 상세 보기</button>
+            )}
+            <button className="cmp-del" onClick={onRemove}>등록 해제</button>
+          </div>
+        </div>
+      )}
+    </li>
   )
 }
 

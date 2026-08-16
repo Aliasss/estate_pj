@@ -700,10 +700,29 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .budget-rank small { grid-column: 1 / -1; font-size: var(--fs-tiny); color: var(--text-muted); }
 
 /* ── 보증금 지킴이 ── */
-.guard-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
-.guard-item { border-top: 1px solid var(--border); padding-top: 10px; }
-.guard-item:first-child { border-top: 0; padding-top: 0; }
-.guard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.guard-list { list-style: none; margin: 0 0 10px; padding: 0; }
+.guard-item { border-top: 1px solid var(--border); }
+.guard-item:first-child { border-top: 0; }
+/* 접힌 한 줄 요약. 상태 칩이 먼저 눈에 들어오고, 펼침은 줄 전체가 버튼이다. */
+.guard-sum {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  background: transparent; border: 0; font: inherit; color: inherit;
+  text-align: left; padding: 10px 4px; cursor: pointer;
+}
+.guard-sum:hover, .guard-sum:focus-visible { background: var(--surface-1); outline: none; }
+.guard-chip {
+  flex-shrink: 0; font-size: var(--fs-tiny); font-weight: 600;
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border);
+}
+.guard-chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--border)); }
+.guard-chip.warning, .guard-chip.serious { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
+.guard-chip.critical { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--border)); }
+.guard-chip.muted { color: var(--text-muted); }
+.guard-name { flex: 1; display: flex; flex-direction: column; gap: 1px; font-size: var(--fs-sub); font-weight: 600; }
+.guard-name small { color: var(--text-muted); font-size: var(--fs-tiny); font-weight: 400; }
+.guard-arrow { color: var(--text-muted); font-size: var(--fs-tiny); }
+.guard-body { padding: 0 4px 12px; }
+.guard-actions { display: flex; gap: 8px; margin-top: 10px; }
 .guard-add p { margin: 6px 0 8px; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
 .guard-add p.critical { color: var(--critical); }
 .guard-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
