@@ -25,6 +25,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // 지킴이 백그라운드 점검. workbox 생성 워커에 스크립트로 붙는다.
+        importScripts: ['guard-sw.js'],
         // 티어 1은 프리캐시(오프라인 필수). 티어 2는 구를 열어봤을 때만 캐시에 남긴다.
         globPatterns: ['**/*.{js,css,html,svg,png}', 'data/tier1.json'],
         // tier1.json이 한도를 넘으면 workbox는 빌드를 실패시키는 게 아니라

@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
 import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
@@ -303,6 +304,45 @@ export default function Verify({ guNames, region = '11' }) {
  * 보증금 지킴이 패널. 등록된 계약이 있을 때만, 검색창보다 먼저 보인다.
  * 계약한 사람에게는 "새로 확인할 것"이 검색보다 앞선 관심사다.
  */
+/**
+ * 백그라운드 알림 토글. 서버 없이 설치형 PWA의 주기 동기화로 동작하므로
+ * "기기에만 저장" 약속이 그대로 유지된다. 안드로이드 크롬 설치형에서만
+ * 켜지고, 아이폰은 웹푸시(서버)가 필요해 다음 단계다.
+ */
+function GuardNotifyToggle() {
+  const [state, setState] = useState(() =>
+    !bgNotifySupported() ? 'unsupported' : bgNotifyEnabled() ? 'on' : 'off')
+  if (state === 'unsupported') {
+    return (
+      <p className="muted-line">
+        앱을 열지 않아도 만기·위험 신호를 알려드리는 백그라운드 알림은
+        안드로이드 크롬에서 홈 화면에 설치하면 켤 수 있습니다. 아이폰 알림은 준비 중입니다.
+      </p>
+    )
+  }
+  if (state === 'on') {
+    return (
+      <p className="muted-line">
+        백그라운드 알림 켜짐 — 앱을 열지 않아도 만기 일정과 위험 신호를 알려드립니다.{' '}
+        <button className="about-link" onClick={() => disableBgNotify().then(() => setState('off'))}>끄기</button>
+      </p>
+    )
+  }
+  return (
+    <>
+      <button className="cmp-btn" onClick={() =>
+        enableBgNotify().then((ok) => setState(ok ? 'on' : 'failed'))}>
+        + 백그라운드 알림 켜기
+      </button>
+      {state === 'failed' && (
+        <p className="muted-line">
+          알림을 켜지 못했습니다. 홈 화면에 설치된 상태에서 알림 권한을 허용해야 켜집니다.
+        </p>
+      )}
+    </>
+  )
+}
+
 function GuardPanel({ guard, byId, onOpen }) {
   const [details, setDetails] = useState({})
   useEffect(() => {
@@ -324,6 +364,7 @@ function GuardPanel({ guard, byId, onOpen }) {
         등록하신 계약의 건물을 데이터가 갱신될 때마다 다시 봅니다. 등록 이후에
         생긴 거래 신호, 내 보증금 기준 현재 위험도, 만기 일정을 보여드립니다
       </p>
+      <GuardNotifyToggle />
       <ul className="guard-list">
         {guard.items.map((it) => {
           const u = details[it.id]

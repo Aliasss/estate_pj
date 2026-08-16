@@ -330,9 +330,15 @@ function jeonseBaselineYm(u) {
 
 export function useGuard() {
   const [items, setItems] = useState(guardRead)
+  // 서비스워커는 localStorage를 못 읽는다. 백그라운드 알림용으로 IndexedDB에
+  // 같은 내용을 비춰 둔다. guard-sync가 이 파일을 import하므로 정적 import는
+  // 순환이 된다 — 동적 import로 끊는다.
+  const mirror = (list) => import('./guard-sync.js').then((m) => m.mirrorGuard(list)).catch(() => {})
+  useEffect(() => { mirror(guardRead()) }, [])
   const save = (next) => {
     setItems(next)
     try { localStorage.setItem(GUARD_KEY, JSON.stringify(next)) } catch { /* 시크릿 모드 등 */ }
+    mirror(next)
   }
   return {
     items,
@@ -493,4 +499,33 @@ export function guardCalendar(expiry, now = new Date()) {
       + '갱신요구권(5% 상한)을, 나갈 생각이면 통보와 함께 반환 일정을 잡으세요.' }
   return { d, tone: 'muted', head: `만기 D-${d}`,
     body: '다음 확인 지점은 만기 6개월 전입니다. 그때 갱신·퇴거를 결정하시면 됩니다.' }
+}
+
+/**
+ * 만기에서 파생되는 알림 지점들. 백그라운드 알림(서비스워커)이 쓸 날짜를
+ * 여기서 미리 계산해 둔다 — 워커에는 날짜 비교만 남기고 역월 계산 같은
+ * 법리성 로직은 이 파일 밖으로 복제하지 않는다. 복제된 로직은 반드시 어긋난다.
+ */
+export function guardMilestones(expiry) {
+  if (!expiry) return []
+  const exp = localMidnight(expiry)
+  const w2 = monthsBefore(exp, 2)
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return [
+    { key: 'w6', date: fmt(monthsBefore(exp, 6)),
+      title: '만기 6개월 전입니다',
+      body: '갱신할지 나갈지 결정할 구간이 시작됐습니다. 통보 기한은 만기 2개월 전입니다.' },
+    { key: 'w2-14', date: fmt(new Date(w2.getFullYear(), w2.getMonth(), w2.getDate() - 14)),
+      title: '통보 기한까지 2주 남았습니다',
+      body: '갱신요구 또는 퇴거 통보는 만기 2개월 전까지입니다. 아직이라면 지금 하세요.' },
+    { key: 'w2', date: fmt(w2),
+      title: '오늘이 통보 기한입니다 (만기 2개월 전)',
+      body: '집주인과 나 모두 오늘까지 통보하지 않았다면 같은 조건으로 묵시적 갱신됩니다. 앱에서 일정을 확인하세요.' },
+    { key: 'd30', date: fmt(new Date(exp.getFullYear(), exp.getMonth(), exp.getDate() - 30)),
+      title: '만기 30일 전입니다',
+      body: '반환 확답이 없다면 내용증명으로 보증금 반환을 청구해 두세요.' },
+    { key: 'd0', date: fmt(exp),
+      title: '오늘이 만기일입니다',
+      body: '보증금을 못 받았다면 이사 전에 임차권등기명령부터 신청하세요.' },
+  ]
 }
