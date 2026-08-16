@@ -60,7 +60,7 @@ async function guardCheck() {
     for (const m of it.milestones || []) {
       const gap = (today - new Date(m.date + 'T00:00:00')) / 86400000
       if (gap >= 0 && gap <= 3 && !(await guardNotified(db, it.id + ':' + m.key))) {
-        await guardNotify(db, it.id + ':' + m.key, it.name + ' — ' + m.title, m.body)
+        await guardNotify(db, it.id + ':' + m.key, it.name + ' · ' + m.title, m.body)
       }
     }
     // 2. 등록 이후의 신규 전세가 내 보증금보다 낮다
@@ -85,7 +85,7 @@ async function guardCheck() {
         const key = it.id + ':low:' + r[0] + ':' + r[1]
         if (!(await guardNotified(db, key))) {
           await guardNotify(db, key,
-            it.name + ' — 새 전세가 내 보증금보다 낮습니다',
+            it.name + ' · 새 전세가 내 보증금보다 낮습니다',
             '신규 전세 ' + guardEok(r[1]) + '이 신고되었습니다 (내 보증금 '
             + guardEok(it.deposit) + '). 앱에서 위험 신호를 확인해 보세요.')
         }
