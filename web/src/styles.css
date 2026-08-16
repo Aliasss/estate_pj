@@ -414,8 +414,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 14px;
          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .facts li { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-sub); }
-.facts span { color: var(--text-muted); }
-.facts b { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 지형처럼 값이 길어 줄바꿈되면 플렉스가 라벨을 눌러 "지/형"으로 세로 분해된다.
+   라벨은 줄이지 않고, 여러 줄이 된 값은 한 줄짜리 값들과 같은 오른쪽 선에 맞춘다. */
+.facts span { color: var(--text-muted); flex-shrink: 0; }
+.facts b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.facts li.full { grid-column: 1 / -1; }
 
 /* --- 지도 --- */
 .mapwrap { margin: 0 0 8px; }

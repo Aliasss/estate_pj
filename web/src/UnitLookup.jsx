@@ -320,7 +320,11 @@ function BuildingFacts({ u }) {
       <h3 className="facts-h">건물</h3>
       <ul className="facts">
         {items.map(([k, v]) => (
-          <li key={k}><span>{k}</span><b>{v}</b></li>
+          // 지형 값은 구조적으로 길다("완만한 오르막 … 역보다 약 18m 높음").
+          // 좁은 열에 구겨 넣지 않고 전폭을 준다.
+          <li key={k} className={k === '지형' ? 'full' : undefined}>
+            <span>{k}</span><b>{v}</b>
+          </li>
         ))}
       </ul>
       {!hasBldg && (
