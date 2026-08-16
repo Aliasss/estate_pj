@@ -31,6 +31,7 @@ from collections import Counter, defaultdict
 from bldg_join import Registry
 from school_join import Schools
 from subway_join import Nearest
+from terrain_join import Terrain
 from match_probe import area_key, norm_jibun, norm_name
 
 AREA_BAND = 0.5      # 실측으로 고른 값
@@ -152,7 +153,7 @@ def trim_deals(d: dict | None) -> dict | None:
 
 
 def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
-          nearest: Nearest, schools: Schools) -> None:
+          nearest: Nearest, schools: Schools, terrain: Terrain) -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
     import datetime
     # 완성 여부는 달력이 정하고, 수집이 거기 못 미치면 수집된 데까지만 쓴다
@@ -293,12 +294,15 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             "lat", "lon", "stn", "walk",
             # 인근 학교 수 (초·중·고 반경 1km, 대학 2km). 좌표 없는 물건은 None.
             "sch_e", "sch_m", "sch_h", "sch_u",
+            # 지형. slope는 주변 경사(%), stn_dh는 역과의 고도차(m, +면 집이 높다).
+            "slope", "stn_dh",
             # 개별 거래 내역. 최신순으로 잘라서 낸다.
             "deals"]
     # 음수 슬라이스는 열을 하나만 보태도 소리 없이 어긋난다. 이름으로 못박는다.
     BLDG_COLS = ["apr", "strct", "hhld", "flr", "elvt", "park", "n_dong"]
     GEO_COLS = ["lat", "lon", "stn", "walk"]
     SCH_COLS = ["sch_e", "sch_m", "sch_h", "sch_u"]
+    TER_COLS = ["slope", "stn_dh"]
 
     by_gu: dict[str, list[list]] = defaultdict(list)
     stage_count = Counter()
@@ -338,6 +342,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         bldg = registry.lookup(lawd, umd, info["jibun"], name)
         geo = nearest.lookup(lawd, umd, info["jibun"])
         sch = schools.counts(geo.get("lat"), geo.get("lon"))
+        ter = terrain.lookup(lawd, umd, info["jibun"], geo.get("stn"))
         by_gu[lawd].append([
             unit_id(key),
             "A" if ht == "아파트" else "R",
@@ -353,6 +358,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             *(bldg.get(c) for c in BLDG_COLS),
             *(geo.get(c) for c in GEO_COLS),
             *(sch.get(c) for c in SCH_COLS),
+            *(ter.get(c) for c in TER_COLS),
             trim_deals(deals.get(key)),
         ])
 
@@ -390,6 +396,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     print(registry.report())
     print(nearest.report())
     print(schools.report())
+    print(terrain.report())
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")
     print("\n폴백 단계 분포 (최근 전세가 있는 물건 기준):")
@@ -422,7 +429,7 @@ def main() -> int:
     if args.schools and not sch:
         print(f"학교 자료가 없습니다: {args.schools} — 학교 열 없이 생성합니다")
     conn = sqlite3.connect(args.db)
-    build(conn, args.out, Registry(bldg), Nearest(geo, sub), Schools(sch))
+    build(conn, args.out, Registry(bldg), Nearest(geo, sub), Schools(sch), Terrain(geo))
     conn.close()
     return 0
 

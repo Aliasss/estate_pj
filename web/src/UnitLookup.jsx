@@ -303,6 +303,12 @@ function BuildingFacts({ u }) {
     // 학교 개수도 좌표가 있어야 센다. 0은 "없다"는 뜻이므로 그대로 보여 준다.
     u.sch_e != null && ['학교 (반경 1km)', `초 ${u.sch_e} · 중 ${u.sch_m} · 고 ${u.sch_h}`],
     u.sch_u != null && ['대학 (반경 2km)', u.sch_u ? `${u.sch_u}곳` : '없음'],
+    // 위성 지형 기반 근사라 "약"을 떼지 않는다. 역 고도차는 10m부터 말할 가치가 있다.
+    u.slope != null && ['지형', `${
+      u.slope < 5 ? '평지에 가깝습니다' :
+      u.slope < 8 ? `완만한 오르막 (경사 약 ${u.slope}%)` : `언덕 (경사 약 ${u.slope}%)`}${
+      u.stn_dh != null && Math.abs(u.stn_dh) >= 10
+        ? ` · 역보다 약 ${Math.abs(u.stn_dh)}m ${u.stn_dh > 0 ? '높음' : '낮음'}` : ''}`],
   ].filter(Boolean)
   return (
     <>
