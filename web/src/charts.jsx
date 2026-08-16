@@ -151,7 +151,7 @@ export function LineChart({ months, series, format, provisional = [], height = 1
           {series.map((s) => (
             <div className="row" key={s.name}>
               <span><i className="swatch" style={{ background: s.color, display: 'inline-block', marginRight: 5 }} />{s.name}</span>
-              <span>{s.values[hover] == null ? '—' : format.value(s.values[hover])}</span>
+              <span>{s.values[hover] == null ? '-' : format.value(s.values[hover])}</span>
             </div>
           ))}
         </div>

@@ -9,12 +9,12 @@ import Wordmark from './Wordmark.jsx'
 import { REGIONS, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
-const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
-const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
-const eok = (manwon) => (manwon == null ? '—' : `${(manwon / 10000).toFixed(2)}억`)
-const manwon = (v) => (v == null ? '—' : `${Math.round(v).toLocaleString()}만`)
+const pct = (v) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
+const pct0 = (v) => (v == null ? '-' : `${Math.round(v * 100)}%`)
+const eok = (manwon) => (manwon == null ? '-' : `${(manwon / 10000).toFixed(2)}억`)
+const manwon = (v) => (v == null ? '-' : `${Math.round(v).toLocaleString()}만`)
 /** tier1의 월은 "2026-07" 꼴이다. 화면에는 한글로 읽히게 둔다. */
-const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '—')
+const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '-')
 // 구 단위에도 면적 믹스가 깨진 달이 있다 (2022-09 영등포 아파트 168.9%). 물건 단위와
 // 같은 기준으로, 정상 범위를 벗어난 값은 차트와 표에 내지 않는다.
 const sane = (r) => (r != null && r < 1.5 ? r : null)
@@ -25,7 +25,7 @@ const VOL_DEFS = [
   ['j', '전세', 'var(--series-2)'],
   ['w', '월세', 'var(--series-3)'],
 ]
-const delta = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
+const delta = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 
 
 /** 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다. */
@@ -325,7 +325,7 @@ export default function App() {
                   </td>
                   {VOL_DEFS.filter(([k]) => volLines[k]).map(([k]) => (
                     <td key={k}>
-                      {r.cells[k].v == null ? '—' : r.cells[k].v.toLocaleString()}
+                      {r.cells[k].v == null ? '-' : r.cells[k].v.toLocaleString()}
                       <small className="delta">{volTable.d1Label} {delta(r.cells[k].d1)}</small>
                       <small className="delta">전년 {delta(r.cells[k].yoy)}</small>
                     </td>

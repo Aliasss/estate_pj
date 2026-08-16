@@ -40,7 +40,7 @@ const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk', 'sale
 const REQUIRED = ['i', 'ht', 'g', 'u', 'name', 'area', 'by', 'jeonse', 'ratio', 'stage', 'ns', 'nj']
 
 /** "202406" -> "2024년 6월". 창을 화면에 그대로 뿌리면 여덟 자리 숫자가 보인다. */
-export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '—')
+export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '-')
 
 /** 지역 코드(법정동 앞 2자리)와 표시 이름. 토글·문구가 다 여기서 나온다. */
 export const REGIONS = { 11: '서울', 41: '경기' }
@@ -367,7 +367,7 @@ export function useGuard() {
   }
 }
 
-const gEok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
+const gEok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
 const gYm = (s) => `${s.slice(2, 4)}.${s.slice(4, 6)}`
 
 /**

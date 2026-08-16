@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { latestRate, useRates, ym as ymKor, useSubway } from './units.js'
 
-export const pct0 = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
-const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
-export const eok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
+export const pct0 = (v) => (v == null ? '-' : `${Math.round(v * 100)}%`)
+const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
+export const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
 
 export const STAGE = {
   A: { label: '이 건물 실거래 기준', exact: true },
@@ -149,7 +149,7 @@ function quietNote(u) {
 
 const ym = (s) => `${String(s).slice(2, 4)}.${String(s).slice(4, 6)}`
 /** 층은 반지하 여부를 알려준다. 침수·채광·보증보험 모두 여기서 갈린다. */
-const floorText = (f) => (f == null ? '—' : f <= 0 ? '반지하' : `${f}층`)
+const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
 
 /**
  * 개별 거래 내역. 중위값만 보여주면 그 값이 어디서 왔는지 알 수 없다.
@@ -219,7 +219,7 @@ function Siblings({ u, onPick }) {
               <span>전용 {s.area}m² <small>({(s.area / 3.305785).toFixed(1)}평)</small></span>
               <b>{eok(s.jeonse)}</b>
               <em className={ratioBroken(s.ratio) ? 'muted' : ratioTone(s.ratio)}>
-                {s.ratio == null ? '—' : ratioBroken(s.ratio) ? '보류' : pct0(s.ratio)}
+                {s.ratio == null ? '-' : ratioBroken(s.ratio) ? '보류' : pct0(s.ratio)}
               </em>
               <small>전세 {s.nj}건</small>
             </button>
@@ -542,7 +542,7 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
         <div>
           <dt>전세가율</dt>
           <dd className={`big ${ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}`}>
-            {u.ratio == null ? '—'
+            {u.ratio == null ? '-'
               : ratioBroken(u.ratio) ? '판단 보류'
               : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
           </dd>

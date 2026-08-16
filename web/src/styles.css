@@ -216,6 +216,8 @@ svg { display: block; width: 100%; height: auto; overflow: visible; touch-action
 }
 .note strong { color: var(--text-secondary); font-weight: 600; }
 
+/* 시의성 표: 시점과 설명이 한 줄로 붙으면 "2026-07확정 구간"처럼 읽힌다 */
+.fresh-table .delta { display: block; font-weight: 400; color: var(--text-muted); }
 table.data { border-collapse: collapse; width: 100%; font-size: var(--fs-small); margin-top: 8px; }
 table.data th, table.data td { text-align: right; padding: 5px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 table.data th:first-child, table.data td:first-child { text-align: left; }

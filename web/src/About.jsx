@@ -119,7 +119,7 @@ export default function About({ onBack }) {
                 {data.freshness.map((f) => (
                   <tr key={f.key}>
                     <td>{f.name}</td>
-                    <td>{f.asof ?? '—'}<small className="delta">{f.note}</small></td>
+                    <td>{f.asof}{f.asof && ' '}<small className="delta">{f.note}</small></td>
                     <td>{f.cycle}</td>
                   </tr>
                 ))}

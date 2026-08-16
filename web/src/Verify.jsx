@@ -15,7 +15,7 @@ import { REGIONS, guardCalendar, guardSignals, search, useCompare, useFinder, us
  * 넣으면, 실거래가 무엇을 말하는지와 그 근거가 얼마나 두꺼운지를 돌려준다.
  */
 
-const eok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
+const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억` : `${m.toLocaleString()}만`)
 
 /**
  * 우리가 못 보는 것들. 전세가율은 안전의 한 조각일 뿐이고, 사람을 실제로 다치게 하는
@@ -422,7 +422,7 @@ function GuardPanel({ guard, byId, onOpen }) {
  * 임장 비교함. 주말에 보러 갈 집들을 나란히 놓고, 집마다 무엇을 물어봐야 하는지까지
  * 준비해 준다. 매물 앱은 찜 목록까지만 해 주고 "보러 가서 뭘 확인하나"는 안 해 준다.
  */
-const cmpEok = (m) => (m == null ? '—' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
+const cmpEok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(1)}억` : `${m.toLocaleString()}만`)
 
 function ComparePanel({ compare, byId, onOpen }) {
   const [units, setUnits] = useState(null)
@@ -451,15 +451,15 @@ function ComparePanel({ compare, byId, onOpen }) {
                 {u.name || u.jibun}<small>{u.umd} · {u.area}m²</small>
               </button>
             ))}
-            {row('전세가율', (u) => u.ratio == null ? '—'
+            {row('전세가율', (u) => u.ratio == null ? '-'
               : u.ratio >= 1.5 ? '판단 보류' : `${Math.round(u.ratio * 100)}%`)}
             {row('근거', (u) => u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : '인근 추정')}
             {row('중위 전세', (u) => cmpEok(u.med_jeonse))}
             {row('최근 전세', (u) => {
               const r = u.deals?.j?.[0]
-              return r ? `${String(r[0]).slice(2, 4)}.${String(r[0]).slice(4, 6)} ${cmpEok(r[1])}` : '—'
+              return r ? `${String(r[0]).slice(2, 4)}.${String(r[0]).slice(4, 6)} ${cmpEok(r[1])}` : '-'
             })}
-            {row('갱신 변화', (u) => u.renew_hike == null ? '—'
+            {row('갱신 변화', (u) => u.renew_hike == null ? '-'
               : `${u.renew_hike > 0 ? '+' : ''}${(u.renew_hike * 100).toFixed(1)}%`)}
             {row('', (u, lawd) => (
               <button className="cmp-del" onClick={() => compare.toggle(lawd, u.id, u.name)}>빼기</button>

@@ -206,6 +206,23 @@ async function buildInsights(tier1) {
       key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 수집 · 화요일 반영',
       asof: null, note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
     })
+    // 좌표 커버리지: lat 열이 붙은 비율. 지형(표고·경사)은 좌표 있는 지번에 함께 결합된다.
+    let geo = 0
+    for (const f of [fin11, fin41].filter(Boolean)) {
+      const col = Object.fromEntries(f.cols.map((c, i) => [c, f.columns[i]]))
+      if (col.lat) geo += col.lat.filter((v) => v != null).length
+    }
+    out.freshness.push({
+      key: 'geo', name: '도로명주소 좌표 · NASA SRTM 지형', cycle: '수시 수집 · 화요일 반영',
+      asof: null, note: `건물의 약 ${Math.round((geo / Math.max(n, 1)) * 100)}%에 좌표·표고·경사 결합`,
+    })
+  }
+  const subway = await readJson(path.join(outDir, 'subway.json'))
+  if (subway?.stations?.length) {
+    out.freshness.push({
+      key: 'subway', name: '서울 열린데이터광장 지하철역', cycle: '수시 갱신',
+      asof: null, note: `역 ${subway.stations.length}개 좌표 · 가까운 역과 도보 환산에 사용`,
+    })
   }
   const rates = await readJson(path.join(repo, 'data', 'rates.json'))
   if (rates?.asof) {

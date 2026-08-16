@@ -9,8 +9,8 @@ import { LineChart } from './charts.jsx'
  * 내려받지 않게 하기 위해서다.
  */
 
-const pctPt = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
-const signed = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
+const pctPt = (v) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
+const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 const ymKo = (m) => (m ? `${m.slice(0, 4)}년 ${+m.slice(5, 7)}월` : '')
 
 export function useInsights() {
