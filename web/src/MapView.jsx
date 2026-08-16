@@ -23,6 +23,16 @@ const TONE = {
   good: '#3e7d46',
   muted: '#8f8e84',
 }
+const STATION_COLOR = '#34689b'
+
+/* 색만으로는 무슨 뜻인지 알 수 없다. 판정 화면과 같은 기준(전세가율)을 그대로 적는다. */
+const LEGEND = [
+  [TONE.critical, '전세가율 100% 이상'],
+  [TONE.serious, '80~100%'],
+  [TONE.good, '80% 미만'],
+  [TONE.muted, '비교 불가'],
+  [STATION_COLOR, '지하철역'],
+]
 
 export default function MapView({ points, stations, selected, onPick, note }) {
   const holder = useRef(null)
@@ -30,6 +40,11 @@ export default function MapView({ points, stations, selected, onPick, note }) {
   const layer = useRef(null)
   const stnLayer = useRef(null)
   const pickLayer = useRef(null)
+  // onPick은 부모가 렌더마다 새로 만든다. 이걸 이펙트 의존성에 넣으면 마커를
+  // 누를 때마다(카드가 열려 재렌더) 마커 전체를 다시 그리고 fitBounds까지 다시
+  // 돌아, 방금 확대해 둔 지도가 전체 보기로 튕긴다. 최신 핸들러는 ref로 나른다.
+  const onPickRef = useRef(onPick)
+  useEffect(() => { onPickRef.current = onPick })
 
   // 지도는 한 번만 만든다. 조건이 바뀔 때마다 다시 만들면 보던 위치가 튄다.
   useEffect(() => {
@@ -61,17 +76,17 @@ export default function MapView({ points, stations, selected, onPick, note }) {
     for (const p of shown) {
       bounds.push([p.lat, p.lon])
       L.circleMarker([p.lat, p.lon], {
-        radius: 5, weight: 1, color: '#fff', opacity: 0.9,
-        fillColor: TONE[p.tone] ?? TONE.muted, fillOpacity: 0.85,
+        radius: 6, weight: 1.5, color: '#fff', opacity: 0.95,
+        fillColor: TONE[p.tone] ?? TONE.muted, fillOpacity: 0.9,
       })
         .bindTooltip(p.label, { direction: 'top' })
-        .on('click', () => onPick?.(p))
+        .on('click', () => onPickRef.current?.(p))
         .addTo(layer.current)
     }
     if (bounds.length) {
       map.current.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 })
     }
-  }, [shown, onPick])
+  }, [shown])
 
 
   // 목록에서 고른 물건을 지도에서 짚어 준다. 색만 바꾸면 작은 점 사이에서 안 보여서
@@ -97,7 +112,7 @@ export default function MapView({ points, stations, selected, onPick, note }) {
     stnLayer.current.clearLayers()
     for (const s of stations ?? []) {
       L.circleMarker([s.lat, s.lon], {
-        radius: 3, weight: 0, fillColor: '#34689b', fillOpacity: 0.55,
+        radius: 3.5, weight: 0, fillColor: STATION_COLOR, fillOpacity: 0.7,
         interactive: true,
       }).bindTooltip(s.name, { direction: 'top' }).addTo(stnLayer.current)
     }
@@ -106,6 +121,11 @@ export default function MapView({ points, stations, selected, onPick, note }) {
   return (
     <figure className="mapwrap">
       <div ref={holder} className="map" />
+      <p className="map-legend">
+        {LEGEND.map(([color, label]) => (
+          <span key={label}><i style={{ background: color }} />{label}</span>
+        ))}
+      </p>
       <figcaption className="muted-line">
         {points.length > MAX_PINS
           ? `조건에 맞는 ${points.length.toLocaleString()}개 중 상위 ${MAX_PINS.toLocaleString()}개만 표시합니다. 조건을 좁히면 전부 보입니다.`

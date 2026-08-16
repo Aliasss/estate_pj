@@ -419,13 +419,28 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   height: 62vh; min-height: 320px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--surface-0);
 }
-/* 라이트 지도 위에 다크 UI가 겹치면 눈이 아프다. 다크에서는 타일을 살짝 눌러 둔다. */
+/* 다크에서 밝은 타일을 눌러 쓰면(brightness 0.78) 어두운 화면 한가운데 뿌연
+   회색 상자가 뜬다. 반전으로 진짜 어두운 지도를 만든다 — 물이 어둡고 길이
+   밝은 선으로 남아, 캔버스 오버레이라 필터를 안 타는 도형 마커가 잘 선다. */
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme='light'])) .leaflet-tile { filter: brightness(0.78) saturate(0.85); }
+  :root:where(:not([data-theme='light'])) .leaflet-tile {
+    filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.5);
+  }
 }
-:root[data-theme='dark'] .leaflet-tile { filter: brightness(0.78) saturate(0.85); }
+:root[data-theme='dark'] .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.5);
+}
 .leaflet-container { font: inherit; font-size: var(--fs-small); }
 .mapwrap figcaption { margin-top: 6px; }
+.map-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0 0;
+  font-size: var(--fs-small); color: var(--text-secondary);
+}
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.map-legend i {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 1.5px solid var(--surface-1);
+}
 
 /* --- 계약 전 확인 --- */
 .share { display: flex; gap: 6px; margin: 4px 0 6px; }
