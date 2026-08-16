@@ -135,6 +135,7 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
 
 
 # 물건 하나에 다 싣지 않는다. 최근 것만 보면 되고, 전량을 넣으면 구 파일이 두 배가 된다.
+# 이 값을 바꾸면 web/src/UnitLookup.jsx의 DEAL_CAPS 미러도 함께 고칠 것.
 DEAL_CAPS = {"j": 10, "s": 8, "w": 6}
 
 

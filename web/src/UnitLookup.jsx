@@ -170,6 +170,11 @@ const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
  * "2.5억"보다 "26.03에 2.6억 3층, 25.11에 2.4억 반지하"가 판단에 훨씬 가깝고,
  * 중위값을 믿을 근거도 된다.
  */
+// 전송량 때문에 종류별 최근 몇 건만 싣는다. build_units.py의 DEAL_CAPS와 같은 값.
+// 상한에 닿은 목록은 "6건"이 아니라 "최근 6건"으로 말해야 한다. 거래가 잦은
+// 건물에서 "6건"은 전부처럼 읽혀서, 실제로 있는 계약이 없는 것처럼 보인다.
+const DEAL_CAPS = { j: 10, s: 8, w: 6 }
+
 function Deals({ deals }) {
   if (!deals) return null
   // 행 끝의 'P'는 신고 기한이 아직 안 지난 달의 계약이다. 월 통계에는 안 들어가지만
@@ -188,7 +193,9 @@ function Deals({ deals }) {
       <h3 className="facts-h">최근 거래</h3>
       {groups.map(([k, label, fmt]) => (
         <div key={k} className="deals">
-          <h4>{label} <small>{deals[k].length}건</small></h4>
+          <h4>{label} <small>
+            {deals[k].length >= DEAL_CAPS[k] ? `최근 ${deals[k].length}건` : `${deals[k].length}건`}
+          </small></h4>
           <table>
             <tbody>
               {deals[k].map((r, i) => {
