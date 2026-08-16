@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LineChart, RankBars } from './charts.jsx'
 import Finder from './Finder.jsx'
 import Law from './Law.jsx'
+import Glossary from './Glossary.jsx'
 import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
 import About from './About.jsx'
@@ -254,7 +255,8 @@ export default function App() {
 
       {tab === 'verify' && <Verify guNames={view.guNames} region={region} />}
       {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
-      {tab === 'law' && <Law />}
+      {/* 용어 사전과 조문 해설은 다른 물건이라 카드도 나눈다 */}
+      {tab === 'law' && <><Glossary /><Law /></>}
       {tab === 'insight' && <Insight onGoFind={() => setTab('find')} />}
       {tab === 'about' && <About onBack={() => setTab('verify')} />}
 

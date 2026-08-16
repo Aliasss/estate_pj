@@ -559,6 +559,62 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 }
 .law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: var(--surface-0); }
 .law-lead { margin: 5px 0 0; font-size: var(--fs-sub); line-height: 1.6; color: var(--text-muted); }
+
+/* --- 용어 사전 --- */
+.gloss-sec { border-top: 1px solid var(--border); }
+.gloss-sec:first-of-type { border-top: 0; }
+.gloss-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px;
+  background: transparent; border: 0; font: inherit; color: inherit;
+  text-align: left; padding: 12px 2px; cursor: pointer;
+}
+.gloss-head:hover, .gloss-head:focus-visible { background: var(--surface-1); outline: none; }
+.gloss-title { flex: 1; font-size: var(--fs-body); font-weight: 650; }
+.gloss-count {
+  font-size: var(--fs-tiny); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+}
+.gloss-list { margin: 0 0 14px; padding: 0; }
+.gloss-item { padding: 8px 2px; }
+.gloss-item + .gloss-item { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.gloss-item dt { font-weight: 650; font-size: var(--fs-sub); margin-bottom: 3px; }
+.gloss-item dd { margin: 0; font-size: var(--fs-sub); line-height: 1.65; color: var(--text-secondary); }
+
+/* 용어 그림. 의미는 글이 지고 그림은 보조라서 전부 aria-hidden이다. */
+.g-fig { margin: 8px 0 2px; }
+.g-bar {
+  height: 14px; border-radius: 7px; background: var(--surface-1);
+  border: 1px solid var(--border); overflow: hidden;
+}
+.g-fill { height: 100%; border-radius: 7px 0 0 7px; }
+.g-fill.good { background: color-mix(in srgb, var(--good) 55%, var(--surface-1)); }
+.g-fill.warning { background: color-mix(in srgb, var(--warning) 55%, var(--surface-1)); }
+.g-fill.critical { background: color-mix(in srgb, var(--critical) 60%, var(--surface-1)); }
+.g-fill.over { border-radius: 7px; }
+.g-bar-labels {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: var(--fs-tiny); color: var(--text-muted); margin-top: 3px;
+}
+.g-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.g-step { display: inline-flex; align-items: center; gap: 6px; }
+.g-step-arrow { color: var(--text-muted); font-size: var(--fs-tiny); }
+.g-step-label {
+  font-size: var(--fs-tiny); border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 10px; background: var(--surface-1);
+}
+.g-step:last-child .g-step-label {
+  border-color: color-mix(in srgb, var(--good) 45%, var(--border));
+  color: var(--good); font-weight: 600;
+}
+.g-area-outer {
+  border: 1px dashed var(--border); border-radius: 8px; padding: 8px;
+  font-size: var(--fs-tiny); color: var(--text-muted);
+}
+.g-area-inner {
+  margin-top: 6px; border: 1px solid color-mix(in srgb, var(--good) 45%, var(--border));
+  border-radius: 6px; padding: 10px 8px; background: var(--surface-1);
+  color: var(--text-primary);
+}
 .law-body { margin-top: 12px; }
 .law-body h4 {
   margin: 16px 0 6px; font-size: var(--fs-sub); font-weight: 650; color: var(--text-primary);
