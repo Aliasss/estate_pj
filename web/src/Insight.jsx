@@ -60,8 +60,10 @@ export default function Insight({ onGoFind }) {
   }
 
   const { cards } = data
-  // 사용자가 "최근 업데이트"로 실제 궁금해하는 것은 자료가 어느 달까지 들어왔는지다.
-  const rtAsof = data.freshness?.find((f) => f.key === 'rt')?.asof
+  // 자료 시점은 insights.json의 freshness 한 곳에서만 가져온다. 이 카드들은
+  // 확정월 기준으로 계산하므로 확정월(solid)을 앞에 말하고, 잠정월은 잠정이라
+  // 밝힌다. 최신월만 내세우면 다른 화면의 "6월까지"와 어긋난다.
+  const rt = data.freshness?.find((f) => f.key === 'rt')
   const ws = cards.wolseShare
   // 헤드라인 수치는 확정월 기준이다. 잠정월 값으로 1년 증감을 말하면
   // "잠정 구간은 증감률을 내지 않는다"는 우리 약속을 첫 카드가 어긴다.
@@ -84,7 +86,9 @@ export default function Insight({ onGoFind }) {
         </p>
         {/* 날짜만 적는다. 시각까지 적으면 수집이 끝나는 때와 어긋난다. */}
         <p className="ins-when">
-          {rtAsof && <>자료는 <b>{ymKo(rtAsof)}분까지</b> 반영했습니다. </>}
+          {rt?.solid && (rt.asof && rt.asof !== rt.solid
+            ? <>자료는 <b>{ymKo(rt.solid)}분까지</b> 확정됐고, {ymKo(rt.asof)}분은 아직 잠정입니다. </>
+            : <>자료는 <b>{ymKo(rt.solid)}분까지</b> 확정됐습니다. </>)}
           {data.generatedAt && (
             <>마지막 갱신 <b>{kst(new Date(data.generatedAt), { month: 'long', day: 'numeric' })}</b>, </>
           )}

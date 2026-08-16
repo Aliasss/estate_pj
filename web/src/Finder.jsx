@@ -322,6 +322,7 @@ export default function Finder({ guNames, region = '11' }) {
             <option value="">전체</option>
             <option value="R">연립·다세대</option>
             <option value="A">아파트</option>
+            <option value="O">오피스텔</option>
           </select>
         </label>
       </div>

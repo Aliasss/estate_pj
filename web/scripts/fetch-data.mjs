@@ -178,9 +178,12 @@ async function buildInsights(tier1) {
   // ---- 시의성: 소스별 최신 시점 ----
   const lastSolid = tier1 ? tier1.months.filter((m) => !tier1.provisional.includes(m)).at(-1) : null
   if (tier1) {
+    // asof는 잠정을 포함한 최신월, solid는 신고 기한이 지난 확정월이다. 화면이
+    // 자료 시점을 말할 때는 반드시 이 두 값에서 가져온다. 화면마다 제 나름대로
+    // 고르면 같은 데이터를 두고 6월과 7월이 동시에 표시된다. 실제로 그랬다.
     out.freshness.push({
       key: 'rt', name: '국토교통부 실거래가', cycle: '매주 화요일 갱신',
-      asof: tier1.months.at(-1), note: `확정 구간 ~${lastSolid}, 이후는 잠정`,
+      asof: tier1.months.at(-1), solid: lastSolid, note: `확정 구간 ~${lastSolid}, 이후는 잠정`,
     })
   }
   const readJson = async (p) => {
@@ -191,6 +194,12 @@ async function buildInsights(tier1) {
   const fin41 = await readJson(path.join(outDir, 'units', 'finder-41.json'))
   if (fin11) {
     const n = (fin11.n ?? 0) + (fin41?.n ?? 0)
+    // 두 산출물의 확정월이 갈리면 화면마다 다른 달을 말하게 된다. 빌드에서 알린다.
+    const unitsSolid = fin11.window[1] && `${fin11.window[1].slice(0, 4)}-${fin11.window[1].slice(4)}`
+    if (lastSolid && unitsSolid && unitsSolid !== lastSolid) {
+      console.warn(`  주의: 확정월이 갈렸습니다. 집계 ${lastSolid} vs 물건 ${unitsSolid}. `
+        + '두 산출물의 세대가 어긋났는지 확인하세요.')
+    }
     out.freshness.push({
       key: 'units', name: '건물 단위 위험 판정', cycle: '매주 화요일 재계산',
       asof: `${fin11.window[0].slice(0, 4)}-${fin11.window[0].slice(4)} ~ ${fin11.window[1].slice(0, 4)}-${fin11.window[1].slice(4)}`,
