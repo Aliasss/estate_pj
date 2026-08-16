@@ -481,7 +481,7 @@ export function guardCalendar(expiry, now = new Date()) {
   const d = Math.round((exp - today) / 86400000)
   if (d < 0) return { d, tone: 'critical', head: '만기가 지났습니다',
     body: '보증금을 못 받았다면 이사하기 전에 임차권등기명령부터 신청하세요. 등기 전에 '
-      + '이사하면 우선변제권이 사라집니다. 절차는 법·제도 탭에 있습니다.' }
+      + '이사하면 우선변제권이 사라집니다. 절차는 알아두기 탭에 있습니다.' }
   // 법정 통보 창: 만기 6개월 전 ~ 2개월 전. 역월로 계산한다.
   const window2 = monthsBefore(exp, 2)   // 이 날까지 통보해야 한다
   const window6 = monthsBefore(exp, 6)

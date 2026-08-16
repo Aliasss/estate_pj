@@ -52,7 +52,8 @@ function Section({ id, title, lead, cur, onToggle, children }) {
 }
 
 export default function Law() {
-  const [open, setOpen] = useState('order')
+  // 용어 사전과 마찬가지로 접힌 목차로 시작한다
+  const [open, setOpen] = useState(null)
   const toggle = (id) => setOpen((cur) => (cur === id ? null : id))
 
   return (

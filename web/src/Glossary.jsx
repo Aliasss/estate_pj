@@ -108,7 +108,8 @@ const GROUPS = [
 ]
 
 export default function Glossary() {
-  const [open, setOpen] = useState(GROUPS[0][0])
+  // 탭에 들어왔을 때는 전부 접혀 있다. 목차가 먼저 보여야 어디로 갈지 고른다.
+  const [open, setOpen] = useState(null)
   return (
     <section className="card">
       <h2>부동산 용어 사전</h2>
