@@ -580,6 +580,9 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .gloss-item dt { font-weight: 650; font-size: var(--fs-sub); margin-bottom: 3px; }
 .gloss-item dd { margin: 0; font-size: var(--fs-sub); line-height: 1.65; color: var(--text-secondary); }
 
+/* 판례 목록 위 안내라 카드 안쪽 여백을 law-note 기본값보다 조금 넉넉히 준다. */
+.prec-age { margin-bottom: 14px; }
+
 /* 판례 항목. 상황 -> 판단 -> 의미의 세 겹 구조가 한눈에 잡히게 라벨을 단다. */
 .prec { padding: 10px 2px 12px; }
 .prec + .prec { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
