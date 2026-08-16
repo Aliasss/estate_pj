@@ -392,20 +392,17 @@ function guardStatus(u, sigs, cal) {
 }
 
 /**
- * 지킴이 한 물건. 평소에는 한 줄 요약으로 접혀 있다가, 새 신호나 만기 일정처럼
- * 지금 읽어야 할 것이 생기면 스스로 펼쳐진다. 사용자가 손으로 접으면 그 선택이
- * 우선한다 — 위험을 숨기지 않되, 매일 보는 화면을 위험 설명이 점령하지 않게.
+ * 지킴이 한 물건. 항상 한 줄 요약으로 접혀서 시작한다. 위험은 상태 칩의 색과
+ * 글로 접힌 줄에서도 보이므로, 설명 전문이 화면을 점령할 이유가 없다.
  */
 function GuardItem({ it, u, onOpen, onRemove }) {
   const cal = guardCalendar(it.expiry)
   const sigs = u && !u.missing && !u.offline ? guardSignals(u, it) : []
   const st = guardStatus(u, sigs, cal)
-  const attention = st.tone === 'critical' || st.tone === 'serious' || st.tone === 'warning'
-  const [manual, setManual] = useState(null)
-  const open = manual ?? attention
+  const [open, setOpen] = useState(false)
   return (
     <li className="guard-item">
-      <button className="guard-sum" aria-expanded={open} onClick={() => setManual(!open)}>
+      <button className="guard-sum" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className={`guard-chip ${st.tone}`}>{st.label}</span>
         <span className="guard-name">
           {it.name}

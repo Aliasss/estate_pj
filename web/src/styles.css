@@ -720,7 +720,8 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .guard-chip.muted { color: var(--text-muted); }
 .guard-name { flex: 1; display: flex; flex-direction: column; gap: 1px; font-size: var(--fs-sub); font-weight: 600; }
 .guard-name small { color: var(--text-muted); font-size: var(--fs-tiny); font-weight: 400; }
-.guard-arrow { color: var(--text-muted); font-size: var(--fs-tiny); }
+/* 펼침 표시는 눌러야 할 것으로 보여야 한다. 작으면 장식으로 읽힌다. */
+.guard-arrow { color: var(--text-muted); font-size: 19px; line-height: 1; padding: 0 2px; }
 .guard-body { padding: 0 4px 12px; }
 .guard-actions { display: flex; gap: 8px; margin-top: 10px; }
 .guard-add p { margin: 6px 0 8px; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
