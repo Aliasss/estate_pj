@@ -104,9 +104,10 @@ export default function Finder({ guNames, region = '11' }) {
   const [minPy, setMinPy] = useState('')         // 평
   const [minYear, setMinYear] = useState(0)
   const [ht, setHt] = useState('')               // '' 전체 / 'A' / 'R'
-  // 이 탭의 문장과 통계가 전부 전세 기준이라 전세로 시작한다. 매매·월세만 있는
-  // 건물은 여기서 재는 위험(전세가율·역전세)을 아예 갖지 못한다.
-  const [deal, setDeal] = useState('j')          // 'j' 전세 / 's' 매매 / 'w' 월세 / '' 전체
+  // 데이터에 있는 건물을 처음부터 다 보여주고, 좁히는 것은 사용자가 고르게 한다.
+  // 전세가 없는 건물은 전세가율을 못 내므로 '안전한 순'에서는 뒤로 밀리고
+  // (safety), 목록 줄에는 전세 신고가 없다고 적힌다.
+  const [deal, setDeal] = useState('')           // '' 전체 / 'j' 전세 / 's' 매매 / 'w' 월세
   // 전세가율 상한. 값이 없는 물건(전세 없음·비교 불가·판단 보류)은 "미만"을
   // 증명할 수 없으므로 통과시키지 않는다. 필터는 확인된 것만 통과시켜야 한다.
   const [ratioCap, setRatioCap] = useState(0)    // 0 무관 / 0.7 / 0.8 / 0.9
@@ -422,7 +423,7 @@ export default function Finder({ guNames, region = '11' }) {
           </select>
         </label>
         <label>
-          <span>전세 거래 두께</span>
+          <span>전세 계약 건수</span>
           <select value={minNj} onChange={(e) => setMinNj(Number(e.target.value))}>
             <option value={0}>무관</option>
             <option value={3}>전세 3건 이상</option>
@@ -459,8 +460,10 @@ export default function Finder({ guNames, region = '11' }) {
       </div>
 
       {/* 이 패널은 전세 보증금으로 동네를 고르는 도구라 늘 전세 기준으로 센다.
-          거래 유형이 전세가 아닐 때 그대로 두면 아래 목록과 분모가 달라진다. */}
-      {byBudget && deal === 'j' && (
+          매매·월세만 남긴 목록 아래에 두면 분모가 대놓고 어긋나므로 그때는 접는다.
+          전체·전세에서는 목록에 전세 건물이 들어 있고, 전세만 센다는 사실은
+          아래 문장이 밝힌다. */}
+      {byBudget && (deal === 'j' || deal === '') && (
         <div className="budget-rank">
           <p className="muted-line">
             보증금 {budget}억이면 어느 동네에 안전한 선택지가 많은지부터 보세요. 전세 신고가
@@ -528,6 +531,10 @@ export default function Finder({ guNames, region = '11' }) {
       <p className="muted-line">
         조건에 맞는 물건이 <strong>{hits.length.toLocaleString()}개</strong> 있습니다.
         {sort === 'safe' && ' 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저 오고, 그다음이 전세가율 여유 순입니다'}
+        {/* 전세 없는 건물이 실제로 실려 있을 때만 말한다. 아직 전세만 담긴
+            데이터가 배포된 동안에는 아무것도 아닌 것을 설명하게 된다. */}
+        {sort === 'safe' && deal !== 'j' && dealCount.j < d.n
+          && ' 전세 신고가 없어 전세가율을 낼 수 없는 건물은 맨 뒤에 옵니다'}
       </p>
 
       {/* 좌표 0%에서 지도 탭은 "물건 핀 0개"만 보여 준다. 만든 것만 못한 화면이라
