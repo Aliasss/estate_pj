@@ -327,19 +327,52 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
     raise RuntimeError(f"{max_retries}회 실패: {describe(last)}")
 
 
+# 사전 확인 재시도. 한 번 두드려 보고 포기하면 하루치 실행(수천 건)을 통째로
+# 버린다. 실측(2026-08-15~17): 일일 크론 세 번이 모두 preflight ConnectTimeout
+# 한 번으로 죽었다.
+#
+# 간격은 실측된 회복 시간에 맞춘다. 실패한 크론과 그 뒤 통과한 수동 실행의
+# 간격이 8/17은 15분, 8/16은 57분이었다. 처음엔 20초로 잡았는데 그건 관측의
+# 1/45라 위약이었다. 15분씩 네 번이면 최대 45분 창으로 15분 사례를 확실히
+# 덮는다. 57분 사례는 놓치지만 그때는 다음 날 크론이 받으면 되고, 이 경로에서
+# 실패하면 받은 게 0건이라 잃을 진행분도 없다.
+#
+# 최악의 경우 약 46분을 쓴다(21초 시도 4회 + 15분 간격 3회). 상한 8,000이면
+# 실작업이 약 133분이라 timeout-minutes 330 안에 넉넉히 들어간다.
+#
+# 진짜 차단이면 네 번 다 막히므로 "막혀 있다"는 판정이 흐려지지는 않는다.
+PREFLIGHT_TRIES = 4
+PREFLIGHT_GAP = 900
+
+
 def preflight(key: str, target: tuple, endpoint_idx: list[int]) -> str | None:
     """본 수집 전에 한 건만 쏴 본다. 막혀 있으면 오류 설명을, 되면 None을 낸다.
 
     한도를 넘겨 차단당한 상태에서 그냥 시작하면 25건을 10분에 걸쳐 버린 뒤에야
-    멈춘다. 실제로 그렇게 한 번 버렸다. 15초 만에 알 수 있는 일이다.
+    멈춘다. 실제로 그렇게 한 번 버렸다.
     """
-    try:
-        fetch(requests.Session(), key, target, endpoint_idx, max_retries=1, timeout=20)
-        return None
-    except (FatalApiError, QuotaExhausted):
-        raise
-    except Exception as exc:
-        return describe(exc)
+    last: Exception | None = None
+    for i in range(PREFLIGHT_TRIES):
+        try:
+            fetch(requests.Session(), key, target, endpoint_idx, max_retries=1, timeout=20)
+            if i:
+                print(f"  사전 확인 {i + 1}번째에 통과했습니다")
+            return None
+        except (FatalApiError, QuotaExhausted):
+            raise            # 키와 쿼터 문제는 기다려도 안 풀린다. 즉시 알린다.
+        except Exception as exc:
+            # 엔드포인트는 돌리지 않는다. fetch가 이미 첫 실패에서 돌리고,
+            # 여기서 또 올리면 엔드포인트가 둘 이상이 되는 날 시도마다 +2가 되어
+            # 같은 곳에 고정된다. 지금은 ENDPOINTS가 하나라 어차피 무동작이다.
+            last = exc
+            if i < PREFLIGHT_TRIES - 1:
+                # 자르지 않는다. 1·2회차 예외는 여기 말고 어디에도 안 남는데,
+                # 앞 60자는 "1회 실패:" 접두사가 먹어서 원인 꼬리가 사라진다.
+                # 쿼터인지 혼잡인지를 로그로 가릴 수 있어야 다음 판단이 선다.
+                print(f"  사전 확인 {i + 1}회 실패: {describe(exc)}")
+                print(f"  {PREFLIGHT_GAP // 60}분 뒤 다시 확인합니다")
+                time.sleep(PREFLIGHT_GAP)
+    return describe(last)
 
 
 def results(plan: list[tuple], key: str, endpoint_idx: list[int],
@@ -480,7 +513,6 @@ def main() -> int:
     calls = inserted = empty = errors = streak = 0
     quota_hit = False
     aborted = False   # 연속 실패로 계획을 포기했는가
-    started = time.monotonic()
     now = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         blocked = preflight(key, plan[0], endpoint_idx)
@@ -493,6 +525,10 @@ def main() -> int:
         print(f"사전 확인에서 치명적 오류: {scrub(exc)}", file=sys.stderr)
         conn.close()
         return 1
+    # 건당 속도(per)의 기준. 사전 확인 뒤에 잡는다. 재시도로 최대 46분을 쓸 수
+    # 있는데 그게 초반 호출에 분산되면, 실행 중에 "느린 것인지 재시도로 헛도는
+    # 것인지"를 보려고 쓰는 지표가 통째로 못 쓰게 된다.
+    started = time.monotonic()
     if blocked:
         print(f"사전 확인 실패 — 지금은 접속이 안 됩니다:\n  {blocked}", file=sys.stderr)
         print("한도를 넘기면 한동안 차단됩니다(실측 38분 이상). 시간을 두고 재실행하세요.",
