@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { meters, sigLabel } from './Finder.jsx'
 import { NoJeonseSig, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
@@ -106,6 +106,20 @@ export default function Nearby({ guNames, region = '11', onBack }) {
     }))
   }, [fin, hits])
 
+  /**
+   * 지도에서 연 카드로 데려다 준다. 지도가 62vh라 카드는 통째로 화면 밖에서
+   * 열리고, 그러면 눌러도 아무 일이 없는 것처럼 보인다. 목록에서 열 때는
+   * 누른 줄 바로 아래에 펼쳐지므로 움직이지 않는다 - 그때 스크롤하면 방금
+   * 보던 자리를 잃는다.
+   */
+  const cardRef = useRef(null)
+  useEffect(() => {
+    if (view !== 'map' || !open?.u || !cardRef.current) return
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    // nearest라 지도를 최소한만 밀어낸다. start로 잡으면 지도가 통째로 사라진다.
+    cardRef.current.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' })
+  }, [view, open?.u?.id])
+
   const toggle = useCallback(async (i) => {
     if (open?.i === i) { setOpen(null); return }
     setOpen({ i, loading: true })
@@ -190,11 +204,27 @@ export default function Nearby({ guNames, region = '11', onBack }) {
           </div>
 
           {view === 'map' ? (
-            <MapView points={pins} stations={stationPins} here={here}
-                     selected={open?.u ? { lat: open.u.lat, lon: open.u.lon,
-                       tone: ratioTone(open.u.ratio), label: open.u.name } : null}
-                     onPick={(p) => toggle(p.i)}
-                     note="가운데 보라색 점이 지금 계신 곳입니다" />
+            <>
+              <MapView points={pins} stations={stationPins} here={here}
+                       selected={open?.u ? { lat: open.u.lat, lon: open.u.lon,
+                         tone: ratioTone(open.u.ratio), label: open.u.name } : null}
+                       onPick={(p) => toggle(p.i)}
+                       note="가운데 보라색 점이 지금 계신 곳입니다" />
+              {/* 마커를 누르면 지도에 머문 채 아래에 카드를 편다. 이 자리가
+                  없으면 눌러도 아무 일이 없다 - 상세를 받아 상태만 바뀌고
+                  그릴 곳이 없었다. 목록으로 튕기지 않는 이유는 지도가 위치
+                  감각이 전부인 화면이라서다. */}
+              <div ref={cardRef}>
+                {open && (
+                  open.u ? (
+                    <UnitCard u={open.u} lawd={open.lawd} compare={compare} guard={guard}
+                              onClose={() => setOpen(null)} />
+                  )
+                  : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>
+                  : <p className="muted-line">불러오는 중…</p>
+                )}
+              </div>
+            </>
           ) : hits.length === 0 ? (
             <p className="muted-line">
               반경 안에 {deal ? `최근 2년 ${DEAL_KINDS.find(([v]) => v === deal)[1]} 신고가 있었던 건물이`
