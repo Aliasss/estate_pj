@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
@@ -143,6 +143,30 @@ export default function Verify({ guNames, region = '11' }) {
     history.pushState(null, '', location.pathname)
   }
 
+  /**
+   * 리포트로 데려다 주는 스크롤.
+   *
+   * 지킴이 패널과 비교함은 리포트보다 위에 있고 리포트는 그 아래에 그려진다.
+   * 그래서 "물건 상세 보기"를 눌러도 화면 밖에서 열려서, 아무 일도 일어나지
+   * 않은 것처럼 보인다. 데려다 주는 동작 자체는 필요하다.
+   *
+   * 예전에는 창 맨 위로 보냈는데(scrollTo top) 그건 리포트 자리가 아니다.
+   * 지킴이를 등록한 사람에게는 앱 머리와 지킴이 패널이 맨 위라, 상세를 누르면
+   * 보고 싶은 것과 반대 방향으로 끌려 올라갔다. 리포트 자리로 간다.
+   *
+   * 물건 id가 아니라 tick으로 도는 이유: 이미 열려 있는 물건을 패널에서 다시
+   * 누르면 id가 그대로라 효과가 안 돌고, 그때도 데려다 줘야 한다.
+   */
+  const reportRef = useRef(null)
+  const [jumpTick, setJumpTick] = useState(0)
+  const jump = useCallback(() => setJumpTick((n) => n + 1), [])
+  useEffect(() => {
+    if (!jumpTick || !reportRef.current) return
+    // 애니메이션을 끈 사람에게는 미끄러지는 화면이 멀미가 된다
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    reportRef.current.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' })
+  }, [jumpTick])
+
   // 지킴이 패널은 등록된 계약의 구 파일만 읽으므로 지역 토글의 로드 상태와
   // 무관하다. 경기 수집이 안 끝났다고 서울 계약의 감시가 사라지면 안 된다.
   const guardPanel = guard.items.length > 0 && (
@@ -150,7 +174,7 @@ export default function Verify({ guNames, region = '11' }) {
                 onOpen={(lawd, u) => {
                   setOpen({ lawd, u })
                   history.pushState(null, '', `?u=${lawd}.${u.id}`)
-                  scrollTo({ top: 0, behavior: 'smooth' })
+                  jump()
                 }} />
   )
 
@@ -209,7 +233,7 @@ export default function Verify({ guNames, region = '11' }) {
                         setShowCmp(false)
                         setOpen({ lawd, u })
                         history.pushState(null, '', `?u=${lawd}.${u.id}`)
-                        scrollTo({ top: 0, behavior: 'smooth' })
+                        jump()
                       }} />
       )}
 
@@ -219,6 +243,9 @@ export default function Verify({ guNames, region = '11' }) {
 
       {open?.u && (
         <>
+          {/* 스크롤 도착점. 리포트 카드 자체에 ref를 걸면 UnitCard가 ref를
+              넘겨받아야 하므로, 높이 0짜리 표식을 바로 앞에 둔다. */}
+          <div ref={reportRef} aria-hidden="true" />
           <UnitCard u={open.u} lawd={open.lawd} onClose={close} rank={rank}
                     compare={compare} guard={guard} pctOf={rank?.pctOf}
                     onMap={open.u.lat != null ? () => setShowMap((v) => !v) : null}
@@ -226,7 +253,7 @@ export default function Verify({ guNames, region = '11' }) {
                       if (!v) return
                       setOpen({ lawd: open.lawd, u: v })
                       history.pushState(null, '', `?u=${open.lawd}.${id}`)
-                      scrollTo({ top: 0, behavior: 'smooth' })
+                      jump()
                     })} />
           {showMap && open.u.lat != null && (
             <MapView points={[{
