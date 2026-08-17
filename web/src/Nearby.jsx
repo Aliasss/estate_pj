@@ -59,6 +59,25 @@ export default function Nearby({ guNames, region = '11', onBack }) {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 })
   }, [])
 
+  /**
+   * 좌표가 아직 없는 건물의 몫. 이 화면은 좌표 있는 건물만 보여줄 수 있는데,
+   * 그 사실을 숨기면 "눈앞 건물이 데이터에 없다"로 읽힌다. 실제로는 있는데
+   * 좌표 수집이 안 끝난 것이다(오피스텔 백필 직후가 특히 그렇다). 사용자가
+   * 그 건물 앞에 서 있을 때 가장 아픈 침묵이라, 몫이 2%를 넘으면 밝힌다.
+   */
+  const geoMiss = useMemo(() => {
+    // 빈 finder(수집 초기 지역)에서 0/0은 NaN이고, NaN은 아래 게이트를 지나
+    // "건물 NaN%"로 화면에 나간다.
+    if (fin.status !== 'ready' || !fin.d.n) return null
+    const { col, d } = fin
+    let miss = 0, missO = 0
+    for (let i = 0; i < d.n; i++) {
+      if (col.lat[i] == null) { miss++; if (col.ht[i] === 'O') missO++ }
+    }
+    if (miss / d.n <= 0.02) return null
+    return { share: miss / d.n, mostlyO: missO / miss >= 0.5 }
+  }, [fin])
+
   // 반경 안의 물건을 가까운 순으로. 거리를 함께 담아 두 번 재지 않는다.
   const hits = useMemo(() => {
     if (fin.status !== 'ready' || !here) return []
@@ -148,6 +167,13 @@ export default function Nearby({ guNames, region = '11', onBack }) {
               ))}
             </div>
           </div>
+          {geoMiss && (
+            <p className="muted-line">
+              건물 {Math.round(geoMiss.share * 100)}%는 좌표 수집이 안 끝나 아직 이
+              화면에 나오지 않습니다{geoMiss.mostlyO ? ' (대부분 오피스텔입니다)' : ''}.
+              수집되는 대로 나타나고, 계약 전 확인 탭에서는 지금도 주소로 찾으실 수 있습니다.
+            </p>
+          )}
           <div className="nb-bar">
             <span>
               반경 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 안 <b>{hits.length}개</b>

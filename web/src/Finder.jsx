@@ -107,6 +107,13 @@ export default function Finder({ guNames, region = '11' }) {
   // 이 탭의 문장과 통계가 전부 전세 기준이라 전세로 시작한다. 매매·월세만 있는
   // 건물은 여기서 재는 위험(전세가율·역전세)을 아예 갖지 못한다.
   const [deal, setDeal] = useState('j')          // 'j' 전세 / 's' 매매 / 'w' 월세 / '' 전체
+  // 전세가율 상한. 값이 없는 물건(전세 없음·비교 불가·판단 보류)은 "미만"을
+  // 증명할 수 없으므로 통과시키지 않는다. 필터는 확인된 것만 통과시켜야 한다.
+  const [ratioCap, setRatioCap] = useState(0)    // 0 무관 / 0.7 / 0.8 / 0.9
+  const [minNj, setMinNj] = useState(0)          // 최근 2년 전세 최소 건수
+  // 통근 필터. 도보 + 지하철 근사치라 목적지를 골랐을 때만 상한이 작동한다.
+  const [dest, setDest] = useState('')           // '' 무관 / 강남 / 시청 / 여의도 / 판교
+  const [commuteCap, setCommuteCap] = useState(40)  // 분
   const [gus, setGus] = useState([])             // 선택한 lawd_cd, 비면 전체
   const [needSale, setNeedSale] = useState(false)
   const [needElvt, setNeedElvt] = useState(false)
@@ -131,6 +138,9 @@ export default function Finder({ guNames, region = '11' }) {
   // 월세 건수 열이 실려 오기 전 배포에서는 월세 선택지를 아예 내지 않는다.
   // 눌러도 0건인 항목을 목록에 두면 "이 동네에 월세가 없다"로 읽힌다.
   const hasNw = fin.status === 'ready' && fin.d.cols.includes('nw')
+
+  // 통근 시간표는 역 목록에 얹혀 온다. 아직 안 온 배포에서는 통근 필터를 숨긴다.
+  const commute = stationPins?.commute ?? null
 
   // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
   // 렌더마다 8만 행을 두 번 훑지 않도록 데이터가 바뀔 때만 센다.
@@ -194,6 +204,14 @@ export default function Finder({ guNames, region = '11' }) {
       if (maxWalk && !(col.walk[i] != null && col.walk[i] <= maxWalk)) continue
       if (minArea != null && !(col.area[i] >= minArea)) continue
       if (minYear && !(col.by[i] >= minYear)) continue
+      if (ratioCap && !(col.ratio[i] != null && col.ratio[i] < ratioCap)) continue
+      if (minNj && !(col.nj[i] >= minNj)) continue
+      // 통근 상한. 걸을 수 없거나(좌표 없음) 그래프가 끊긴 역은 시간을 모르는
+      // 것이므로 통과시키지 않는다. 모르는 것을 끼워 주면 필터가 거짓말이 된다.
+      if (dest && commute) {
+        const t = commute[dest]?.[col.stn[i]]
+        if (col.walk[i] == null || t == null || col.walk[i] + t > commuteCap) continue
+      }
       if (needSale && !col.ns[i]) continue
       if (needElvt && !col.elvt[i]) continue
       if (tests.length && !tests.every((t) => t(col, i))) continue
@@ -209,12 +227,16 @@ export default function Finder({ guNames, region = '11' }) {
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, deal, gus, needSale, needElvt, risk, sort])
+  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, deal, ratioCap, minNj,
+      dest, commuteCap, commute, gus, needSale, needElvt, risk, sort])
 
   // 필터를 하나 더할 때는 hits의 의존성과 이 배열을 반드시 함께 고친다.
   // 한쪽만 고치면 조건이 바뀌었는데 페이지 번호가 이전 문맥에 남는다.
+  // 예외: commute(시간표 도착)는 의도적으로 뺐다. 사용자가 바꾼 조건이 아니라
+  // 데이터 로드 시점이고, dest는 시간표가 온 뒤에만 고를 수 있어 결과에 영향이 없다.
   useEffect(() => { setLimit(PAGE) },
-    [cap, saleCap, maxWalk, minArea, minYear, ht, deal, gus, needSale, needElvt, risk, sort])
+    [cap, saleCap, maxWalk, minArea, minYear, ht, deal, ratioCap, minNj,
+     dest, commuteCap, gus, needSale, needElvt, risk, sort])
 
   // 지도에 찍을 점. 좌표가 없는 물건은 뺀다. 지오코딩이 끝나기 전까지는 대부분이 그렇다.
   // MapView가 어차피 MAX_PINS(3000)에서 자르므로 여기서 먼저 멈춘다. 물건이
@@ -388,6 +410,52 @@ export default function Finder({ guNames, region = '11' }) {
             ))}
           </select>
         </label>
+        <label>
+          {/* 이 상한은 인근 기준 추정치(화면의 "약 X%")도 통과시킨다. 숨기면
+              "확인된 80% 미만"으로 읽히므로 라벨이 말한다. */}
+          <span>전세가율 상한 · 추정치 포함</span>
+          <select value={ratioCap} onChange={(e) => setRatioCap(Number(e.target.value))}>
+            <option value={0}>무관</option>
+            <option value={0.7}>70% 미만</option>
+            <option value={0.8}>80% 미만</option>
+            <option value={0.9}>90% 미만</option>
+          </select>
+        </label>
+        <label>
+          <span>전세 거래 두께</span>
+          <select value={minNj} onChange={(e) => setMinNj(Number(e.target.value))}>
+            <option value={0}>무관</option>
+            <option value={3}>전세 3건 이상</option>
+            <option value={5}>전세 5건 이상</option>
+            <option value={10}>전세 10건 이상</option>
+          </select>
+        </label>
+        {/* 통근 시간표가 아직 안 온 배포에서는 목적지를 골라도 아무 일이 없다.
+            눌러서 실망할 조건은 처음부터 내지 않는다. */}
+        {commute && walkCoverage > 0 && (
+          <>
+            <label>
+              {/* 역까지 도보 필터와 같은 규율. 좌표 없는 건물은 이 필터가 소리
+                  없이 걸러내므로, 그 사실을 라벨이 말해야 한다. */}
+              <span>통근 목적지{walkCoverage < 0.95
+                ? ` · 좌표 있는 ${Math.round(walkCoverage * 100)}%만 검색됨` : ''}</span>
+              <select value={dest} onChange={(e) => setDest(e.target.value)}>
+                <option value="">무관</option>
+                {Object.keys(commute).map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>통근 시간 상한 (약, 도보 포함)</span>
+              <select disabled={!dest} value={commuteCap}
+                      onChange={(e) => setCommuteCap(Number(e.target.value))}>
+                <option value={30}>30분 이내</option>
+                <option value={40}>40분 이내</option>
+                <option value={50}>50분 이내</option>
+                <option value={60}>60분 이내</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
       {/* 이 패널은 전세 보증금으로 동네를 고르는 도구라 늘 전세 기준으로 센다.
@@ -558,9 +626,15 @@ export default function Finder({ guNames, region = '11' }) {
         <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
         대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 전체를
         채우는 데 시간이 걸립니다.
-        <br /><br />
-        <strong>통근 시간은 아직 없습니다.</strong> 물건 좌표와 지하철역 자료를 붙이는 중이고,
-        붙으면 목적지 역을 골라 통근 시간으로 거를 수 있게 할 참입니다.
+        {commute && walkCoverage > 0 && (
+          <>
+            <br /><br />
+            <strong>통근 시간은 근사치입니다.</strong> 집에서 역까지 걷는 시간에 지하철
+            이동 시간(승차 대기와 환승 시간 포함)을 더한 값입니다. 급행은 반영하지 못해
+            급행이 서는 먼 구간은 실제보다 길게, 배차가 뜸한 노선은 짧게 나옵니다.
+            통근 필터도 같은 값으로 거릅니다.
+          </>
+        )}
       </p>
     </section>
   )
