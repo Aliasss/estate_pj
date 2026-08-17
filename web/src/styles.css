@@ -420,10 +420,31 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .facts b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .facts li.full { grid-column: 1 / -1; }
 
-/* 임장용 내 위치 필터. 다른 필터와 같은 줄에 서되 버튼이라 폭을 따로 잡는다. */
-.here-box { min-width: 190px; }
-.here-on { display: flex; gap: 6px; align-items: center; }
-.here-on select { flex: 1; }
+/* --- 임장 중 내 주변 --- */
+.hero-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.nb-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+/* 골목에서 한 손으로 누르는 버튼이라 크게 잡는다. */
+.nb-cta {
+  display: block; width: 100%; min-height: 52px; margin: 4px 0 8px;
+  background: var(--brand); color: var(--on-brand); border: 0; border-radius: 12px;
+  font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer;
+}
+.nb-cta:disabled { opacity: 0.6; cursor: default; }
+.nb-ctl { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.nb-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 8px; font-size: var(--fs-small); color: var(--text-muted);
+}
+.nb-bar b { color: var(--text-primary); }
+.nb-acts { display: flex; gap: 6px; }
+/* 거리가 먼저 읽혀야 한다. 현장에서는 그게 첫 판단이다. 목록 행 구조는
+   동네 탭과 같은 그리드를 그대로 쓰고, 거리만 이름 앞에 알약으로 붙인다. */
+.nb-dist {
+  display: inline-block; margin-right: 6px; padding: 1px 7px;
+  border: 1px solid var(--border); border-radius: 999px;
+  font-size: var(--fs-tiny); font-weight: 600; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; vertical-align: 1px;
+}
 
 /* --- 계약 패키지 (가짜 문) --- */
 .pkg {

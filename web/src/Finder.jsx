@@ -16,7 +16,7 @@ import { htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from 
 const PYEONG = 3.305785
 
 /** 두 좌표 사이 미터. 임장 반경은 1km 안쪽이라 평면 근사로 충분하다. */
-function meters(lat1, lon1, lat2, lon2) {
+export function meters(lat1, lon1, lat2, lon2) {
   const dy = (lat2 - lat1) * 111320
   const dx = (lon2 - lon1) * 111320 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180)
   return Math.hypot(dx, dy)
@@ -93,12 +93,6 @@ export default function Finder({ guNames, region = '11' }) {
   const [needElvt, setNeedElvt] = useState(false)
   const [risk, setRisk] = useState([])       // 켜진 위험 필터
   const [sort, setSort] = useState('safe')
-  // 임장 중에는 조건보다 "지금 내 앞"이 먼저다. 위치는 기기에서만 쓰고
-  // 어디로도 보내지 않는다. 한 번 잡고 끝낸다 — 계속 추적하면 배터리를 먹는다.
-  const [here, setHere] = useState(null)     // {lat, lon, acc} | null
-  const [geoErr, setGeoErr] = useState('')
-  const [geoBusy, setGeoBusy] = useState(false)
-  const [radius, setRadius] = useState(500)  // m
   const [view, setView] = useState('list')   // list | map
   const [limit, setLimit] = useState(PAGE)
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
@@ -149,21 +143,6 @@ export default function Finder({ guNames, region = '11' }) {
       .sort((a, b) => b.safe - a.safe)
   }, [fin, cap, ht, gus.length])
 
-  const askHere = useCallback(() => {
-    if (!navigator.geolocation) { setGeoErr('이 브라우저에서는 위치를 쓸 수 없습니다'); return }
-    setGeoErr(''); setGeoBusy(true)
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setHere({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy })
-        setGeoBusy(false)
-      },
-      (e) => {
-        setGeoErr(e.code === 1 ? '위치 권한이 꺼져 있습니다' : '위치를 찾지 못했습니다')
-        setGeoBusy(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 })
-  }, [])
-
   const hits = useMemo(() => {
     if (fin.status !== 'ready') return []
     const { col, d } = fin
@@ -183,18 +162,7 @@ export default function Finder({ guNames, region = '11' }) {
       if (needSale && !col.ns[i]) continue
       if (needElvt && !col.elvt[i]) continue
       if (tests.length && !tests.every((t) => t(col, i))) continue
-      // 내 위치 기준 반경. 좌표 없는 물건은 거를 수밖에 없다.
-      if (here) {
-        if (col.lat[i] == null) continue
-        if (meters(here.lat, here.lon, col.lat[i], col.lon[i]) > radius) continue
-      }
       out.push(i)
-    }
-    // 현장에서는 "가까운 순"이 유일하게 말이 되는 순서다.
-    if (here) {
-      const dist = (i) => meters(here.lat, here.lon, col.lat[i], col.lon[i])
-      out.sort((a, b) => dist(a) - dist(b))
-      return out
     }
     const key = {
       // 안전 점수는 상위 3천여 개가 100점 동점이라, 2차 키(매매 표본 두께)가 없으면
@@ -206,12 +174,12 @@ export default function Finder({ guNames, region = '11' }) {
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort, here, radius])
+  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
   // 필터를 하나 더할 때는 hits의 의존성과 이 배열을 반드시 함께 고친다.
   // 한쪽만 고치면 조건이 바뀌었는데 페이지 번호가 이전 문맥에 남는다.
   useEffect(() => { setLimit(PAGE) },
-    [cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort, here, radius])
+    [cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
 
   // 지도에 찍을 점. 좌표가 없는 물건은 뺀다. 지오코딩이 끝나기 전까지는 대부분이 그렇다.
   const pins = useMemo(() => {
@@ -314,11 +282,6 @@ export default function Finder({ guNames, region = '11' }) {
     <section className="card">
       <h2>동네 살펴보기</h2>
       <p className="sub">
-        {here && (
-          <><strong>지금 계신 곳에서 {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`} 이내</strong>를
-          가까운 순으로 보여 드립니다. 위치는 이 기기에서만 쓰고 어디로도 보내지 않습니다
-          {here.acc > 100 ? ` (위치 오차가 약 ${Math.round(here.acc)}m로 큽니다)` : ''}.{' '}</>
-        )}
         <strong>매물 목록이 아닙니다.</strong> {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이 있었던
         건물 {d.n.toLocaleString()}개입니다. 지금 계약 가능한 방인지는 알 수 없습니다.
         시세와 분포를 보는 용도입니다.
@@ -362,25 +325,6 @@ export default function Finder({ guNames, region = '11' }) {
           <select value={minYear} onChange={(e) => setMinYear(Number(e.target.value))}>
             {YEAR_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
           </select>
-        </label>
-        <label className="here-box">
-          <span>지금 내 위치{geoCoverage > 0 && geoCoverage < 0.95
-            ? ` · 좌표 있는 ${Math.round(geoCoverage * 100)}%만 검색됨` : ''}</span>
-          {here ? (
-            <span className="here-on">
-              <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}
-                      aria-label="반경">
-                {[300, 500, 1000, 2000].map((m) => (
-                  <option key={m} value={m}>{m >= 1000 ? `${m / 1000}km` : `${m}m`} 이내</option>
-                ))}
-              </select>
-              <button type="button" className="cmp-del" onClick={() => setHere(null)}>해제</button>
-            </span>
-          ) : (
-            <button type="button" className="cmp-btn" onClick={askHere} disabled={geoBusy}>
-              {geoBusy ? '위치를 찾는 중…' : '내 주변 보기'}
-            </button>
-          )}
         </label>
         <label>
           <span>유형</span>
@@ -453,10 +397,7 @@ export default function Finder({ guNames, region = '11' }) {
             {r.label}
           </button>
         ))}
-        {/* 위치를 켜면 정렬은 가까운 순이다. 잠가 두지 않으면 눌러도 안 바뀌는
-            셀렉트가 된다. */}
-        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="정렬"
-                disabled={!!here} title={here ? '내 주변에서는 가까운 순으로 봅니다' : undefined}>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="정렬">
           {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </div>
@@ -479,10 +420,9 @@ export default function Finder({ guNames, region = '11' }) {
         <>
           {/* 마커를 누르면 지도에 머문 채 아래에 카드를 편다. 목록으로 튕기면
               방금 보던 자리를 잃는다 — 지도는 위치 감각이 전부인 화면이다. */}
-          <MapView points={pins} stations={stationPins} selected={picked} here={here}
+          <MapView points={pins} stations={stationPins} selected={picked}
                    onPick={(p) => toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`)}
-                   note={here ? '가운데 점이 지금 계신 곳입니다'
-                     : pins.length ? `좌표를 ${pct0(geoCoverage)} 확보했습니다` : '파란 점은 지하철역입니다'} />
+                   note={pins.length ? `좌표를 ${pct0(geoCoverage)} 확보했습니다` : '파란 점은 지하철역입니다'} />
           {!pins.length && (
             <p className="warnline">
               <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이

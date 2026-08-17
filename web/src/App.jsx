@@ -4,6 +4,7 @@ import Finder from './Finder.jsx'
 import Law from './Law.jsx'
 import Glossary from './Glossary.jsx'
 import Precedents from './Precedents.jsx'
+import Nearby from './Nearby.jsx'
 import Scams from './Scams.jsx'
 import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
@@ -242,12 +243,21 @@ export default function App() {
             브랜드 태그라인("계약 전에 꼭 필요한 것들")은 소개와 앱 설명에 산다. */}
         <p className="hero-tag">계약하고 나서야 알게 되는 것들을 계약하기 전에</p>
         {tab !== 'about' && (
-          <button className="about-link" onClick={() => setTab('about')}>
-            어떤 서비스인가요 →
-          </button>
+          <span className="hero-links">
+            <button className="about-link" onClick={() => setTab('about')}>
+              어떤 서비스인가요 →
+            </button>
+            {/* 현장에 서 있는 사람은 조건 검색이 아니라 "지금 여기"가 필요하다.
+                첫 화면에서 한 번에 닿게 둔다. */}
+            {tab !== 'nearby' && (
+              <button className="about-link" onClick={() => setTab('nearby')}>
+                임장 중이신가요 →
+              </button>
+            )}
+          </span>
         )}
         {/* 법·제도는 전국 공통, 인사이트·소개는 서울·경기 통합이라 지역 토글이 소음이다 */}
-        {['verify', 'find', 'market'].includes(tab) && (
+        {['verify', 'find', 'market', 'nearby'].includes(tab) && (
           <div className="seg region-seg" role="group" aria-label="지역">
             {Object.entries(REGIONS).map(([code, label]) => (
               <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
@@ -260,6 +270,9 @@ export default function App() {
       {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
       {/* 용어 사전과 조문 해설은 다른 물건이라 카드도 나눈다 */}
       {tab === 'law' && <><Glossary /><Law /><Precedents /><Scams /></>}
+      {tab === 'nearby' && (
+        <Nearby guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
+      )}
       {tab === 'insight' && <Insight onGoFind={() => setTab('find')} />}
       {tab === 'about' && <About onBack={() => setTab('verify')} />}
 
