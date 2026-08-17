@@ -24,6 +24,8 @@ const TONE = {
   muted: '#8f8e84',
 }
 const STATION_COLOR = '#34689b'
+// 내 위치. 물건 판정색(TONE)과 겹치지 않는 색이라야 헷갈리지 않는다.
+const HERE_COLOR = '#7b4fd0'
 
 /* 색만으로는 무슨 뜻인지 알 수 없다. 판정 화면과 같은 기준(전세가율)을 그대로 적는다. */
 const LEGEND = [
@@ -34,12 +36,13 @@ const LEGEND = [
   [STATION_COLOR, '지하철역'],
 ]
 
-export default function MapView({ points, stations, selected, onPick, note }) {
+export default function MapView({ points, stations, selected, here, onPick, note }) {
   const holder = useRef(null)
   const map = useRef(null)
   const layer = useRef(null)
   const stnLayer = useRef(null)
   const pickLayer = useRef(null)
+  const hereLayer = useRef(null)
   // onPick은 부모가 렌더마다 새로 만든다. 이걸 이펙트 의존성에 넣으면 마커를
   // 누를 때마다(카드가 열려 재렌더) 마커 전체를 다시 그리고 fitBounds까지 다시
   // 돌아, 방금 확대해 둔 지도가 전체 보기로 튕긴다. 최신 핸들러는 ref로 나른다.
@@ -60,6 +63,7 @@ export default function MapView({ points, stations, selected, onPick, note }) {
     stnLayer.current = L.layerGroup().addTo(map.current)
     // 고른 물건은 맨 위 레이어에 따로 그린다. 3,000개 점 사이에 섞이면 못 찾는다.
     pickLayer.current = L.layerGroup().addTo(map.current)
+    hereLayer.current = L.layerGroup().addTo(map.current)
     // 컨테이너가 늦게 자리를 잡으면 타일이 반쪽만 그려진다
     setTimeout(() => map.current?.invalidateSize(), 0)
     // 조건 입력칸이 위에 길게 깔려 있어서, 지도를 켜면 화면 밖에서 열린다.
@@ -105,6 +109,24 @@ export default function MapView({ points, stations, selected, onPick, note }) {
       .addTo(pickLayer.current)
     map.current.panTo([selected.lat, selected.lon], { animate: true })
   }, [selected])
+
+  // 내가 지금 서 있는 곳. 임장 중에는 이 점이 기준이라 물건 위에 그린다.
+  // GPS 오차만큼 원을 함께 그려서 "이 안 어딘가"임을 숨기지 않는다.
+  useEffect(() => {
+    if (!hereLayer.current) return
+    hereLayer.current.clearLayers()
+    if (!here) return
+    if (here.acc > 30) {
+      L.circle([here.lat, here.lon], {
+        radius: here.acc, weight: 1, color: HERE_COLOR, opacity: 0.5,
+        fillColor: HERE_COLOR, fillOpacity: 0.1,
+      }).addTo(hereLayer.current)
+    }
+    L.circleMarker([here.lat, here.lon], {
+      radius: 7, weight: 3, color: '#fff', fillColor: HERE_COLOR, fillOpacity: 1,
+    }).bindTooltip('지금 계신 곳', { direction: 'top' }).addTo(hereLayer.current)
+    map.current.setView([here.lat, here.lon], Math.max(map.current.getZoom(), 15))
+  }, [here])
 
   // 역은 조건과 무관하게 늘 같은 자리라 따로 그린다. 통근 판단의 기준점이다.
   useEffect(() => {

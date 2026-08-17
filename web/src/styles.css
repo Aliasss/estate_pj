@@ -420,6 +420,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .facts b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .facts li.full { grid-column: 1 / -1; }
 
+/* 임장용 내 위치 필터. 다른 필터와 같은 줄에 서되 버튼이라 폭을 따로 잡는다. */
+.here-box { min-width: 190px; }
+.here-on { display: flex; gap: 6px; align-items: center; }
+.here-on select { flex: 1; }
+
 /* --- 계약 패키지 (가짜 문) --- */
 .pkg {
   margin-top: 16px; padding: 14px;
