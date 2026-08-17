@@ -32,7 +32,9 @@ const LEGEND = [
   [TONE.critical, '전세가율 100% 이상'],
   [TONE.serious, '80~100%'],
   [TONE.good, '80% 미만'],
-  [TONE.muted, '비교 불가'],
+  // 회색은 두 가지다. 전세는 있는데 매매가 없어 못 낸 것과, 전세 자체가 없는 것.
+  // 임장 화면은 거래 유형 기본값이 전체라 뒤쪽이 다수다.
+  [TONE.muted, '비교 불가 · 전세 신고 없음'],
   [STATION_COLOR, '지하철역'],
 ]
 

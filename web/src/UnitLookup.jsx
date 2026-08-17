@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { latestRate, useRates, ym as ymKor, useSubway } from './units.js'
 import { fdTrack } from './fakedoor.js'
 
@@ -26,12 +26,37 @@ function verdict(u) {
   // 아래 수치 문장("빌라 중 1%" 등)은 전부 연립다세대 실측이다. 오피스텔에
   // 그대로 인용하면 지어낸 숫자가 되므로, 수치는 R에만 붙인다. 오피스텔
   // 실측은 백필이 끝난 뒤 재서 따로 단다.
+  //
+  // 분모는 전부 "최근 2년 전세 신고가 있는" 물건이다. 데이터셋이 매매·월세만
+  // 있는 건물까지 담게 되면서 앱 안의 "빌라 전체"와 이 분모가 갈라졌고,
+  // 그냥 "빌라 중"이라고 쓰면 앱이 자기 화면으로 자기 문장을 반증한다.
+  // 서울·경기 실측(2026-08, 전세 있는 물건 기준):
+  //   빌라 96,608개 - 매매 0건 70.1%, 신축·매매0·전세5건↑ 959개(1.0%),
+  //                   매매 3건↑에 전세가율 100% 미만 3,253개(3.4%)
+  //   아파트 35,323개 - 매매 0건 22.2%
+  // 예전에 "아파트 열에 셋"이라고 쓴 것은 서울만 재던 시절 값(30.7%)이다.
+  // 경기가 13.3%라 합치면 열에 둘이다.
   const isR = u.ht === 'R'
   const year = u.apr ?? u.build_year
   const young = year >= 2018
   // 비교 기준이 깨진 값(≥150%)은 위험 판정에 쓰지 않는다. 아래에서 따로 "판단 보류"로 나간다.
   const r = ratioBroken(u.ratio) ? null : u.ratio
   const solid = u.stage === 'A' && u.n_sale_24m >= 3
+
+  // 최근 2년 전세 신고가 없는 건물. 전세가율은 보증금을 매매가로 나눈 값이라
+  // 분자가 없으면 낼 수가 없다. 이럴 때 아래 판정들이 조용히 초록이나 회색을
+  // 켜면 "재 봤더니 괜찮더라"로 읽힌다. 재지 못했다고 먼저 말한다.
+  if (!u.n_jeonse_24m) {
+    const have = [
+      u.n_sale_24m ? `최근 2년 매매 ${u.n_sale_24m}건${u.med_sale ? ` (중위 ${eok(u.med_sale)})` : ''}` : null,
+      u.n_wolse_24m ? `월세 ${u.n_wolse_24m}건` : null,
+    ].filter(Boolean)
+    return { tone: 'muted', head: '이 건물은 최근 2년 전세 계약이 없습니다',
+      // have가 괄호로 끝날 수 있어서 조사를 뒤에 바로 붙이지 않는다.
+      body: (have.length ? `${have.join(', ')}. 전세 신고가 없어 ` : '전세 신고가 없어 ')
+        + '전세가율을 낼 수 없습니다. 안전하다는 뜻도 위험하다는 뜻도 아닙니다. '
+        + '견줄 전세 계약이 없으니 등기부와 보증보험 가입 가능 여부를 먼저 확인하세요.' }
+  }
 
   // 실거래로 확인된 깡통. 증거가 가장 두꺼운 위험이라 다른 무엇보다 먼저 온다.
   // 여기서 초록을 켜면 이 앱이 존재하는 이유와 정확히 반대의 일을 하는 것이다.
@@ -49,12 +74,13 @@ function verdict(u) {
         + '보증금이 매매가를 넘어섭니다. 여유가 거의 없는 계약입니다.' }
   }
 
-  // 신축인데 매매가 한 건도 없고 전세만 여럿. 빌라 65,670개 중 687개(1.0%)뿐이고,
-  // 전세사기 물건에서 반복적으로 나온 모양이다. 71%짜리 기준선과 섞으면 안 된다.
+  // 신축인데 매매가 한 건도 없고 전세만 여럿. 전세 있는 빌라 96,608개 중
+  // 959개(1.0%)뿐이고, 전세사기 물건에서 반복적으로 나온 모양이다.
+  // 70%짜리 기준선과 섞으면 안 된다.
   if (villa && !u.n_sale_24m && young && u.n_jeonse_24m >= 5) {
     return { tone: 'critical', head: '신축인데 매매가 없고 전세만 여럿입니다',
       body: `${year}년 준공, 최근 2년 전세 ${u.n_jeonse_24m}건, 매매 0건. `
-        + (isR ? '빌라 중 1%만 이 모양입니다. ' : '')
+        + (isR ? '전세 신고가 있는 빌라 중 1%만 이 모양입니다. ' : '')
         + '시세를 확인할 길이 없는 상태에서 보증금만 '
         + '들어오는 구조라, 전세사기 물건에서 반복적으로 나타난 패턴입니다.' }
   }
@@ -67,16 +93,17 @@ function verdict(u) {
           + '감안해도 보증금이 집값에 육박하거나 넘는 구간입니다. 등기부와 보증보험 가입 '
           + '가능 여부를 확인하기 전에는 계약하지 마세요.' }
     }
-    // 빌라에서 매매 0건은 열에 일곱이다. 여기에 빨간불을 켜면 정보가 아니라 벽지가 된다.
+    // 빌라에서 매매 0건은 열에 일곱이다(전세 있는 빌라 기준). 여기에 빨간불을
+    // 켜면 정보가 아니라 벽지가 된다.
     return villa
       ? { tone: 'muted', head: '이 건물 최근 2년 매매 0건',
-          body: (isR ? '빌라에서는 흔한 일입니다. 열에 일곱이 그렇습니다. '
+          body: (isR ? '빌라에서는 흔한 일입니다. 전세 신고가 있는 빌라 열에 일곱이 그렇습니다. '
                      : '오피스텔에서 개별 호실 매매는 드뭅니다. ')
             + '이 집이 위험하다는 '
             + '뜻이 아니라, 담보 가치를 실거래로 확인해 드릴 수 없다는 뜻입니다. '
             + '아래 확인 항목을 직접 보셔야 합니다.' }
       : { tone: 'serious', head: '이 건물 최근 2년 매매 0건',
-          body: '아파트에서는 열에 셋뿐인 경우입니다. '
+          body: '전세 신고가 있는 아파트 열에 둘뿐인 경우입니다. '
             + (u.n_sale_all ? `2021년 이후로는 ${u.n_sale_all}건 있었습니다.`
                             : '5년 내내 매매 신고가 없습니다.') }
   }
@@ -102,27 +129,9 @@ function verdict(u) {
   }
 
   return { tone: 'good', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-    body: (isR ? '빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
+    body: (isR ? '전세 신고가 있는 빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
                : '실거래로 가격을 확인할 수 있는 물건입니다.')
       + (r != null ? ` 전세가율 ${pct0(r)}${r >= 0.8 ? ', 여유가 넉넉하지는 않습니다.' : '.'}` : '') }
-}
-
-/**
- * 기본 정렬 점수. 확신도와 위험 수준을 함께 본다.
- * 전세가율만으로 줄을 세우면 B단계 추정치(비교군이 어긋나면 200%도 나온다)가 위를 차지하고,
- * 정작 실거래로 확인된 깡통이 아래로 밀린다. 그래서 근거 단계를 먼저 본다.
- */
-function riskScore(u) {
-  const r = u.ratio
-  const solid = u.stage === 'A' && u.n_sale_24m >= 3   // 그 건물 매매 3건 이상
-  const thin = u.stage === 'A' && u.n_sale_24m < 3     // 한두 건에 좌우되는 값
-  if (solid && r >= 1.0) return 700 + r        // 실거래로 확인된 깡통
-  if (solid && r >= 0.9) return 600 + r
-  if (thin && r >= 1.0) return 500 + r         // 단일 거래 기준. 그 한 건이 이상할 수 있다
-  if (r != null && r >= 1.0) return 400 + r    // 인근 기준 추정
-  if (!u.n_sale_24m) return 300 + Math.min(u.n_jeonse_24m ?? 0, 30) / 100   // 검증 불가
-  if (r != null && r >= 0.8) return 200 + r
-  return r ?? 0
 }
 
 /**
@@ -133,6 +142,31 @@ function riskScore(u) {
  */
 export const RATIO_BROKEN = 1.5
 export const ratioBroken = (r) => r != null && r >= RATIO_BROKEN
+
+/**
+ * 목록 줄 오른쪽 칸에서, 최근 2년 전세 신고가 없는 건물을 어떻게 적을지.
+ * 세 화면(계약 전 확인·동네·임장)이 같은 말을 해야 한다.
+ *
+ * 빈칸이나 '-'로 두면 안 된다. 보증금 자리가 비어 있으면 값이 싸다거나 문제가
+ * 없다는 뜻으로 읽힌다. 없는 것은 없다고 적고, 대신 무엇이 있는지를 준다.
+ *
+ * 이 자리(.u-sig em)는 목록에서 보증금 금액이 앉는 칸이라 숫자로 시작하는 말을
+ * 쓰지 않는다. "전세 0건"은 위아래가 전부 "2.40억"인 세로줄 안에서 0원으로
+ * 읽힐 여지가 있다. 대신 아랫줄에 중위 매매가를 붙여 준다 - 값이 이미 데이터에
+ * 있는데 건수만 주면 아까운 일이다.
+ */
+export function NoJeonseSig({ ns, nw, sale }) {
+  const have = [
+    ns ? `매매 ${ns}건${sale != null ? ` · 중위 ${eok(sale)}` : ''}` : null,
+    nw ? `월세 ${nw}건` : null,
+  ].filter(Boolean)
+  return (
+    <>
+      <em className="muted">전세 신고 없음</em>
+      <small>{have.join(' · ')}</small>
+    </>
+  )
+}
 
 export function ratioTone(ratio) {
   if (ratio == null) return 'muted'
@@ -238,11 +272,13 @@ function Siblings({ u, onPick }) {
           <li key={s.id}>
             <button onClick={() => onPick?.(s.id)} disabled={!onPick}>
               <span>전용 {s.area}m² <small>({(s.area / 3.305785).toFixed(1)}평)</small></span>
-              <b>{eok(s.jeonse)}</b>
+              {/* 전세가 없는 평형은 보증금 자리를 '-'로 비우지 않는다. 옆 평형과
+                  나란히 놓인 줄에서 빈칸은 싸다는 뜻으로 읽힌다. */}
+              <b className={s.nj ? undefined : 'muted'}>{s.nj ? eok(s.jeonse) : '전세 없음'}</b>
               <em className={ratioBroken(s.ratio) ? 'muted' : ratioTone(s.ratio)}>
                 {s.ratio == null ? '-' : ratioBroken(s.ratio) ? '보류' : pct0(s.ratio)}
               </em>
-              <small>전세 {s.nj}건</small>
+              <small>{s.nj ? `전세 ${s.nj}건` : `매매 ${s.ns ?? 0}건`}</small>
             </button>
           </li>
         ))}
@@ -399,6 +435,11 @@ export function questionsFor(u) {
   const q = []
   const r = ratioBroken(u.ratio) ? null : u.ratio
   const year = u.apr ?? u.build_year
+  // 전세가 한 건도 없는 건물 앞에 선 사람이 물어야 할 첫 질문이다. 판정으로는
+  // 답이 안 나오는 자리라 사람에게 물어보게 넘긴다.
+  if (!u.n_jeonse_24m) {
+    q.push('이 건물에 최근 2년 전세 계약이 한 건도 없습니다. 앞 세입자가 있었는지, 전세를 안 놓은 이유가 있는지 물어보세요')
+  }
   if (u.stage === 'A' && u.n_sale_24m >= 3 && r >= 0.9) {
     q.push('보증금이 이 건물 매매가에 육박합니다. 근저당 잔액과 감액(말소) 조건을 먼저 물어보세요')
   }
@@ -534,9 +575,13 @@ function Asking({ u, pctOf }) {
           <em>억</em>
         </span>
       </label>
-      {lines
+      {/* 전세도 매매도 없는 건물에서는 lines가 빈 배열이 된다. 빈 문단을 그리면
+          값을 넣었는데 아무 말도 없는 화면이 되므로, 견줄 것이 없다고 말한다. */}
+      {lines?.length
         ? <p>{lines}</p>
-        : <p className="muted-line">매물에서 본 보증금을 넣으면 이 건물의 실제 계약과 견줘 드립니다.</p>}
+        : lines
+          ? <p className="muted-line">이 건물에는 견줄 전세·매매 실거래가 없습니다. 같은 동 비슷한 평형과 견주시려면 동네 탭에서 조건으로 찾아 보세요.</p>
+          : <p className="muted-line">매물에서 본 보증금을 넣으면 이 건물의 실제 계약과 견줘 드립니다.</p>}
     </div>
   )
 }
@@ -553,8 +598,11 @@ function Actions({ tone, u }) {
       <ol>
         <li>
           등기부등본 을구에서 근저당 잔액을 확인하세요. 선순위 채권과 내 보증금
-          {u.med_sale ? `(${eok(u.med_jeonse)})의 합이 매매가 ${eok(u.med_sale)}을 넘으면 경매에서 못 받습니다`
-                      : '의 합이 집값을 넘으면 경매에서 못 받습니다'}.{' '}
+          {/* 전세가 없는 건물은 med_jeonse가 null이다. 괄호 안이 '-'로 나가면
+              보증금이 0원이라는 말처럼 읽힌다. 둘 다 있을 때만 숫자를 쓴다. */}
+          {u.med_sale && u.med_jeonse
+            ? `(${eok(u.med_jeonse)})의 합이 매매가 ${eok(u.med_sale)}을 넘으면 경매에서 못 받습니다`
+            : '의 합이 집값을 넘으면 경매에서 못 받습니다'}.{' '}
           <a href="https://www.iros.go.kr" target="_blank" rel="noopener noreferrer">인터넷등기소 ↗</a>
         </li>
         <li>
@@ -735,13 +783,16 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
               : ratioBroken(u.ratio) ? '판단 보류'
               : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
           </dd>
-          <small>{st.label}{u.n_comps ? ` · 매매 ${u.n_comps}건` : ''}</small>
+          {/* 전세가 없으면 근거 단계는 매겨져 있어도 쓸 데가 없다. "인근 유사 물건
+              기준"만 남으면 무언가를 재 놓고 안 보여 주는 것처럼 읽힌다. */}
+          <small>{u.n_jeonse_24m ? `${st.label}${u.n_comps ? ` · 매매 ${u.n_comps}건` : ''}`
+            : '전세 신고가 없어 낼 수 없습니다'}</small>
         </div>
         <div>
           <dt>중위 전세보증금</dt>
           <dd>{eok(u.med_jeonse)}</dd>
           <small>
-            최근 2년 {u.n_jeonse_24m}건
+            {u.n_jeonse_24m ? `최근 2년 ${u.n_jeonse_24m}건` : '최근 2년 전세 신고 없음'}
             {rank && ` · ${rank.umd} 비슷한 평형 ${rank.n}건 중 비싼 쪽에서 ${rank.pct}%`}
           </small>
         </div>
@@ -808,202 +859,5 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
 
       <PkgOffer u={u} />
     </div>
-  )
-}
-
-const PAGE = 80
-
-/**
- * 필터. 목록을 훑는 것보다 조건으로 좁히는 게 실제 쓰임에 가깝다
- * ("우리 동네에서 매매 사례 없는 빌라").
- */
-const FILTERS = [
-  // 판단 보류(비교 기준이 깨진 값, RATIO_BROKEN)는 위험이 아니라 모름이므로 세지 않는다.
-  // 동네 살펴보기 탭과 같은 정의여야 한다. 두 탭의 숫자가 다르면 어느 쪽도 못 믿게 된다.
-  { key: 'confirmed', label: '확인된 깡통',
-    hint: '그 건물 매매 3건 이상을 기준으로 보증금이 매매가를 넘습니다',
-    test: (u) => u.stage === 'A' && u.n_sale_24m >= 3 && u.ratio >= 1 && u.ratio < RATIO_BROKEN },
-  { key: 'high', label: '전세가율 90%↑',
-    hint: '근거 단계와 무관하게 전세가율이 90% 이상입니다',
-    test: (u) => u.ratio >= 0.9 && u.ratio < RATIO_BROKEN },
-  { key: 'nosale', label: '매매 0건',
-    hint: '최근 2년 이 건물 매매 신고가 없어 담보 가치를 검증할 수 없습니다',
-    test: (u) => !u.n_sale_24m },
-  { key: 'reverse', label: '역전세',
-    hint: '갱신 계약에서 보증금이 5% 이상 내려갔습니다',
-    test: (u) => u.renew_hike != null && u.renew_hike <= -0.05 },
-]
-
-export default function UnitLookup({ lawdCd, guName, housing }) {
-  const [state, setState] = useState({ status: 'idle' })
-  const [q, setQ] = useState('')
-  // 펼친 물건의 id만 들고 있는다. 상세를 목록 위에 띄우면 아래쪽 물건을 눌렀을 때
-  // 화면 밖에서 열려서 스크롤을 되감아야 한다. 누른 줄 바로 아래에 펼친다.
-  const [selId, setSelId] = useState(null)
-  const [limit, setLimit] = useState(PAGE)
-  const [active, setActive] = useState([])   // 켜진 필터 키
-  const [umd, setUmd] = useState('')         // 법정동
-
-  useEffect(() => {
-    setSelId(null)
-    setState({ status: 'loading' })
-    fetch(`${import.meta.env.BASE_URL}data/units/${lawdCd}.json`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d) => {
-        const idx = Object.fromEntries(d.cols.map((c, i) => [c, i]))
-        const rows = d.rows.map((r) => Object.fromEntries(d.cols.map((c, i) => [c, r[i]])))
-        setState({ status: 'ready', rows, window: d.window, hasHt: d.cols.includes('ht') })
-      })
-      .catch((e) => setState({ status: 'error', message: e.message }))
-  }, [lawdCd])
-
-  const list = useMemo(() => {
-    if (state.status !== 'ready') return Object.assign([], { total: 0 })
-    const needle = q.trim()
-    // ht 없이 만들어진 예전 스냅샷이 배포에 실려도 빈 목록이 되지 않게 한다
-    const wantHt = housing === '아파트' ? 'A' : housing === '오피스텔' ? 'O' : 'R'
-    const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
-    const tests = FILTERS.filter((f) => active.includes(f.key)).map((f) => f.test)
-    const rows = typed.filter((r) =>
-      (!umd || r.umd === umd) &&
-      tests.every((t) => t(r)) &&
-      (!needle || r.name?.includes(needle) || r.umd?.includes(needle) || r.jibun?.includes(needle)))
-    // 검색 전에는 위험한 것부터. 매매 사례가 없는 쪽이 먼저 온다.
-    const out = [...rows].sort((a, b) => (needle
-      ? (b.n_jeonse_24m ?? 0) - (a.n_jeonse_24m ?? 0)
-      : riskScore(b) - riskScore(a)))
-    return Object.assign(out, { total: typed.length })
-  }, [state, q, housing, active, umd])
-
-  // 조건이 바뀌면 다시 처음부터 보여준다
-  useEffect(() => { setLimit(PAGE) }, [q, housing, lawdCd, active, umd])
-  useEffect(() => { setActive([]); setUmd('') }, [lawdCd])
-
-  // 목록 끝이 보이면 다음 묶음을 이어 붙인다. 전량은 이미 메모리에 있으므로
-  // 네트워크 요청 없이 DOM 노드만 늘어난다.
-  const sentinel = useRef(null)
-  useEffect(() => {
-    const node = sentinel.current
-    if (!node || limit >= list.length) return
-    const io = new IntersectionObserver(
-      (entries) => entries[0].isIntersecting && setLimit((n) => n + PAGE),
-      { rootMargin: '400px' }
-    )
-    io.observe(node)
-    return () => io.disconnect()
-  }, [limit, list.length])
-
-  const facets = useMemo(() => {
-    if (state.status !== 'ready') return { umds: [], counts: {} }
-    const wantHt = housing === '아파트' ? 'A' : housing === '오피스텔' ? 'O' : 'R'
-    const typed = state.hasHt ? state.rows.filter((r) => r.ht === wantHt) : state.rows
-    const scoped = umd ? typed.filter((r) => r.umd === umd) : typed
-    return {
-      umds: [...new Set(typed.map((r) => r.umd))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko')),
-      counts: Object.fromEntries(FILTERS.map((f) => [f.key, scoped.filter(f.test).length])),
-    }
-  }, [state, housing, umd])
-
-  const toggle = useCallback((key) => {
-    setActive((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]))
-  }, [])
-
-  if (state.status === 'error') {
-    return (
-      <section className="card">
-        <h2>물건 조회</h2>
-        <p className="sub">
-          {state.message === '404'
-            ? '물건 단위 데이터가 아직 배포에 포함되지 않았습니다. 수집 워크플로가 한 번 더 돌면 붙습니다.'
-            : `불러오지 못했습니다 (${state.message})`}
-        </p>
-      </section>
-    )
-  }
-
-  return (
-    <section className="card">
-      <h2>{guName} 물건 조회</h2>
-      <p className="sub">
-        {housing} · 건물명·법정동·지번으로 검색. 최근 2년 전세 계약이 있는 물건만 있습니다
-        {state.status === 'ready' ? ` (${list.total.toLocaleString()}개)` : ''}
-      </p>
-      <input className="search" type="search" value={q} placeholder="예: 화곡동, 우성테마빌"
-             onChange={(e) => setQ(e.target.value)} aria-label="물건 검색" />
-
-      {state.status === 'ready' && (
-        <div className="filters">
-          <select value={umd} onChange={(e) => setUmd(e.target.value)} aria-label="법정동">
-            <option value="">법정동 전체</option>
-            {facets.umds.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-          {FILTERS.map((f) => (
-            <button key={f.key} className="chip" title={f.hint}
-                    aria-pressed={active.includes(f.key)}
-                    disabled={!facets.counts[f.key] && !active.includes(f.key)}
-                    onClick={() => toggle(f.key)}>
-              {f.label}<span className="n">{facets.counts[f.key]?.toLocaleString() ?? 0}</span>
-            </button>
-          ))}
-          {(active.length > 0 || umd) && (
-            <button className="chip clear" onClick={() => { setActive([]); setUmd('') }}>초기화</button>
-          )}
-        </div>
-      )}
-
-      {state.status === 'loading' && <p className="muted-line">불러오는 중…</p>}
-
-      {state.status === 'ready' && (
-        <>
-          {!q && (
-            <p className="muted-line">
-              검색어가 없으면 위험 신호 순으로 보여줍니다. 그 건물 실거래로 확인된 건이 먼저,
-              인근 기준 추정치가 다음, 매매 사례가 없어 검증이 불가한 건이 그다음입니다.
-            </p>
-          )}
-          <ul className="unit-list">
-            {list.slice(0, limit).map((u) => (
-              <li key={u.id}>
-                <button aria-expanded={selId === u.id}
-                        onClick={() => setSelId((id) => (id === u.id ? null : u.id))}>
-                  <span className="u-name">{u.name || '(이름 없음)'}</span>
-                  <span className="u-meta">{u.umd} · 전용 {u.area}m²{u.build_year ? ` · ${u.build_year}년` : ''}</span>
-                  <span className="u-sig">
-                    <em className={ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}>
-                      {u.ratio == null ? '비교 불가'
-                        : ratioBroken(u.ratio) ? '판단 보류'
-                        : `${STAGE[u.stage]?.exact ? '' : '약 '}${pct0(u.ratio)}`}
-                    </em>
-                    <small className={!u.n_sale_24m ? 'critical' : u.n_sale_24m < 3 ? 'serious' : ''}>
-                      {u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : `매매 ${u.n_sale_24m}건`}
-                    </small>
-                  </span>
-                </button>
-                {selId === u.id && <UnitCard u={u} onClose={() => setSelId(null)} />}
-              </li>
-            ))}
-          </ul>
-          {!list.length && (
-            <p className="muted-line">
-              조건에 맞는 물건이 없습니다.
-              {(active.length > 0 || umd) && ' 필터를 줄여 보세요.'}
-            </p>
-          )}
-          {limit < list.length && (
-            <>
-              <div ref={sentinel} aria-hidden="true" />
-              <button className="more" onClick={() => setLimit((n) => n + PAGE)}>
-                더 보기 ({list.length - limit}개 남음)
-              </button>
-            </>
-          )}
-          {list.length > 0 && (
-            <p className="muted-line">
-              {list.length.toLocaleString()}개 중 {Math.min(limit, list.length).toLocaleString()}개 표시
-            </p>
-          )}
-        </>
-      )}
-    </section>
   )
 }

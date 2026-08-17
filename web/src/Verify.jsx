@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
-import { UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
+import { NoJeonseSig, UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 
 /**
@@ -231,7 +231,8 @@ export default function Verify({ guNames, region = '11' }) {
           {showMap && open.u.lat != null && (
             <MapView points={[{
                        lat: open.u.lat, lon: open.u.lon, tone: ratioTone(open.u.ratio),
-                       label: `${open.u.name || '(이름 없음)'} · ${eok(open.u.med_jeonse)}`,
+                       // 전세 없는 물건에서 '-'로 두면 보증금이 0원처럼 읽힌다
+                       label: `${open.u.name || '(이름 없음)'} · ${open.u.med_jeonse != null ? eok(open.u.med_jeonse) : '전세 신고 없음'}`,
                      }]}
                      stations={stationPins} note="파란 점은 지하철역입니다" />
           )}
@@ -256,9 +257,9 @@ export default function Verify({ guNames, region = '11' }) {
       {fin.status === 'ready' && !open && (
         q.trim().length < 2 ? (
           <p className="muted-line">
-            위 기간에 전세 계약이 있었던 {REGIONS[region]} 전체 {d.n.toLocaleString()}개 건물을 담고 있습니다.
-            시군구를 고르실 필요 없습니다. 신고 기한이 계약일로부터 30일이라 최근 두 달치는
-            아직 절반도 안 들어와서, 그 구간은 빼고 셉니다.
+            위 기간에 전세·매매·월세 신고가 있었던 {REGIONS[region]} 전체 {d.n.toLocaleString()}개 건물을
+            담고 있습니다. 시군구를 고르실 필요 없습니다. 신고 기한이 계약일로부터 30일이라 최근
+            두 달치는 아직 절반도 안 들어와서, 그 구간은 빼고 셉니다.
           </p>
         ) : hits.idx.length ? (
           <>
@@ -284,8 +285,12 @@ export default function Verify({ guNames, region = '11' }) {
                     {' · '}{htName(col.ht[i])} 전용 {col.area[i]}m²
                   </span>
                   <span className="u-sig">
-                    <em>{eok(col.jeonse[i])}</em>
-                    <small>전세 {col.nj[i]}건</small>
+                    {col.jeonse[i] == null ? <NoJeonseSig ns={col.ns[i]} nw={col.nw[i]} sale={col.sale[i]} /> : (
+                      <>
+                        <em>{eok(col.jeonse[i])}</em>
+                        <small>전세 {col.nj[i]}건</small>
+                      </>
+                    )}
                   </span>
                 </button>
               </li>
@@ -378,6 +383,18 @@ function GuardPanel({ guard, byId, onOpen }) {
   )
 }
 
+/**
+ * 감시할 재료가 있는 물건인가. guardSignals의 네 신호는 전세 거래 내역이나
+ * 매매 중위값 중 하나는 있어야 돌아간다. 둘 다 없으면 신호 0건이 나오는데,
+ * 그건 "재 봤더니 괜찮다"가 아니라 "잴 것이 없었다"이다.
+ *
+ * 데이터셋이 매매·월세만 신고된 건물까지 담게 되면서 처음 도달 가능해진
+ * 상태다. 예전에는 상세를 열 수 있는 건물이 전부 전세를 가지고 있었다.
+ * 지킴이는 계약한 사람이 2년을 믿고 맡기는 화면이라 여기서의 거짓 초록이
+ * 이 앱에서 가장 비싼 거짓말이다.
+ */
+const guardWatchable = (u) => !!(u?.deals?.j?.length || u?.n_sale_24m)
+
 /** 접힌 줄에 띄울 상태 하나. 위험한 것부터 잡는다. */
 function guardStatus(u, sigs, cal) {
   if (u === undefined) return { tone: 'muted', label: '확인 중' }
@@ -392,6 +409,7 @@ function guardStatus(u, sigs, cal) {
   if (cal && cal.tone !== 'muted') {
     return { tone: cal.tone, label: cal.d < 0 ? '만기 지남' : `만기 D-${cal.d}` }
   }
+  if (!guardWatchable(u)) return { tone: 'muted', label: '잴 자료 없음' }
   return { tone: 'good', label: '이상 없음' }
 }
 
@@ -430,10 +448,21 @@ function GuardItem({ it, u, onOpen, onRemove }) {
             </div>
           )}
           {u && !u.missing && !u.offline && sigs.length === 0 && (
-            <div className="verdict good">
-              <strong>등록 이후 새 위험 신호가 없습니다</strong>
-              <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
-            </div>
+            guardWatchable(u) ? (
+              <div className="verdict good">
+                <strong>등록 이후 새 위험 신호가 없습니다</strong>
+                <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
+              </div>
+            ) : (
+              <div className="verdict muted">
+                <strong>이 건물은 최근 2년 전세·매매 신고가 없습니다</strong>
+                <span>
+                  신규 전세가 내 보증금 아래로 내려가는지, 매매가가 보증금에 못 미치는지를
+                  볼 자료가 아직 없습니다. 신고가 들어오면 그때부터 확인해 드립니다.
+                  만기 일정은 아래에서 계속 챙겨 드립니다.
+                </span>
+              </div>
+            )
           )}
           {sigs.map((sg) => (
             <div key={sg.head} className={`verdict ${sg.tone}`}>
@@ -490,10 +519,15 @@ function ComparePanel({ compare, byId, onOpen }) {
                 {u.name || u.jibun}<small>{u.umd} · {u.area}m²</small>
               </button>
             ))}
-            {row('전세가율', (u) => u.ratio == null ? '-'
+            {/* 나란히 놓인 표에서 '-'는 옆 칸의 '89%'와 견줘 "싸고 무난한 후보"로
+                읽힌다. 전세가 없는 건물은 그 사실을 칸 안에 적는다. stage는 전세와
+                무관하게 매겨지므로 근거 행도 함께 막아야 한다. 추정한 적이 없다. */}
+            {row('전세가율', (u) => !u.n_jeonse_24m ? '전세 0건'
+              : u.ratio == null ? '-'
               : u.ratio >= 1.5 ? '판단 보류' : `${Math.round(u.ratio * 100)}%`)}
-            {row('근거', (u) => u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : '인근 추정')}
-            {row('중위 전세', (u) => cmpEok(u.med_jeonse))}
+            {row('근거', (u) => !u.n_jeonse_24m ? '전세 신고 없음'
+              : u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : '인근 추정')}
+            {row('중위 전세', (u) => !u.n_jeonse_24m ? '전세 0건' : cmpEok(u.med_jeonse))}
             {row('최근 전세', (u) => {
               const r = u.deals?.j?.[0]
               return r ? `${String(r[0]).slice(2, 4)}.${String(r[0]).slice(4, 6)} ${cmpEok(r[1])}` : '-'
@@ -518,21 +552,27 @@ function ComparePanel({ compare, byId, onOpen }) {
 }
 
 /**
- * 검색 0건은 조작 실수가 아니라 판정일 수 있다. 이 데이터셋은 최근 2년 전세 신고가
- * 있었던 건물만 담으므로, "여기 없다"는 그 건물에 최근 2년 전세 계약이 없었다는
- * 뜻이다. 신축이거나 내가 첫 세입자라는 얘기이고, 그건 이 앱이 최고 위험 신호로
- * 잡는 패턴(신축·매매 0건·전세만 다수)의 바로 앞 단계다. 침묵하면 안 되는 순간이다.
+ * 검색 0건은 조작 실수가 아니라 판정일 수 있다. 이 데이터셋은 최근 2년에 전세·매매·월세
+ * 중 하나라도 신고가 있었던 건물을 담으므로, "여기 없다"는 그 건물에 최근 2년 실거래
+ * 신고가 한 건도 없었다는 뜻이다. 신축이거나 거래가 멈춘 건물이라는 얘기이고, 그건 이
+ * 앱이 최고 위험 신호로 잡는 패턴(신축·매매 0건·전세만 다수)의 바로 앞 단계다.
+ * 침묵하면 안 되는 순간이다.
  */
 function NoHit({ fin, query }) {
+  // 질의에 들어 있는 법정동을 찾는다. 있으면 그 동의 기준선을 대신 내 준다.
+  // 동 찾기는 1천 개짜리 목록이고 통계는 32만 행 전수라, 둘을 한 메모에 묶으면
+  // 오타를 치는 동안 같은 동을 매번 다시 센다. 통계는 동이 바뀔 때만 돈다.
+  const ui = useMemo(() => {
+    const q = query.replace(/\s+/g, '')
+    for (let k = 0; k < fin.d.umds.length; k++) {
+      const u = fin.d.umds[k]
+      if (u && u.length >= 2 && q.includes(u)) return k
+    }
+    return -1
+  }, [fin, query])
+
   const info = useMemo(() => {
     const { col, d } = fin
-    const q = query.replace(/\s+/g, '')
-    // 질의에 들어 있는 법정동을 찾는다. 있으면 그 동의 기준선을 대신 내 준다.
-    let ui = -1
-    for (let k = 0; k < d.umds.length; k++) {
-      const u = d.umds[k]
-      if (u && u.length >= 2 && q.includes(u)) { ui = k; break }
-    }
     if (ui < 0) return null
     let n = 0, noSale = 0
     const deps = []
@@ -544,28 +584,32 @@ function NoHit({ fin, query }) {
     }
     if (!n) return null
     deps.sort((a, b) => a - b)
-    return { umd: d.umds[ui], n, noSale, med: deps[Math.floor(deps.length / 2)] }
-  }, [fin, query])
+    // 중위 보증금은 전세가 있는 물건만으로 낸다. 전세 없는 건물이 섞인 뒤로는
+    // 분모가 다르므로 표본 수를 함께 밝힌다.
+    return { umd: d.umds[ui], n, noSale, nJeonse: deps.length,
+             med: deps.length ? deps[Math.floor(deps.length / 2)] : null }
+  }, [fin, ui])
 
   if (!info) {
     return (
       <p className="muted-line">
         찾지 못했습니다. 건물명 대신 <strong>법정동 + 지번</strong>으로 넣어 보세요
-        (예: 화곡동 871-8). 최근 2년 전세 계약이 없던 건물은 여기에 없습니다.
+        (예: 화곡동 871-8). 최근 2년 실거래 신고가 한 건도 없던 건물은 여기에 없습니다.
       </p>
     )
   }
   return (
     <div className="nohit">
       <p>
-        <strong>그 지번은 최근 2년 전세 신고 기록이 없습니다.</strong> 신축이거나,
-        당신이 첫 세입자라는 뜻입니다. 시세를 확인할 실거래가 없다는 것 자체가
-        확인해야 할 이유입니다.
+        <strong>이 데이터에서 그 지번을 찾지 못했습니다.</strong> 최근 2년 전세·매매·월세
+        신고가 모두 없거나, 단독·다가구주택이라 수집 범위 밖일 수 있습니다. 어느
+        쪽이든 시세를 견줄 실거래가 없다는 뜻이라, 아래를 직접 확인하셔야 합니다.
       </p>
       <p className="muted-line">
-        참고로 {info.umd}에는 물건 {info.n.toLocaleString()}개가 있고, 그중{' '}
-        {Math.round((info.noSale / info.n) * 100)}%는 매매 사례가 없습니다. 동 중위
-        보증금 {eok(info.med)}. 지번을 다시 확인하시려면 번지 앞부분만 넣어 보세요.
+        참고로 {info.umd}에는 실거래 신고가 있는 물건 {info.n.toLocaleString()}개가 있고,
+        그중 {Math.round((info.noSale / info.n) * 100)}%는 매매 사례가 없습니다.
+        {info.med != null && ` 그중 전세가 있는 ${info.nJeonse.toLocaleString()}개 기준으로 동 중위 보증금은 ${eok(info.med)}입니다.`}
+        {' '}지번을 다시 확인하시려면 번지 앞부분만 넣어 보세요.
       </p>
       <p className="muted-line">
         기록이 없는 집일수록 아래를 건너뛰면 안 됩니다:{' '}

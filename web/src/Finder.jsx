@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
-import { RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
+import { NoJeonseSig, RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
+import { DEAL_KINDS, hasDeal, htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -9,8 +9,8 @@ import { htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from 
  * 물건 조회 탭이 "이 구에서 위험한 게 뭐냐"를 본다면 여기는 반대 방향이다.
  * 예산·면적·연식·지역을 먼저 걸고, 남은 것 중에서 순서를 매긴다.
  *
- * finder.json은 열 단위로 담겨 있다(83,895개 · gzip 0.96MB). 행 객체로 펼치면
- * 메모리가 40MB쯤 되므로 열 배열을 그대로 두고 인덱스만 걸러 정렬한다.
+ * finder.json은 열 단위로 담겨 있다(서울 204,977개 · gzip 2.77MB). 행 객체로
+ * 펼치면 메모리가 몇 배가 되므로 열 배열을 그대로 두고 인덱스만 걸러 정렬한다.
  */
 
 const PYEONG = 3.305785
@@ -44,10 +44,10 @@ const RISKS = [
     hint: '근거 단계와 무관하게 전세가율이 90% 이상입니다',
     test: (c, i) => c.ratio[i] >= 0.9 && c.ratio[i] < RATIO_BROKEN },
   { key: 'newvilla', label: '신축 빌라 · 매매 0건',
-    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상입니다. 빌라 중 1%뿐이고, 전세사기 물건에서 반복된 패턴입니다',
+    hint: '2018년 이후 준공인데 매매가 한 건도 없고 전세만 5건 이상입니다. 전세 신고가 있는 빌라 중 1%뿐이고, 전세사기 물건에서 반복된 패턴입니다',
     test: (c, i) => c.ht[i] === 'R' && !c.ns[i] && (c.apr[i] ?? c.by[i]) >= 2018 && c.nj[i] >= 5 },
   { key: 'nosale', label: '매매 0건',
-    hint: '최근 2년 매매 신고가 없습니다. 빌라에서는 열에 일곱이라 기준선에 가깝고, 아파트에서는 열에 셋뿐입니다',
+    hint: '최근 2년 매매 신고가 없습니다. 전세 신고가 있는 빌라에서는 열에 일곱이라 기준선에 가깝고, 아파트에서는 열에 둘뿐입니다',
     test: (c, i) => !c.ns[i] },
   { key: 'reverse', label: '역전세',
     hint: '갱신 계약에서 보증금이 5% 이상 내려갔습니다. 집주인이 보증금을 돌려주고 있다는 뜻입니다',
@@ -67,7 +67,12 @@ const SORTS = [
  *  - 여유(최대 60): 전세가율이 100%에서 얼마나 떨어져 있느냐.
  * 점수 자체는 화면에 숫자로 내지 않는다. 근거와 전세가율을 그대로 보여주는 편이 정직하다.
  */
-function safety(ratio, stage, ns) {
+function safety(ratio, stage, ns, nj) {
+  // 전세가 아예 없는 물건은 이 점수의 대상이 아니다. 근거 점수만 주면 매매
+  // 3건짜리 전세 0건 건물(40점)이 전세가율 105%짜리 확인된 깡통(40점)과 같은
+  // 자리에 선다. "안전한 순"은 전세가율의 순서이므로, 잴 수 없는 것은 그 줄에
+  // 세우지 않고 뒤로 모은다.
+  if (!nj) return -1
   const evidence = stage === 0 ? (ns >= 3 ? 40 : 25) : stage === 1 ? 15 : stage === 2 ? 8 : 0
   // 비교 기준이 깨진 값은 "가장 위험함"이 아니라 "모름"이다. 안전 순 맨 뒤에 두면
   // 정작 실거래로 확인된 깡통이 그 아래로 밀린다.
@@ -75,6 +80,17 @@ function safety(ratio, stage, ns) {
   const room = Math.max(0, Math.min(1, (1.05 - ratio) / 0.55))
   return evidence + 60 * room
 }
+
+/** 거래 유형 코드 -> 문장에 넣을 이름. DEAL_KINDS와 같은 값을 문장용으로 쓴다. */
+const DEAL_LABEL = Object.fromEntries(DEAL_KINDS.filter(([v]) => v).map(([v, l]) => [v, l]))
+
+/** MapView의 MAX_PINS와 같은 값. 거기서 자를 것을 여기서 만들지 않는다. */
+const MAP_PIN_SCAN = 3000
+
+/** 지도 핀에 붙는 값. 전세가 없는 건물은 보증금 자리에 매매가를 대신 넣지
+    않는다 — 라벨에는 단위를 적을 자리가 없어서 그대로 보증금으로 읽힌다. */
+export const sigLabel = (col, i) =>
+  (col.jeonse[i] != null ? eok(col.jeonse[i]) : '전세 신고 없음')
 
 /** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
 const PAGE = 60
@@ -88,6 +104,9 @@ export default function Finder({ guNames, region = '11' }) {
   const [minPy, setMinPy] = useState('')         // 평
   const [minYear, setMinYear] = useState(0)
   const [ht, setHt] = useState('')               // '' 전체 / 'A' / 'R'
+  // 이 탭의 문장과 통계가 전부 전세 기준이라 전세로 시작한다. 매매·월세만 있는
+  // 건물은 여기서 재는 위험(전세가율·역전세)을 아예 갖지 못한다.
+  const [deal, setDeal] = useState('j')          // 'j' 전세 / 's' 매매 / 'w' 월세 / '' 전체
   const [gus, setGus] = useState([])             // 선택한 lawd_cd, 비면 전체
   const [needSale, setNeedSale] = useState(false)
   const [needElvt, setNeedElvt] = useState(false)
@@ -109,19 +128,30 @@ export default function Finder({ guNames, region = '11' }) {
   // 새 열은 데이터보다 코드가 먼저 배포될 수 있다. 열이 정말 실려 왔는지는
   // FILL로 채워진 col이 아니라 원본 cols 목록이 말해 준다.
   const hasSale = fin.status === 'ready' && fin.d.cols.includes('sale')
+  // 월세 건수 열이 실려 오기 전 배포에서는 월세 선택지를 아예 내지 않는다.
+  // 눌러도 0건인 항목을 목록에 두면 "이 동네에 월세가 없다"로 읽힌다.
+  const hasNw = fin.status === 'ready' && fin.d.cols.includes('nw')
 
   // 건축물대장이 얼마나 붙었는지는 숨기면 안 된다. 필터가 왜 이렇게 적게 남는지의 답이다.
   // 렌더마다 8만 행을 두 번 훑지 않도록 데이터가 바뀔 때만 센다.
-  const { coverage, geoCoverage, walkCoverage } = useMemo(() => {
-    if (fin.status !== 'ready') return { coverage: 0, geoCoverage: 0, walkCoverage: 0 }
+  // 거래 유형별 건수도 같은 한 바퀴에서 센다. 머리 문단이 "지금 무엇을 보고
+  // 있는지"를 말하려면 다른 조건과 무관한 모집단 크기가 필요하다.
+  const { coverage, geoCoverage, walkCoverage, dealCount } = useMemo(() => {
+    if (fin.status !== 'ready') {
+      return { coverage: 0, geoCoverage: 0, walkCoverage: 0, dealCount: {} }
+    }
     const { col, d } = fin
     let e = 0, g = 0, w = 0
+    const dc = { j: 0, s: 0, w: 0 }
     for (let i = 0; i < d.n; i++) {
       if (col.elvt[i] != null) e++
       if (col.lat[i] != null) g++
       if (col.walk[i] != null) w++
+      if (col.nj[i]) dc.j++
+      if (col.ns[i]) dc.s++
+      if (col.nw[i]) dc.w++
     }
-    return { coverage: e / d.n, geoCoverage: g / d.n, walkCoverage: w / d.n }
+    return { coverage: e / d.n, geoCoverage: g / d.n, walkCoverage: w / d.n, dealCount: dc }
   }, [fin])
 
   // 예산 역산. "내 보증금이면 어느 동네에 안전한 선택지가 많은가"는 전 물건의
@@ -132,7 +162,9 @@ export default function Finder({ guNames, region = '11' }) {
     const { col, d } = fin
     const acc = d.gus.map(() => ({ n: 0, safe: 0 }))
     for (let i = 0; i < d.n; i++) {
-      if (!(col.jeonse[i] <= cap)) continue
+      // null <= cap은 자바스크립트에서 참이다. 전세 없는 건물이 예산 안에
+      // 들어와 "확인된 안전 몇 개"의 분모를 부풀리면 안 된다.
+      if (!(col.jeonse[i] != null && col.jeonse[i] <= cap)) continue
       if (ht && col.ht[i] !== ht) continue
       const a = acc[col.g[i]]
       a.n++
@@ -151,8 +183,11 @@ export default function Finder({ guNames, region = '11' }) {
     const out = []
     for (let i = 0; i < d.n; i++) {
       if (ht && col.ht[i] !== ht) continue
+      if (deal && !hasDeal(col, i, deal)) continue
       if (guSet && !guSet.has(col.g[i])) continue
-      if (cap != null && !(col.jeonse[i] <= cap)) continue
+      // 전세 없는 건물의 jeonse는 null이고, null <= cap은 참이다. 보증금 상한을
+      // 건 사람에게 보증금을 모르는 건물을 끼워 주면 필터가 거짓말이 된다.
+      if (cap != null && !(col.jeonse[i] != null && col.jeonse[i] <= cap)) continue
       // 매매가 필터는 매매 사례가 있는 물건만 통과시킨다. "3억 이하"를 물은
       // 사람에게 값을 모르는 물건을 끼워 주면 필터가 거짓말이 된다.
       if (saleCap != null && !(col.sale[i] != null && col.sale[i] <= saleCap)) continue
@@ -167,31 +202,35 @@ export default function Finder({ guNames, region = '11' }) {
     const key = {
       // 안전 점수는 상위 3천여 개가 100점 동점이라, 2차 키(매매 표본 두께)가 없으면
       // 첫 페이지가 파일 순서(구 -> 가나다)로 나온다. 표본 많은 순이 설명과 맞는 순서다.
-      safe: (i) => safety(col.ratio[i], col.stage[i], col.ns[i]) * 1e4 + Math.min(col.ns[i] ?? 0, 999) * 10 + Math.min(col.nj[i] ?? 0, 9) ,
+      safe: (i) => safety(col.ratio[i], col.stage[i], col.ns[i], col.nj[i]) * 1e4 + Math.min(col.ns[i] ?? 0, 999) * 10 + Math.min(col.nj[i] ?? 0, 9) ,
       new: (i) => col.by[i] ?? -1,
       big: (i) => col.area[i] ?? -1,
       cheap: (i) => -(col.jeonse[i] ?? Infinity),
     }[sort]
     out.sort((a, b) => key(b) - key(a))
     return out
-  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
+  }, [fin, cap, saleCap, maxWalk, minArea, minYear, ht, deal, gus, needSale, needElvt, risk, sort])
 
   // 필터를 하나 더할 때는 hits의 의존성과 이 배열을 반드시 함께 고친다.
   // 한쪽만 고치면 조건이 바뀌었는데 페이지 번호가 이전 문맥에 남는다.
   useEffect(() => { setLimit(PAGE) },
-    [cap, saleCap, maxWalk, minArea, minYear, ht, gus, needSale, needElvt, risk, sort])
+    [cap, saleCap, maxWalk, minArea, minYear, ht, deal, gus, needSale, needElvt, risk, sort])
 
   // 지도에 찍을 점. 좌표가 없는 물건은 뺀다. 지오코딩이 끝나기 전까지는 대부분이 그렇다.
+  // MapView가 어차피 MAX_PINS(3000)에서 자르므로 여기서 먼저 멈춘다. 물건이
+  // 32만 개가 된 뒤로는 좌표만 붙으면 버릴 객체를 20만 개 만드는 루프가 된다.
+  // 자른 사실은 MapView가 전체 개수와 함께 화면에 밝힌다.
   const pins = useMemo(() => {
     if (view !== 'map' || fin.status !== 'ready') return []
     const { col } = fin
     const out = []
     for (const i of hits) {
       if (col.lat[i] == null) continue
+      if (out.length >= MAP_PIN_SCAN) break
       out.push({
         i, lat: col.lat[i], lon: col.lon[i],
         tone: ratioTone(col.ratio[i]),
-        label: `${col.name[i] || '(이름 없음)'} · ${eok(col.jeonse[i])}`,
+        label: `${col.name[i] || '(이름 없음)'} · ${sigLabel(col, i)}`,
       })
     }
     return out
@@ -205,7 +244,7 @@ export default function Finder({ guNames, region = '11' }) {
     if (idx == null || col.lat[idx] == null) return null
     return {
       lat: col.lat[idx], lon: col.lon[idx], tone: ratioTone(col.ratio[idx]),
-      label: `${col.name[idx] || '(이름 없음)'} · ${eok(col.jeonse[idx])}`,
+      label: `${col.name[idx] || '(이름 없음)'} · ${sigLabel(col, idx)}`,
     }
   }, [fin, open, hits])
 
@@ -281,10 +320,14 @@ export default function Finder({ guNames, region = '11' }) {
   return (
     <section className="card">
       <h2>동네 살펴보기</h2>
+      {/* 큰 숫자 하나를 주고 다음 문장에서 그게 분모가 아니라고 물리면, 굵게
+          박힌 쪽만 기억에 남는다. 지금 보고 있는 모집단을 먼저 말한다. */}
       <p className="sub">
-        <strong>매물 목록이 아닙니다.</strong> {ym(d.window[0])}~{ym(d.window[1])}에 전세 계약이 있었던
-        건물 {d.n.toLocaleString()}개입니다. 지금 계약 가능한 방인지는 알 수 없습니다.
-        시세와 분포를 보는 용도입니다.
+        <strong>매물 목록이 아닙니다.</strong> {ym(d.window[0])}~{ym(d.window[1])}에{' '}
+        {deal ? `${DEAL_LABEL[deal]} 신고가 있었던 건물 ${(dealCount[deal] ?? 0).toLocaleString()}개를 보고 계십니다. `
+              : `전세·매매·월세 신고가 있었던 건물 ${d.n.toLocaleString()}개를 보고 계십니다. `}
+        {deal && `다른 거래 유형까지 하면 ${d.n.toLocaleString()}개이고, 거래 유형에서 바꾸실 수 있습니다. `}
+        지금 계약 가능한 방인지는 알 수 없습니다. 시세와 분포를 보는 용도입니다.
       </p>
 
       <div className="cond">
@@ -335,14 +378,26 @@ export default function Finder({ guNames, region = '11' }) {
             <option value="O">오피스텔</option>
           </select>
         </label>
+        <label>
+          <span>거래 유형</span>
+          <select value={deal} onChange={(e) => setDeal(e.target.value)}>
+            {DEAL_KINDS.filter(([v]) => v !== 'w' || hasNw).map(([v, label]) => (
+              <option key={v || 'all'} value={v}>
+                {v === '' ? '전체 (전세·매매·월세)' : `${label} 신고 있음`}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {byBudget && (
+      {/* 이 패널은 전세 보증금으로 동네를 고르는 도구라 늘 전세 기준으로 센다.
+          거래 유형이 전세가 아닐 때 그대로 두면 아래 목록과 분모가 달라진다. */}
+      {byBudget && deal === 'j' && (
         <div className="budget-rank">
           <p className="muted-line">
-            보증금 {budget}억이면 어느 동네에 안전한 선택지가 많은지부터 보세요.
-            <strong> 확인된 안전</strong>은 그 건물 매매 3건 이상에 전세가율 90% 미만이라는
-            뜻입니다. 구를 누르면 그 구만 걸러집니다.
+            보증금 {budget}억이면 어느 동네에 안전한 선택지가 많은지부터 보세요. 전세 신고가
+            있는 건물만 셉니다. <strong>확인된 안전</strong>은 그 건물 매매 3건 이상에
+            전세가율 90% 미만이라는 뜻입니다. 구를 누르면 그 구만 걸러집니다.
           </p>
           <ul>
             {byBudget.slice(0, 8).map((r) => (
@@ -457,13 +512,17 @@ export default function Finder({ guNames, region = '11' }) {
                 {col.walk[i] != null ? ` · ${stationPins[col.stn[i]] ? `${stationPins[col.stn[i]].name}역 ` : ''}도보 ${col.walk[i]}분` : ''}
               </span>
               <span className="u-sig">
-                <em>{eok(col.jeonse[i])}</em>
-                <small className={col.ratio[i] >= RATIO_BROKEN ? 'muted' : ratioTone(col.ratio[i])}>
-                  {col.ratio[i] == null ? '전세가율 비교 불가'
-                    : col.ratio[i] >= RATIO_BROKEN ? '전세가율 판단 보류'
-                    : `${d.stages[col.stage[i]] === 'A' ? '' : '약 '}${pct0(col.ratio[i])}`}
-                  {col.ns[i] ? ` · 매매 ${col.ns[i]}건` : ' · 매매 0건'}
-                </small>
+                {col.jeonse[i] == null ? <NoJeonseSig ns={col.ns[i]} nw={col.nw[i]} sale={col.sale[i]} /> : (
+                  <>
+                    <em>{eok(col.jeonse[i])}</em>
+                    <small className={col.ratio[i] >= RATIO_BROKEN ? 'muted' : ratioTone(col.ratio[i])}>
+                      {col.ratio[i] == null ? '전세가율 비교 불가'
+                        : col.ratio[i] >= RATIO_BROKEN ? '전세가율 판단 보류'
+                        : `${d.stages[col.stage[i]] === 'A' ? '' : '약 '}${pct0(col.ratio[i])}`}
+                      {col.ns[i] ? ` · 매매 ${col.ns[i]}건` : ' · 매매 0건'}
+                    </small>
+                  </>
+                )}
               </span>
             </button>
             {open?.key === key && (
@@ -480,7 +539,12 @@ export default function Finder({ guNames, region = '11' }) {
         })}
       </ul>}
 
-      {!hits.length && <p className="muted-line">조건에 맞는 물건이 없습니다. 예산이나 면적을 넓혀 보세요.</p>}
+      {!hits.length && (
+        <p className="muted-line">
+          조건에 맞는 물건이 없습니다. 예산이나 면적을 넓혀 보시거나
+          {deal ? `, 거래 유형(지금 ${DEAL_LABEL[deal]})을 전체로 바꿔 보세요.` : ' 조건을 줄여 보세요.'}
+        </p>
+      )}
       {view === 'list' && limit < hits.length && (
         <>
           <div ref={sentinel} aria-hidden="true" />

@@ -92,9 +92,18 @@ def pct(numer: float | None, denom: float | None) -> float | None:
 # jibun이 들어 있어야 "화곡동 123-45"로 찾을 수 있다. 검증하러 온 사람은 주소를 들고 온다.
 # sale은 매매 실거래 중위(만원). 조건 검색의 매매가 상한 필터가 쓴다. 매매
 # 사례가 없는 물건은 None이고, 열 단위 저장이라 gzip이 거의 다 먹는다.
+# nw는 최근 2년 월세 건수. 전세 없는 건물을 싣기 시작하면서 필요해졌다 — 목록
+# 줄에서 "전세 0건"만 적으면 대신 무엇이 있는지를 말할 수가 없다.
+#
+# 전세 없는 건물까지 실은 값: 서울 finder가 gzip 1.81MB에서 2.77MB로,
+# 물건은 91,476개에서 204,977개로(2.24배) 늘었다. 늘어난 행은 대부분 빈 값이라
+# gzip이 잘 먹어서 용량은 1.53배에 그쳤다. 구 파일 최대는 0.55MB -> 0.99MB.
+# 이 파일은 서비스워커 런타임 캐시(프리캐시 아님)라 첫 방문에만 드는 비용이다.
+# 프런트 JSON.parse는 x86에서 289ms 걸린다(저사양 폰은 5~8배). 여기서 열을
+# 하나 더 늘릴 때는 그 시간이 첫 화면을 그대로 늦춘다는 것을 함께 재야 한다.
 FINDER_COLS = ["i", "ht", "g", "u", "jibun", "name", "area", "by", "jeonse", "ratio",
                "stage", "ns", "nj", "hike", "elvt", "apr", "lat", "lon", "stn", "walk",
-               "sale"]
+               "sale", "nw"]
 STAGES = ["A", "B", "B-", "C"]
 
 
@@ -120,7 +129,7 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
                 # 건축물대장이 아직 안 붙은 물건은 None. 열 단위라 gzip이 거의 다 먹는다.
                 r[col["elvt"]], r[col["apr"]],
                 r[col["lat"]], r[col["lon"]], r[col["stn"]], r[col["walk"]],
-                r[col["med_sale"]],
+                r[col["med_sale"]], r[col["n_wolse_24m"]],
             ])
     payload = {"build": build_id, "window": window, "gus": gus, "stages": STAGES,
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
@@ -320,11 +329,20 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     for key, info in meta.items():
         ht, lawd, umd, jibun_n, name_n, band = key
         n_j = len(jeonse_recent.get(key, ()))
-        if not n_j:
-            continue                                   # 최근 전세가 없으면 앱에서 볼 일이 없다
+        n_w = wolse_recent.get(key, 0)
+        n_s_any = len(sale_recent.get(key, ()))
+        # 전세·매매·월세 중 하나라도 최근 거래가 있으면 싣는다. 예전에는 전세만
+        # 실었는데, 임장 중에 눈앞 건물을 찾으면 "없는 건물"로 나왔다. 전세가
+        # 없는 건물도 그 자리에 서 있다는 사실은 같다. 판정은 전세가 있을 때만
+        # 하고, 없으면 없다고 말한다.
+        if not (n_j or n_w or n_s_any):
+            continue
         bm_key = (ht, lawd, umd, area_key(info["area"], UMD_BAND))
         b_key = bm_key + (year_key(info["build_year"]),)
 
+        # 전세가 없으면 med_j가 None이고, 따라서 ratio도 None이다. stage는 그래도
+        # 매긴다 — "이 건물 매매로 값을 확인할 수 있느냐"는 전세와 무관한 사실이고,
+        # 나중에 전세가 처음 들어올 때 쓸 근거이기도 하다.
         med_j = median(jeonse_recent[key])
         n_s = len(sale_recent.get(key, ()))
         med_s = median(sale_recent.get(key, []))
@@ -338,7 +356,10 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
             ratio, stage, n_comps = pct(med_j, med_bm[bm_key]), "B-", len(umd_sale_bm[bm_key])
         else:
             ratio, stage, n_comps = None, "C", 0
-        stage_count[(ht, stage)] += 1
+        # 분포는 전세가율을 실제로 낸 물건만 센다. 전세 없는 물건까지 넣으면
+        # "A단계 몇 %"가 전세가율의 근거 두께가 아니라 다른 것을 세게 된다.
+        if n_j:
+            stage_count[(ht, stage)] += 1
 
         # 직전 24개월 전세가율. 분자와 분모 모두 직전 창 값이어야 한다. 현재 창 매매가로
         # 나누면 집값이 오른 구간에서 "전세가율이 올랐다"가 과다 발생한다. 화면 문턱이
@@ -409,7 +430,7 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     print(terrain.report())
     print(f"{len(by_gu)}개 구, 물건 {sum(len(r) for r in by_gu.values()):,}개, "
           f"합계 {total_bytes / 1e6:.1f}MB (구당 평균 {total_bytes / len(by_gu) / 1e3:.0f}KB)")
-    print("\n폴백 단계 분포 (최근 전세가 있는 물건 기준):")
+    print("\n폴백 단계 분포 (전세가율을 낸 물건 기준. 전세 없는 물건은 제외):")
     for ht in ("아파트", "연립다세대", "오피스텔"):
         tot = sum(v for (h, _), v in stage_count.items() if h == ht)
         if tot:

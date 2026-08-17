@@ -32,7 +32,7 @@ export function useSubway() {
  */
 
 /** 없는 열은 비어 있는 것으로 본다. 코드가 데이터보다 먼저 배포되면 그렇게 된다. */
-const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk', 'sale']
+const FILL = ['jibun', 'hike', 'elvt', 'apr', 'lat', 'lon', 'stn', 'walk', 'sale', 'nw']
 
 /**
  * 비어 있으면 안 되는 열. 이 중 하나라도 빠지면 검색·판정이 undefined 위에서
@@ -48,6 +48,25 @@ export const ym = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(4, 6)}월` : '-')
 export const REGIONS = { 11: '서울', 41: '경기' }
 // 유형 코드 -> 화면 이름. 목록 줄에 쓰는 짧은 표기다.
 export const htName = (c) => (c === 'A' ? '아파트' : c === 'O' ? '오피스텔' : '연립·다세대')
+
+/**
+ * 거래 유형 필터. 물건 데이터는 최근 2년에 전세·매매·월세 중 하나라도 신고가
+ * 있었던 건물을 전부 싣는다. 전세만 싣던 시절에는 임장 중에 눈앞 건물을 찾으면
+ * "없는 건물"로 나왔다.
+ *
+ * 화면마다 기본값이 다르고, 그건 화면이 하는 일이 다르기 때문이다. 동네 탭은
+ * 전세 위험을 재는 곳이라 전세로 시작하고(그 화면의 통계 문장이 전부 전세
+ * 기준이다), 임장 화면은 눈앞 건물을 찾는 곳이라 전체로 시작한다.
+ */
+export const DEAL_KINDS = [['', '전체'], ['j', '전세'], ['s', '매매'], ['w', '월세']]
+
+/** finder 열 배열에서 그 유형의 최근 2년 신고가 있는지. nw는 없을 수도 있는
+    열이라(FILL) 코드가 데이터보다 먼저 배포되면 월세 필터가 0건이 된다. */
+export const hasDeal = (col, i, kind) => (
+  kind === 'j' ? col.nj[i] > 0
+    : kind === 's' ? col.ns[i] > 0
+    : kind === 'w' ? col.nw[i] > 0
+    : true)
 
 export function useFinder(region = '11') {
   const [state, setState] = useState({ status: 'loading' })
@@ -78,11 +97,21 @@ export function useFinder(region = '11') {
         }
         const blank = new Array(d.n).fill(null)
         for (const c of FILL) if (!col[c]) col[c] = blank
-        // 검색은 키 입력마다 전수 스캔이다. 행마다 replace로 새 문자열을 만들면
-        // 저사양 폰에서 키 하나에 100ms를 넘긴다. 공백 뗀 이름을 한 번만 만들어 둔다.
+        // 검색은 키 입력마다 전수 스캔이다. 행마다 새 문자열을 만들면 저사양
+        // 폰에서 키 하나에 100ms를 넘긴다. 물건이 32만 개가 된 뒤로는 여유가
+        // 없어서, 스캔에 쓰는 두 문자열을 모두 여기서 한 번만 만든다.
+        //   flat  공백 뗀 건물명
+        //   addr  "법정동 + 지번"("화곡동871-8"처럼 두 값에 걸친 질의를 받는다)
+        // addr를 루프 안에서 이어 붙이면 매 키 입력마다 32만 개를 새로 할당한다.
+        // 실측(x86 node, 서울 204,977행): 전수 스캔 16ms -> 6.6ms, 이 두 배열을
+        // 만드는 데 43ms 한 번, 힙 +13MB. 저사양 폰은 통상 5~8배로 본다.
         const flat = new Array(d.n)
-        for (let i = 0; i < d.n; i++) flat[i] = (col.name[i] || '').replace(/\s+/g, '')
-        setState({ status: 'ready', d, col, flat })
+        const addr = new Array(d.n)
+        for (let i = 0; i < d.n; i++) {
+          flat[i] = (col.name[i] || '').replace(/\s+/g, '')
+          addr[i] = (d.umds[col.u[i]] || '') + (col.jibun?.[i] ?? '')
+        }
+        setState({ status: 'ready', d, col, flat, addr })
       })
       .catch((e) => setState({ status: e.pending ? 'pending' : 'error', message: e.message }))
   }, [region])
@@ -178,7 +207,7 @@ const AREA_ALIASES = {
 
 export function search(fin, query, limit = 40, guNames = null) {
   const raw = query.trim()
-  const { col, d, flat } = fin
+  const { col, d, flat, addr } = fin
 
   let gset = null
   let area = null        // (구 인덱스, 동 인덱스) 합성 키의 집합
@@ -227,8 +256,7 @@ export function search(fin, query, limit = 40, guNames = null) {
       // 알려진 한계: 권역 밖인데 건물명이 별칭으로 시작하는 조합("판교 밸리호반",
       // 고등동)은 여기서 빠진다. 붙여 치거나 별칭만 치면 잡히므로 감수한다.
       if (area != null && !inArea) continue
-      const umd = d.umds[col.u[i]] || ''
-      if (!flat[i].includes(q) && !(umd + (col.jibun?.[i] ?? '')).includes(q)) continue
+      if (!flat[i].includes(q) && !addr[i].includes(q)) continue
     } else if (area != null) {
       // 별칭만("평촌")이면 생활권 전부에, 이름에 그 말이 든 인접 건물을 더한다
       if (!inArea && !aliasWords.some((w) => flat[i].includes(w))) continue
