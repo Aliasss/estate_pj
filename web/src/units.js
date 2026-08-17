@@ -14,7 +14,9 @@ export function useSubway() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return
+        // 통근 시간표는 역 목록에 얹어 함께 온다. 별도 요청을 만들지 않는다.
         _subwayCache = d.stations.map((name, i) => ({ name, lat: d.coords[i][0], lon: d.coords[i][1] }))
+        _subwayCache.commute = d.commute ?? null
         setStations(_subwayCache)
       })
       .catch(() => {})          // 역 자료가 없어도 화면은 떠야 한다

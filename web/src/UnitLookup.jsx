@@ -173,7 +173,7 @@ const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
 // 전송량 때문에 종류별 최근 몇 건만 싣는다. build_units.py의 DEAL_CAPS와 같은 값.
 // 상한에 닿은 목록은 "6건"이 아니라 "최근 6건"으로 말해야 한다. 거래가 잦은
 // 건물에서 "6건"은 전부처럼 읽혀서, 실제로 있는 계약이 없는 것처럼 보인다.
-const DEAL_CAPS = { j: 10, s: 8, w: 6 }
+const DEAL_CAPS = { j: 15, s: 10, w: 12 }
 
 function Deals({ deals }) {
   if (!deals) return null
@@ -303,6 +303,25 @@ function Wolse({ deals, jeonse }) {
   )
 }
 
+/**
+ * 주요 업무지구까지 걸리는 시간. 집에서 역까지 걸어가는 시간(walk)에 지하철
+ * 시간표를 더한다. 시간표는 subway.json에 목적지별로 미리 계산돼 있다.
+ *
+ * 못 가는 역(그래프가 끊긴 구간)은 그 목적지만 빠진다. 억지로 숫자를 만드느니
+ * 말하지 않는 편이 낫다.
+ */
+function commuteText(stations, u) {
+  const table = stations?.commute
+  if (!table || u.stn == null || u.walk == null) return null
+  const parts = []
+  for (const [dest, times] of Object.entries(table)) {
+    const t = times[u.stn]
+    if (t == null) continue
+    parts.push(`${dest} ${Math.round(u.walk + t)}분`)
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
 /** 건물 정보. 건축물대장과 좌표 기반 생활정보(역·학교·지형)는 수집 경로가
  *  달라서 따로 왔다 따로 빠진다. 대장이 아직 없어도 생활정보가 있으면
  *  보여 준다 — 대장을 기다리느라 이미 아는 것까지 숨기면 안 된다. */
@@ -313,6 +332,7 @@ function BuildingFacts({ u }) {
   // 보이는데 대장은 수집 전"이라는 자기모순 화면이 나올 수 있다.
   const hasBldg = [u.apr, u.strct, u.hhld, u.flr, u.elvt, u.park, u.n_dong]
     .some((v) => v != null)
+  const commute = commuteText(stations, u)
   const items = [
     u.apr && ['준공', `${u.apr}년`],
     u.hhld && ['세대수', `${u.hhld}세대`],
@@ -331,6 +351,8 @@ function BuildingFacts({ u }) {
       u.slope < 8 ? `완만한 오르막 (경사 약 ${u.slope}%)` : `언덕 (경사 약 ${u.slope}%)`}${
       u.stn_dh != null && Math.abs(u.stn_dh) >= 10
         ? ` · 역보다 약 ${Math.abs(u.stn_dh)}m ${u.stn_dh > 0 ? '높음' : '낮음'}` : ''}`],
+    // 도보 + 지하철. 급행과 배차는 반영하지 못하므로 "약"을 떼지 않는다.
+    commute && ['통근 (약, 도보 포함)', commute],
   ].filter(Boolean)
   if (!items.length) {
     return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
@@ -343,11 +365,19 @@ function BuildingFacts({ u }) {
         {items.map(([k, v]) => (
           // 지형 값은 구조적으로 길다("완만한 오르막 … 역보다 약 18m 높음").
           // 좁은 열에 구겨 넣지 않고 전폭을 준다.
-          <li key={k} className={k === '지형' ? 'full' : undefined}>
+          <li key={k} className={k === '지형' || k.startsWith('통근') ? 'full' : undefined}>
             <span>{k}</span><b>{v}</b>
           </li>
         ))}
       </ul>
+      {/* collect_subway.py가 "무엇을 반영하지 못했는지 함께 밝힌다"고 약속했다.
+          이 문단이 그 약속을 이행한다. 지울 때는 그쪽 docstring도 함께 볼 것. */}
+      {commute && (
+        <p className="muted-line">
+          통근 시간은 지하철 표정속도로 계산한 값입니다. 급행과 배차 간격은 반영하지
+          못해서, 급행이 다니는 먼 구간은 실제보다 길게, 배차가 드문 노선은 짧게 나옵니다.
+        </p>
+      )}
       {!hasBldg && (
         <p className="muted-line">건축물대장(준공·세대수·승강기 등)은 아직 수집 전입니다. 수집되는 대로 이 자리에 붙습니다.</p>
       )}
