@@ -848,9 +848,15 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   text-align: left; padding: 10px 4px; cursor: pointer;
 }
 .guard-sum:hover, .guard-sum:focus-visible { background: var(--surface-1); outline: none; }
+/* 칩 너비를 고정한다. 내용대로 두면 "만기 D-5"와 "만기 D-16"이 한 글자
+   차이로 폭이 달라져서, 바로 옆 건물 이름의 시작점이 줄마다 어긋난다.
+   실측(390px, 12px 기준): 가장 짧은 "확인 중" 60.2px, 가장 긴 "잴 자료 없음"과
+   "만기 D-317"이 88.4px. 7.4em이 그 최대치를 덮는다. em이라 글자 크기를 키운
+   사람에게도 같이 늘어난다. D-1000을 넘는 만기는 임대차에 없어서 뺐다. */
 .guard-chip {
   flex-shrink: 0; font-size: var(--fs-tiny); font-weight: 600;
   padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border);
+  min-width: 7.4em; text-align: center;
 }
 .guard-chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--border)); }
 .guard-chip.warning, .guard-chip.serious { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }

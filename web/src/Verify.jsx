@@ -455,7 +455,10 @@ function GuardItem({ it, u, onOpen, onRemove }) {
         <span className={`guard-chip ${st.tone}`}>{st.label}</span>
         <span className="guard-name">
           {it.name}
-          <small>{it.umd} · 전용 {it.area}m² · 보증금 {it.deposit >= 10000
+          {/* '보증금' 라벨을 뗐다. 카드 이름이 보증금 지킴이이고 줄에 금액이
+              하나뿐이라 중복인데, 그 세 글자 때문에 부제가 두 줄로 밀렸다.
+              '전용'은 남긴다 - 전용면적과 공급면적을 뭉개면 안 된다. */}
+          <small>{it.umd} · 전용 {it.area}m² · {it.deposit >= 10000
             ? `${(it.deposit / 10000).toFixed(1)}억` : `${it.deposit.toLocaleString()}만`}</small>
         </span>
         <span className="guard-arrow" aria-hidden>{open ? '▾' : '▸'}</span>
