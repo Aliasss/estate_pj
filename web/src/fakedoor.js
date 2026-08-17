@@ -13,6 +13,11 @@
    지불 의사). notify는 별선(출시 알림). about_view -> about_notify는 소개 탭의
    별도 퍼널. 2026-08-16 배포 이전 행은 의미가 달라 집계에서 잘라낸다.
 
+   VARIANT: 상품 문구가 바뀌면 같은 클릭도 다른 뜻이 된다. 문구를 고칠 때마다
+   이 값을 올리고, 집계는 variant별로 나눠 본다. 값을 안 올리고 문구만 고치면
+   두 실험이 한 통에 섞인다. variant가 NULL인 행은 v1(읽는 리포트로 팔던
+   문구)이다. 버리지도 말고 v2에 합치지도 말 것.
+
    보내는 것: 이벤트명, 물건 id(공개 데이터), 표시 가격, (CARRIES_CID 이벤트만)
    무작위 id. 키는 쓰기 전용 정책(RLS)이라 이 클라이언트로는 읽을 수 없고, 공개
    저장소에 있어도 되는 값이다. 집계 실패는 조용히 삼킨다 — 카운터가 앱을
@@ -36,6 +41,8 @@ function cid() {
 }
 
 const CARRIES_CID = new Set(['apply', 'notify', 'about_notify']) // 고지 화면의 이벤트만
+// v2: 리포트를 '읽는 자료'가 아니라 '내미는 협상 근거'로 파는 문구 (2026-08-17)
+const VARIANT = 'v2-negotiation'
 // 세션당 1회만 세는 이벤트. click도 포함한다 — 카드를 닫았다 열 때마다 세면
 // cid 없는 click은 서버에서 걸러낼 수도 없어 view 대비 비율이 부풀어 오른다.
 const ONCE = new Set(['view', 'about_view', 'click'])
@@ -63,6 +70,7 @@ export function fdTrack(event, unitId, price) {
         unit_id: unitId == null ? null : String(unitId),
         price,
         cid: CARRIES_CID.has(event) ? cid() : null,
+        variant: VARIANT,
       }),
     }).catch(() => {})
   } catch { /* 위 주석 참조 */ }

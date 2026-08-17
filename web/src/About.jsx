@@ -79,13 +79,15 @@ function PkgPlan() {
     <section className="card" ref={boxRef}>
       <h2>준비하고 있는 것 · 계약 패키지</h2>
       <p className="sub">
-        계약하는 날 한 번 결제하면, 그 물건의 심층 리포트를 바로 받고 계약 후
-        2년 동안 감시가 이어지는 유료 상품을 준비하고 있습니다. 아직 출시
-        전이며, 지금은 관심을 익명 숫자로만 세어 출시를 결정하는 단계입니다
+        계약하는 날 한 번 결제하면, 중개사와 집주인에게 내밀 수 있는 협상 근거
+        문서를 바로 받고 계약 후 2년 동안 감시가 이어지는 유료 상품을 준비하고
+        있습니다. 아직 출시 전이며, 지금은 관심을 익명 숫자로만 세어 출시를
+        결정하는 단계입니다
       </p>
       <div className="about-item">
-        <b>심층 리포트</b>
-        <span>{PKG_REPORT_ITEMS.join(', ')}.</span>
+        <b>협상 근거 문서</b>
+        <span>{PKG_REPORT_ITEMS.join(', ')}. 감정이 아니라 실거래로 말하게
+        해 드리는 것이 이 문서의 쓰임입니다.</span>
       </div>
       <div className="about-item">
         <b>2년 감시</b>

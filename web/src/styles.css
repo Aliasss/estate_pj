@@ -431,6 +431,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .pkg-price { font-weight: 700; font-size: var(--fs-num); font-variant-numeric: tabular-nums; }
 .pkg-price small { font-weight: 400; color: var(--text-muted); font-size: var(--fs-tiny); margin-left: 4px; }
 .pkg-detail { margin-top: 12px; }
+/* 실제로 내밀 문장의 예시. 인용이라 들여쓰고 색을 낮춘다. */
+.pkg-quote {
+  margin: 2px 0 12px; padding: 8px 10px; border-left: 2px solid var(--border);
+  font-size: var(--fs-small); color: var(--text-secondary); line-height: 1.6;
+}
 .pkg-detail > b { font-size: var(--fs-small); }
 .pkg-list {
   list-style: none; margin: 4px 0 10px; padding: 0;
