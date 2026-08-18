@@ -561,3 +561,140 @@ export function guardMilestones(expiry) {
       body: '보증금을 못 받았다면 이사 전에 임차권등기명령부터 신청하세요.' },
   ]
 }
+
+/* ── 주거 히스토리 ────────────────────────────────────────────────────
+   살아온 집의 기록. 지킴이와 역할이 다르다. 지킴이는 "감시 중인 계약"이고
+   여기는 "살아온 기록"이다. 지킴이는 우리 데이터에 있는 물건만 담을 수 있고
+   넉 대까지인데, 살아온 집은 데이터에 없는 경우가 오히려 흔하다.
+
+   재건축으로 사라진 건물, 2021년 8월 이전(수집 시작 전) 거주지, 단독·다가구,
+   건축물대장이 아직 안 닿은 지역이 전부 여기 걸린다. 실제로 둔촌주공은 이름으로도
+   지번으로도 찾을 수 없다. 2020년에 이주·철거가 끝나 수집 범위 안에 거래가
+   한 건도 없기 때문이다. 같은 자리에는 2024년 준공한 다른 이름의 단지가 있다.
+
+   그래서 이 기록은 우리 데이터에 기대지 않는다. 좌표가 그 집의 정체성이고,
+   이름은 사용자가 기억하는 대로 적는다. 지번이 합쳐지든 이름이 바뀌든 그 땅의
+   위치는 안 변한다. 우리가 아는 것이 있으면 붙이고, 없으면 비운다.
+
+   기기에만 저장한다(localStorage). 비교함·지킴이와 같은 규율이다. */
+/** 두 좌표 사이 미터. 평면 근사이고 수도권 규모에서 오차는 무시할 수준이다. */
+export function meters(lat1, lon1, lat2, lon2) {
+  const dy = (lat2 - lat1) * 111320
+  const dx = (lon2 - lon1) * 111320 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180)
+  return Math.hypot(dx, dy)
+}
+
+/**
+ * 사용자가 적은 보증금. 실거래 금액과 달리 본인이 아는 정확한 숫자라 반올림하지
+ * 않는다. 9,999만원을 "1억"으로 적는 것은 없는 숫자를 만드는 일이다.
+ * (지킴이의 gEok은 실거래 표시용이라 그쪽 규칙을 따로 둔다.)
+ */
+export function wonText(m) {
+  if (m == null || m === '') return null
+  const n = Number(m)
+  if (!Number.isFinite(n) || n < 0) return null
+  const e = Math.floor(n / 10000), man = Math.round(n % 10000)
+  if (!e) return `${man.toLocaleString()}만원`
+  return man ? `${e}억 ${man.toLocaleString()}만원` : `${e}억원`
+}
+
+const HIST_KEY = 'home-history-v1'
+const histRead = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIST_KEY))
+    // 배열이 아닌 값이 들어와 있으면(손상·수동 편집) 아래 전개에서 화면이 죽는다.
+    return Array.isArray(v) ? v.filter(isHome) : []
+  } catch { return [] }
+}
+
+/** 저장·가져오기로 들어오는 한 건이 화면에서 다룰 수 있는 모양인지 본다. */
+export function isHome(x) {
+  if (!x || typeof x !== 'object') return false
+  const str = (v) => v == null || typeof v === 'string'
+  const num = (v) => v == null || (typeof v === 'number' && Number.isFinite(v))
+  return typeof x.id === 'string' && typeof x.name === 'string' && x.name.trim() !== ''
+    && isYm(x.from) && (x.to === '' || x.to == null || isYm(x.to))
+    && str(x.addr) && str(x.memo) && str(x.kind) && str(x.ht) && str(x.expiry)
+    && num(x.lat) && num(x.lon) && num(x.deposit) && num(x.rent)
+}
+
+const isYm = (v) => typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
+
+/** 'YYYY-MM' 두 개 사이의 개월 수. to가 없으면 오늘까지 센다. */
+export function monthsBetween(from, to, now = new Date()) {
+  if (!isYm(from)) return null
+  if (to && !isYm(to)) return null
+  const [fy, fm] = from.split('-').map(Number)
+  const end = to
+    ? to.split('-').map(Number)
+    : [now.getFullYear(), now.getMonth() + 1]
+  const n = (end[0] - fy) * 12 + (end[1] - fm)
+  // 거꾸로 적힌 기간(나온 때가 들어간 때보다 빠름)과 미래 입주는 셀 수 없다.
+  // 여기서 0으로 흘리면 합계와 평균에 조용히 섞인다.
+  return n >= 0 ? n : null
+}
+
+export const monthsText = (n) => {
+  if (n == null) return '-'
+  const y = Math.floor(n / 12), m = n % 12
+  if (!y) return `${m}개월`
+  return m ? `${y}년 ${m}개월` : `${y}년`
+}
+
+/**
+ * 살아온 기록의 집계.
+ *
+ * 네 숫자의 분모를 하나로 맞춘다. 초안은 "기록한 집"은 전부를 세고 "이사"와
+ * "평균"은 기간이 적힌 것만 세서, 5곳을 적었는데 이사가 3번으로 나왔다. 셈이
+ * 틀렸다고 읽힌다. 그리고 기간이 거꾸로 적힌 집은 monthsBetween이 null을 내는데
+ * 그것을 0개월로 흘려서 평균을 조용히 낮췄다. 못 센 것은 못 셌다고 하고 몇 곳을
+ * 뺐는지 함께 낸다.
+ *
+ * "사신 기간 합계"는 각 집에 사신 기간을 더한 값이다. 이사가 겹치면 겹친 달을
+ * 두 번 센다. 합집합으로 바꾸는 방법도 있지만, 겹침은 실제로 두 집에 보증금이
+ * 걸려 있던 기간이라 두 번 세는 쪽이 기록의 뜻에 가깝다. 대신 화면에 그렇게
+ * 적는다.
+ */
+export function historyStats(items, dist) {
+  const ok = [], skipped = []
+  for (const it of items) {
+    const n = monthsBetween(it.from, it.to)
+    if (n == null) skipped.push(it)
+    else ok.push({ ...it, n })
+  }
+  ok.sort((a, b) => a.from.localeCompare(b.from))
+  const months = ok.reduce((s, x) => s + x.n, 0)
+  const withGeo = ok.filter((x) => x.lat != null && x.lon != null)
+  let moved = 0
+  for (let i = 1; i < withGeo.length; i++) {
+    moved += dist(withGeo[i - 1].lat, withGeo[i - 1].lon, withGeo[i].lat, withGeo[i].lon)
+  }
+  return {
+    n: ok.length,
+    skipped: skipped.length,
+    months,
+    // 이사 횟수는 집 수에서 하나를 뺀 값이다. 첫 집은 이사가 아니다.
+    moves: Math.max(0, ok.length - 1),
+    avg: ok.length ? Math.round(months / ok.length) : 0,
+    // 겹친 달이 있으면 합계가 실제 살아온 햇수보다 길다. 화면이 그렇게 밝힌다.
+    overlap: ok.some((x, i) => i > 0 && ok[i - 1].to && x.from < ok[i - 1].to),
+    moved, geoN: withGeo.length,
+  }
+}
+
+export function useHistory() {
+  const [items, setItems] = useState(histRead)
+  const save = (next) => {
+    setItems(next)
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(next)) } catch { /* 시크릿 모드 등 */ }
+  }
+  return {
+    items,
+    add: (rec) => save([...items, { ...rec, v: 1, id: `h${Date.now()}` }]),
+    update: (id, patch) => save(items.map((x) => (x.id === id ? { ...x, ...patch } : x))),
+    remove: (id) => save(items.filter((x) => x.id !== id)),
+    // 기기에만 있는 기록이라 폰을 바꾸면 사라진다. 몇 년치가 한 번에 없어지는
+    // 것은 비교함이 비워지는 것과 무게가 다르므로 내보내기를 함께 둔다.
+    replaceAll: (next) => save(next),
+  }
+}

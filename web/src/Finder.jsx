@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { NoJeonseSig, RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { DEAL_KINDS, hasDeal, htName, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
+import { DEAL_KINDS, hasDeal, htName, meters, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -15,12 +15,9 @@ import { DEAL_KINDS, hasDeal, htName, REGIONS, useCompare, useFinder, useGuard, 
 
 const PYEONG = 3.305785
 
-/** 두 좌표 사이 미터. 임장 반경은 1km 안쪽이라 평면 근사로 충분하다. */
-export function meters(lat1, lon1, lat2, lon2) {
-  const dy = (lat2 - lat1) * 111320
-  const dx = (lon2 - lon1) * 111320 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180)
-  return Math.hypot(dx, dy)
-}
+// 좌표 거리는 화면이 아니라 자료의 일이라 units.js로 옮겼다. 화면 모듈이 화면
+// 모듈을 import하지 않게 하려는 것이고, 기존 호출부를 위해 여기서 다시 내보낸다.
+export { meters }
 
 const YEAR_OPTS = [
   { v: 0, label: '연식 상관없음' },

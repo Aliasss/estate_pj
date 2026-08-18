@@ -875,3 +875,90 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   background: var(--surface-0); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: 9px; }
 .guard-form .cmp-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── 살아온 집 ────────────────────────────────────────────────────────
+   기록 화면이라 밀도를 낮게 잡는다. 연표는 왼쪽에 시간, 오른쪽에 집이 오는
+   두 칸 구조다. 시간이 세로로 흐르는 것이 한눈에 보여야 기록으로 읽힌다. */
+/* 값이 "11년 4개월"처럼 길어서 minmax(150px) 두 칸에서는 "4개/월"로 깨진다.
+   집계는 네 항목뿐이라 두 칸을 고정하고 폭을 값 쪽에 더 준다. */
+.hist-stats { margin: 10px 0 6px; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); }
+.hist-stats span { font-size: var(--fs-small); }
+.hist-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 2px; }
+.hist-list > li {
+  display: grid; grid-template-columns: 62px 1fr auto; gap: 10px;
+  padding: 10px 0; border-top: 1px solid var(--border);
+}
+.hist-list > li:first-child { border-top: 0; }
+.hist-when { display: flex; flex-direction: column; font-size: var(--fs-small); line-height: 1.45; }
+.hist-when b { color: var(--text-primary); font-weight: 650; }
+.hist-when span { color: var(--text-muted); }
+/* 기간을 잇는 세로선. 연표라는 것을 색이 아니라 형태로 말한다. */
+.hist-when::after {
+  content: ''; margin: 4px 0 0 3px; width: 1px; flex: 1;
+  background: var(--border); min-height: 8px;
+}
+.hist-body { min-width: 0; }
+.hist-body b { display: block; font-size: var(--fs-sub); font-weight: 650; }
+.hist-body small { display: block; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
+.hist-body small.muted { opacity: 0.85; }
+.hist-body p {
+  margin: 5px 0 0; font-size: var(--fs-small); line-height: 1.6;
+  color: var(--text-secondary); white-space: pre-wrap;
+}
+.hist-edit { display: flex; flex-direction: column; gap: 4px; }
+
+.hist-add {
+  margin: 12px 0 0; width: 100%; font: inherit; font-size: var(--fs-sub);
+  padding: 11px 14px; min-height: 44px; cursor: pointer;
+  background: var(--surface-0); color: var(--text-primary);
+  border: 1px dashed var(--border); border-radius: 11px;
+}
+
+.hist-form { margin: 12px 0 0; }
+.hist-form h3 { margin: 0 0 10px; font-size: var(--fs-sub); font-weight: 650; }
+.hist-field { display: block; margin: 0 0 10px; }
+.hist-field > span {
+  display: block; margin: 0 0 4px;
+  font-size: var(--fs-small); color: var(--text-muted);
+}
+.hist-field input, .hist-field select, .hist-field textarea {
+  width: 100%; font: inherit; font-size: var(--fs-input); padding: 9px 11px;
+  background: var(--surface-0); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.hist-field textarea { resize: vertical; line-height: 1.6; }
+/* 두 칸이 좁아지면 날짜 입력이 잘린다. 좁은 화면에서는 한 줄씩 내려 준다. */
+.hist-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 400px) { .hist-row { grid-template-columns: 1fr; gap: 0; } }
+
+.hist-hits { display: grid; gap: 4px; margin: 0 0 10px; }
+.hist-hits button {
+  text-align: left; font: inherit; cursor: pointer; padding: 8px 11px;
+  background: var(--surface-0); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.hist-hits button b { display: block; font-size: var(--fs-sub); font-weight: 650; }
+.hist-hits button small { display: block; font-size: var(--fs-small); color: var(--text-muted); }
+.hist-approx { border-style: dashed !important; font-size: var(--fs-small) !important; }
+.hist-approx b { display: inline !important; font-size: var(--fs-small) !important; }
+
+.hist-acts { display: flex; gap: 8px; align-items: center; margin: 12px 0 0; }
+.hist-save {
+  font: inherit; font-size: var(--fs-sub); font-weight: 650; cursor: pointer;
+  padding: 10px 20px; min-height: 44px; border: 0; border-radius: 11px;
+  background: var(--brand-ink); color: var(--surface-1);
+}
+.hist-save:disabled { opacity: 0.45; cursor: default; }
+/* 파일 고르기는 button이 아니라 label이라 버튼처럼 보이게 맞춘다.
+   display:none으로 감추면 탭 순서에서 빠져 키보드로 닿을 수 없다. 자리만 없앤다. */
+.hist-import { cursor: pointer; position: relative; }
+.hist-import input {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.hist-import:focus-within { outline: 2px solid var(--brand-ink); outline-offset: 2px; }
+
+/* 목록 줄에서도 "2년 2개월"이 "2 / 년 2개월"로 끊기지 않게 붙여 둔다. */
+.hist-body small { text-wrap: pretty; }
+.hist-body small.critical { color: var(--critical); }
+.hist-body small.serious, .hist-body small.warning { color: var(--warning); }

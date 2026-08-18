@@ -5,6 +5,7 @@ import Law from './Law.jsx'
 import Glossary from './Glossary.jsx'
 import Precedents from './Precedents.jsx'
 import Nearby from './Nearby.jsx'
+import History from './History.jsx'
 import Scams from './Scams.jsx'
 import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
@@ -254,10 +255,17 @@ export default function App() {
                 임장 중이신가요 →
               </button>
             )}
+            {/* 살아온 집. 탭바에는 자리가 없다. "계약 전 확인"이 라벨만으로
+                84.5px를 요구하는데 6개가 되면 버튼이 57.7px가 된다(실측). */}
+            {tab !== 'history' && (
+              <button className="about-link" onClick={() => setTab('history')}>
+                살아온 집 →
+              </button>
+            )}
           </span>
         )}
         {/* 법·제도는 전국 공통, 인사이트·소개는 서울·경기 통합이라 지역 토글이 소음이다 */}
-        {['verify', 'find', 'market', 'nearby'].includes(tab) && (
+        {['verify', 'find', 'market', 'nearby', 'history'].includes(tab) && (
           <div className="seg region-seg" role="group" aria-label="지역">
             {Object.entries(REGIONS).map(([code, label]) => (
               <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
@@ -272,6 +280,9 @@ export default function App() {
       {tab === 'law' && <><Glossary /><Law /><Precedents /><Scams /></>}
       {tab === 'nearby' && (
         <Nearby guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
+      )}
+      {tab === 'history' && (
+        <History guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
       )}
       {tab === 'insight' && <Insight onGoFind={() => setTab('find')} />}
       {tab === 'about' && <About onBack={() => setTab('verify')} />}

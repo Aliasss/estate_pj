@@ -38,10 +38,13 @@ const LEGEND = [
   [STATION_COLOR, '지하철역'],
 ]
 
-export default function MapView({ points, stations, selected, here, onPick, note }) {
+// 범례는 화면마다 뜻이 다르다. 임장·동네는 전세가율이지만, 살아온 집은
+// 지금과 과거를 가른다. 안 넘기면 기존 화면 그대로다.
+export default function MapView({ points, stations, selected, here, onPick, note, legend, path }) {
   const holder = useRef(null)
   const map = useRef(null)
   const layer = useRef(null)
+  const pathLayer = useRef(null)
   const stnLayer = useRef(null)
   const pickLayer = useRef(null)
   const hereLayer = useRef(null)
@@ -61,6 +64,8 @@ export default function MapView({ points, stations, selected, here, onPick, note
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map.current)
+    // 선은 점 아래에 깔린다. 순서가 곧 z축이다.
+    pathLayer.current = L.layerGroup().addTo(map.current)
     layer.current = L.layerGroup().addTo(map.current)
     stnLayer.current = L.layerGroup().addTo(map.current)
     // 고른 물건은 맨 위 레이어에 따로 그린다. 3,000개 점 사이에 섞이면 못 찾는다.
@@ -74,6 +79,17 @@ export default function MapView({ points, stations, selected, here, onPick, note
   }, [])
 
   const shown = useMemo(() => points.slice(0, MAX_PINS), [points])
+
+  // 살아온 집처럼 점들 사이에 순서가 있는 화면에서는 선이 곧 뜻이다.
+  // 안 넘기면 기존 화면 그대로 점만 찍힌다.
+  useEffect(() => {
+    if (!pathLayer.current) return
+    pathLayer.current.clearLayers()
+    if (!path || path.length < 2) return
+    L.polyline(path.map((p) => [p.lat, p.lon]), {
+      color: '#8f8e84', weight: 2, opacity: 0.65, dashArray: '5 5',
+    }).addTo(pathLayer.current)
+  }, [path])
 
   useEffect(() => {
     if (!layer.current) return
@@ -146,7 +162,7 @@ export default function MapView({ points, stations, selected, here, onPick, note
     <figure className="mapwrap">
       <div ref={holder} className="map" />
       <p className="map-legend">
-        {LEGEND.map(([color, label]) => (
+        {(legend ?? LEGEND).map(([color, label]) => (
           <span key={label}><i style={{ background: color }} />{label}</span>
         ))}
       </p>
