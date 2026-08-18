@@ -71,6 +71,14 @@ def pick(cands: list[dict], name: str | None) -> dict | None:
     그래서 합치되, 항목마다 합치는 방식이 다르다.
       세대수·승강기·연면적  더한다 (동별 값)
       주차                최댓값 (단지 공용값이 모든 행에 반복된다. 더하면 16배가 된다)
+                          단, 세대가 있는 동에서만 고른다. 예전에는 지번의 모든
+                          행에서 골랐는데, 같은 지번에 근생·업무시설이 섞이면
+                          그쪽 주차가 공동주택 값으로 나갔다. 전농SK(1,830세대)는
+                          공동주택 행의 주차가 전부 자료 없음인데 옆 건물 97대가
+                          잡혀 "세대당 0.1대"로 나갔다. 이렇게 남의 값이 실리던
+                          지번이 19개였고 그중 10개는 경고까지 떴다. 대신 부속
+                          주차장 동에만 기재된 131개 지번은 자료 없음이 된다.
+                          틀린 숫자보다 빈칸이 낫다.
       사용승인일           가장 이른 것 (단지 준공)
       층수                가장 높은 것
 
@@ -105,7 +113,7 @@ def pick(cands: list[dict], name: str | None) -> dict | None:
         "hhld_cnt": total(resid, "hhld_cnt"),
         "grnd_flr": best(resid, "grnd_flr", max),
         "elvt_cnt": total(resid, "elvt_cnt"),
-        "park_cnt": best(cands, "park_cnt", max),
+        "park_cnt": best(resid, "park_cnt", max),
         "tot_area": total(resid, "tot_area"),
         "n_dong": len(resid),
     }
@@ -139,23 +147,6 @@ def features(b: dict | None) -> dict:
         # 세대당 연면적은 공용면적이 섞여 전용면적과 어긋난다. 단지 규모를 대신 낸다.
         "n_dong": b["n_dong"] if b.get("n_dong", 1) > 1 else None,
     }
-
-
-def quiet_note(f: dict) -> str | None:
-    """층간소음 추정 근거를 한 줄로. 점수가 아니라 근거를 그대로 낸다.
-
-    실측 소음 데이터는 공개된 게 없다. 있는 척하느니 무엇을 보고 말하는지를 밝힌다.
-    """
-    if not f:
-        return None
-    if f.get("strct") == STRUCT_BRICK:
-        return "벽돌조 — 차음에 가장 불리한 구조입니다"
-    apr = f.get("apr")
-    if apr is None:
-        return None
-    if apr >= FLOOR_STANDARD_YEAR:
-        return f"{apr}년 준공 — 표준바닥구조 의무화(2005) 이후입니다"
-    return f"{apr}년 준공 — 표준바닥구조 의무화(2005) 이전입니다"
 
 
 class Registry:

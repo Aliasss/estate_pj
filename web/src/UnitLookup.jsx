@@ -195,6 +195,53 @@ function quietNote(u) {
   return { tone: 'muted', text: `${u.apr}년 준공. 표준바닥구조 의무화(2005) 이전입니다` }
 }
 
+/**
+ * 살 때 매일 겪는 것들. 대장 숫자를 그대로 두지 않고 생활의 말로 옮긴다.
+ *
+ * "주차 34대"는 그대로는 판단에 쓸 수 없는 숫자다. 34대가 넉넉한지는 세대수를
+ * 알아야 정해진다. 세대수는 이미 가진 값이라 여기서 끝까지 옮겨 준다.
+ *
+ * 승강기. 표제부의 승용승강기는 자료 없음을 0으로 준다. 이 대장 95,943행에
+ * NULL이 한 행도 없고, 15층 이상이면서 승용 0인 6,035행 중 74.4%가 비상용
+ * 승강기를 갖고 있다. 고층에서 0은 "없다"가 아니라 "안 적혔다"는 뜻이다.
+ * 처음에는 4층 이상 전부에 문구를 달았다가 25층 아파트에 "승강기가 없습니다"가
+ * 붙었다(리뷰에서 잡혔고 51층 사례도 있었다). 그래서 승용승강기 의무 대상이
+ * 아닌 구간, 곧 연립·다세대 5층 이하로만 말한다. 넓게 잡았을 때 55,689개
+ * 물건에 뜨던 것이 48,184개가 되고, 빠진 것은 아파트 5,418개와 오피스텔
+ * 1,162개다. 그 6,580개가 오보 위험 구간이었다.
+ *
+ * 주차 비교값(중위 0.75대)은 뺐다. 그 값은 서울 19개 구까지만 수집된 시점의
+ * 것이라 "서울·경기"라고 부를 수 없었고, 유형별로도 아파트 1.04대 대 빌라
+ * 0.73대로 갈려 하나의 기준선으로 쓸 수 없다. 대장 수집이 끝난 뒤 유형별로
+ * 다시 붙인다. 문턱만 남기며, 세대당 대수 자체는 세대수로 나눈 사실이다.
+ *
+ * 표시는 반올림이 아니라 내림이다. 0.46을 "0.5대"로 적으면 0.5 미만이라 켠
+ * 경고 옆에 0.5가 적히는 자기모순이 생긴다. 실측으로 827건이 그랬다.
+ *
+ * 어느 쪽도 위험 판정이 아니다. 생활 조건이라 톤을 낮춰 싣는다.
+ */
+const PARK_TIGHT = 0.5
+const WALKUP_FLOOR = 4
+// 6층 이상 공동주택은 건축법상 승용승강기 의무 대상이라 "0대"가 성립하지 않는다.
+const WALKUP_MAX = 5
+
+// 문턱과 같은 방향으로 자른다. 반올림하면 경고와 표시가 어긋난다.
+const parkPer = (per) => (Math.floor(per * 10) / 10).toFixed(1)
+
+function livingNotes(u) {
+  const out = []
+  if (u.ht === 'R' && u.elvt === 0 && u.flr >= WALKUP_FLOOR && u.flr <= WALKUP_MAX) {
+    out.push(`${u.flr}층 건물에 승강기가 없습니다`)
+  }
+  if (u.park != null && u.hhld) {
+    const per = u.park / u.hhld
+    if (per < PARK_TIGHT) {
+      out.push(`주차가 세대당 ${parkPer(per)}대입니다`)
+    }
+  }
+  return out
+}
+
 const ym = (s) => `${String(s).slice(2, 4)}.${String(s).slice(4, 6)}`
 /** 층은 반지하 여부를 알려준다. 침수·채광·보증보험 모두 여기서 갈린다. */
 const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
@@ -374,7 +421,10 @@ function BuildingFacts({ u }) {
     u.hhld && ['세대수', `${u.hhld}세대`],
     u.flr && ['지상 층수', `${u.flr}층`],
     u.elvt != null && ['승강기', u.elvt ? `${u.elvt}대` : '없음'],
-    u.park != null && ['주차', u.park ? `${u.park}대` : '없음'],
+    // 대수만으로는 넉넉한지 알 수 없다. 세대수를 아는 물건은 세대당까지 낸다.
+    u.park != null && ['주차', u.park
+      ? `${u.park}대${u.hhld ? ` · 세대당 ${parkPer(u.park / u.hhld)}대` : ''}`
+      : '없음'],
     u.n_dong && ['단지 규모', `${u.n_dong}개 동`],
     // 좌표 수집이 끝난 물건부터 하나씩 붙는다. 직선거리 기반 도보 환산이다.
     u.walk != null && ['가까운 역', `${stations[u.stn] ? `${stations[u.stn].name}역 ` : ''}도보 ${u.walk}분`],
@@ -394,6 +444,7 @@ function BuildingFacts({ u }) {
     return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
   }
   const note = hasBldg ? quietNote(u) : null
+  const living = hasBldg ? livingNotes(u) : []
   return (
     <>
       <h3 className="facts-h">건물</h3>
@@ -422,6 +473,16 @@ function BuildingFacts({ u }) {
         <p className="warnline">
           <strong className={note.tone}>층간소음 추정</strong>: {note.text}.{' '}
           실측 소음 자료가 아니라 구조와 준공연도로 미루어 본 것입니다.
+        </p>
+      )}
+      {/* 보증금 위험과는 다른 축이라 warnline을 쓰지 않는다. 이건 경고가 아니라
+          살아 보면 매일 만나는 조건이고, 사람에 따라 아무 문제가 아닐 수도 있다. */}
+      {living.length > 0 && (
+        <p className="muted-line">
+          {/* "살 때 겪는 것"이라고 부르면 이게 전부라는 뜻이 된다. 대장이 부분만
+              있는 물건이 많아서(주차 자료 없음이 20.8%) 못 본 것과 없는 것이
+              뒤섞인다. 완결성을 함의하지 않는 이름을 쓴다. */}
+          <strong>눈에 띄는 점</strong>: {living.join('. ')}.
         </p>
       )}
     </>
