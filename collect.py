@@ -40,7 +40,7 @@ from xml.etree import ElementTree
 import requests
 
 from lawd_codes import LAWD_CODES
-from scrub import scrub
+from scrub import describe, scrub
 
 API_BASE = "https://apis.data.go.kr/1613000"
 
@@ -191,6 +191,22 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 """
 
 
+# 본 수집 전에 한 번 두드려 보는 횟수와 간격.
+#
+# 국토부 게이트웨이(apis.data.go.kr)가 GitHub Actions 러너 IP를 간헐적으로
+# 막는다. 막힌 동안에는 429가 아니라 연결 자체가 안 맺어져 ConnectTimeout으로
+# 온다. 이 상태에서 계획을 시작하면 구간마다 재시도 5회를 쓰고 연속 실패
+# 가드에 걸려 15분 20초 만에 0건으로 끝난다. 실측으로 8/17 주간 크론과
+# 8/18 수동 실행이 초 단위까지 같은 시간에 같은 방식으로 죽었다.
+#
+# 간격은 관측된 회복 시간에 맞춘다. 건축물대장 쪽에서 15분과 57분이 관측됐고,
+# 15분 간격 네 번(최대 약 46분 창)으로 고친 뒤 8/18 크론이 3연속 실패를 끊고
+# 통과했다. 같은 게이트웨이이므로 같은 창을 쓴다. 여기서 포기하면 받은 것이
+# 0건이라 잃을 진행분도 없다.
+PREFLIGHT_TRIES = 4
+PREFLIGHT_GAP = 900
+
+
 class FatalApiError(RuntimeError):
     """설정을 고치기 전에는 재시도가 무의미한 오류 (인증키·엔드포인트·IP)."""
 
@@ -324,8 +340,15 @@ def fetch_month(
     max_retries: int = 5,
     timeout: int = 30,
     sleep: float = 0.1,
+    max_pages: int | None = None,
 ) -> tuple[list[dict[str, str]], int]:
-    """한 구 × 한 달을 전 페이지 수집한다."""
+    """한 구 × 한 달을 전 페이지 수집한다.
+
+    max_pages를 주면 그만큼만 받고 멈춘다. 접속 확인처럼 내용이 필요 없는
+    호출에 쓴다. rows_per_page를 줄이는 것으로는 안 된다. 종료 조건이
+    "받은 누계가 total에 닿을 때까지"라서, 1로 주면 한 페이지가 아니라
+    1행씩 total번을 부른다. 정확히 반대로 가장 비싼 조합이 된다.
+    """
     url = f"{API_BASE}/{source.path}"
     collected: list[dict[str, str]] = []
     total = 0
@@ -357,6 +380,9 @@ def fetch_month(
                 raise
             except Exception as exc:  # 네트워크 오류 / 일시적 5xx / 파싱 실패
                 last_error = exc
+                # 마지막 시도면 다시 부를 것이 없다. 자지도, 잔다고 적지도 않는다.
+                if attempt == max_retries - 1:
+                    continue
                 backoff = min(2**attempt, 30) + random.uniform(0, 0.5)
                 # requests 예외 메시지는 실패한 URL(인증키 포함)을 통째로 담는다. 가리고 찍는다.
                 print(f"      재시도 {attempt + 1}/{max_retries} ({scrub(exc)}) -> {backoff:.1f}s 대기")
@@ -367,10 +393,56 @@ def fetch_month(
         collected.extend(items)
         if not items or len(collected) >= total or len(items) < rows_per_page:
             break
+        if max_pages and page >= max_pages:
+            break
         page += 1
         time.sleep(sleep)
 
     return collected, total
+
+
+def preflight(session_factory, service_key: str, source: Source, code: str, ym: str) -> str | None:
+    """계획의 첫 구간으로 접속만 확인한다. 통과하면 None, 끝내 막히면 사유.
+
+    무엇을 보는 함수인지 좁게 잡는다. **연결이 되는가만 본다.** 쿼터가 남았는지,
+    그 서비스 활용신청이 됐는지는 여기서 판정하지 않는다. 소스마다 일일 쿼터가
+    독립이고 본 루프가 소스별로 접고 가는데(아래 exhausted 참고), 계획 첫 구간
+    하나로 그 판단을 대신하면 apt_trade 하나가 소진됐다는 이유로 나머지 다섯
+    소스의 남은 쿼터를 통째로 버리게 된다. 그래서 한도 응답이든 인증 오류든
+    **응답이 왔다는 것은 연결이 됐다는 뜻이므로 통과**시키고, 그 뒤는 본 루프에
+    맡긴다.
+
+    나머지는 종류를 가리지 않고 기다린다. 원래는 4xx를 즉시 포기시키려 했는데,
+    fetch_month가 마지막 예외를 RuntimeError로 감싸 버려서 이 자리에서는 상태
+    코드가 보이지 않는다(실측으로 403이 "RuntimeError: 1회 재시도 실패"로 왔다).
+    그리고 우리가 실제로 겪는 차단은 시간이 풀어 주는 종류다. 구분이 닿지 않는
+    자리에서 억지로 가르지 않고, 네 번 안에 안 되면 포기하는 것으로 둔다.
+    fetch_month가 예외 종류를 보존하도록 고치는 것은 본 수집 경로도 함께 바꾸는
+    일이라 따로 다룬다.
+
+    한 페이지만 받는다(max_pages=1). 시도마다 세션을 새로 만드는 이유는 15분을
+    자고 난 뒤의 keep-alive 커넥션이 서버나 NAT 어느 쪽에서든 이미 끊겨 있을 수
+    있어서다. 접속 가능 여부를 재는 코드가 죽은 커넥션을 물고 재면 안 된다.
+    """
+    last = None
+    for i in range(PREFLIGHT_TRIES):
+        try:
+            fetch_month(session_factory(), service_key, source, code, ym,
+                        rows_per_page=1000, max_pages=1, max_retries=1, timeout=20)
+            if i:
+                print(f"사전 확인 {i + 1}번째에 통과했습니다. 수집을 시작합니다.")
+            return None
+        except (FatalApiError, QuotaExhausted) as exc:
+            # 응답이 왔다 = 연결은 된다. 판정은 본 루프가 소스별로 한다.
+            print(f"사전 확인에서 응답을 받았습니다({describe(exc)}). 연결은 되므로 계속합니다.")
+            return None
+        except Exception as exc:
+            last = exc
+        if i < PREFLIGHT_TRIES - 1:
+            print(f"사전 확인 {i + 1}회 실패: {describe(last)}")
+            print(f"{PREFLIGHT_GAP // 60}분 뒤 다시 확인합니다")
+            time.sleep(PREFLIGHT_GAP)
+    return describe(last)
 
 
 def build_rows(items: list[dict[str, str]], source: Source, lawd_cd: str, deal_ymd: str) -> list[tuple]:
@@ -503,6 +575,17 @@ def main() -> int:
         return 0
 
     session = requests.Session()
+
+    # 막혀 있으면 여기서 기다린다. 계획을 시작해 놓고 구간마다 재시도를 태우는
+    # 것보다, 한 구간으로 상태를 보고 회복을 기다리는 쪽이 요청도 적고 빠르다.
+    blocked = preflight(requests.Session, service_key, *plan[0])
+    if blocked:
+        print(f"\n{PREFLIGHT_TRIES}번 확인하는 동안 계속 막혀 있었습니다: {blocked}",
+              file=sys.stderr)
+        print("접속이 회복되면 재실행하세요. 이번 실행에서 받은 것은 없습니다.",
+              file=sys.stderr)
+        return 1
+
     inserted_total = 0
     calls = 0
     errors = 0
