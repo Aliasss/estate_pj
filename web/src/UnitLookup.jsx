@@ -478,9 +478,9 @@ function BuildingFacts({ u }) {
     // 도보 + 지하철. 급행과 배차는 반영하지 못하므로 "약"을 떼지 않는다.
     commute && ['통근 (약, 도보 포함)', commute],
   ].filter(Boolean)
-  if (!items.length) {
-    return <p className="muted-line">건축물대장 자료가 아직 없는 물건입니다. 수집이 진행 중입니다.</p>
-  }
+  // 낼 것이 하나도 없으면 이 블록을 아예 안 낸다. 대장이 없다는 사실은 판정
+  // 바로 아래에서 이미 말했고, 여기서 또 말하면 같은 화면에 두 번 나온다.
+  if (!items.length) return null
   const note = hasBldg ? quietNote(u) : null
   const living = hasBldg ? livingNotes(u) : []
   return (
@@ -503,9 +503,6 @@ function BuildingFacts({ u }) {
           보고 계산한 값입니다. 급행과 배차 간격은 반영하지 못해서, 급행이 서는 먼
           구간은 실제보다 길게, 배차가 뜸한 노선은 짧게 나옵니다.
         </p>
-      )}
-      {!hasBldg && (
-        <p className="muted-line">건축물대장(준공·세대수·승강기 등)은 아직 수집 전입니다. 수집되는 대로 이 자리에 붙습니다.</p>
       )}
       {note && (
         <p className="warnline">
@@ -972,13 +969,17 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
 
       {/* 담아 두기와 감시 걸기. 판정을 읽기 전에 물으면 위험한지 모르는 집을
           먼저 파일링하라는 말이 된다. 전에는 이름 바로 밑에 있었다. */}
-      {compare && lawd && (
-        <button className="cmp-btn" aria-pressed={compare.has(u.id)}
-                onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
-          {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
-        </button>
+      {(compare || guard) && lawd && (
+        <div className="save-row">
+          {compare && (
+            <button className="cmp-btn" aria-pressed={compare.has(u.id)}
+                    onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
+              {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
+            </button>
+          )}
+          {guard && <GuardAdd u={u} lawd={lawd} guard={guard} />}
+        </div>
       )}
-      {guard && lawd && <GuardAdd u={u} lawd={lawd} guard={guard} />}
 
       <PkgOffer u={u} />
     </div>

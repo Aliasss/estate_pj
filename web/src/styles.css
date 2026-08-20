@@ -934,6 +934,12 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .asking > p strong { font-weight: 650; }
 
 /* ── 임장 비교함 ── */
+/* 담아 두기와 감시 걸기. 바로 위 "지도에서 위치 보기"는 이 카드를 더 읽는
+   일이고 이쪽은 카드를 덮고 나서 하는 일이라, 붙여 두면 한 묶음으로 읽힌다.
+   .more에 margin-bottom이 없어 실제로 0px로 붙어 있었다. */
+.save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.save-row .cmp-btn { margin: 0; }
+
 .cmp-btn {
   display: inline-flex; align-items: center; gap: 4px; margin: 0 0 4px;
   font: inherit; font-size: var(--fs-small); padding: 6px 12px; min-height: 32px;
