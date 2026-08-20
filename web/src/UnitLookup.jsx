@@ -67,9 +67,11 @@ function verdict(u) {
         + '집이 경매로 넘어가면 낙찰가는 보통 시세보다 낮게 잡히므로, 이 상태로는 '
         + '보증금 전액을 돌려받기 어렵습니다.' }
   }
+  // 헤드에 결론까지 넣는다. good 분기가 같은 템플릿("보증금이 이 건물 매매가의
+  // N%입니다")을 쓰므로, 이 문장만으로는 색 없이 두 판정이 구분되지 않는다.
   if (solid && r >= 0.9) {
     return { tone: 'serious',
-      head: `보증금이 이 건물 매매가의 ${pct0(r)}입니다`,
+      head: `보증금이 매매가의 ${pct0(r)}로 여유가 거의 없습니다`,
       body: `최근 2년 매매 ${u.n_sale_24m}건으로 확인된 값입니다. 집값이 조금만 내려도 `
         + '보증금이 매매가를 넘어섭니다. 여유가 거의 없는 계약입니다.' }
   }
@@ -96,13 +98,13 @@ function verdict(u) {
     // 빌라에서 매매 0건은 열에 일곱이다(전세 있는 빌라 기준). 여기에 빨간불을
     // 켜면 정보가 아니라 벽지가 된다.
     return villa
-      ? { tone: 'muted', head: '이 건물 최근 2년 매매 0건',
-          body: (isR ? '빌라에서는 흔한 일입니다. 전세 신고가 있는 빌라 열에 일곱이 그렇습니다. '
-                     : '오피스텔에서 개별 호실 매매는 드뭅니다. ')
-            + '이 집이 위험하다는 '
-            + '뜻이 아니라, 담보 가치를 실거래로 확인해 드릴 수 없다는 뜻입니다. '
+      ? { tone: 'muted', head: '담보 가치를 실거래로 확인할 수 없습니다',
+          body: '최근 2년 이 건물 매매 0건입니다. '
+            + (isR ? '빌라에서는 흔한 일이라 전세 신고가 있는 빌라 열에 일곱이 그렇습니다. '
+                   : '오피스텔에서 개별 호실 매매는 드뭅니다. ')
+            + '이 집이 위험하다는 뜻이 아니라, 견줄 매매가가 없다는 뜻입니다. '
             + '아래 확인 항목을 직접 보셔야 합니다.' }
-      : { tone: 'serious', head: '이 건물 최근 2년 매매 0건',
+      : { tone: 'serious', head: '아파트인데 최근 2년 매매가 없습니다',
           body: '전세 신고가 있는 아파트 열에 둘뿐인 경우입니다. '
             + (u.n_sale_all ? `2021년 이후로는 ${u.n_sale_all}건 있었습니다.`
                             : '5년 내내 매매 신고가 없습니다.') }
@@ -116,10 +118,40 @@ function verdict(u) {
         body: '매매 표본이 한두 건뿐이라 그 거래가 지분 거래나 특수관계인 거래였다면 '
           + '값이 통째로 흔들립니다. 다만 액면 그대로면 보증금이 집값을 넘는 상태입니다.' }
     }
-    return { tone: 'serious', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-      body: '표본이 얇아 아래 전세가율은 그 한두 건에 좌우됩니다. '
-        + '그 거래가 지분 거래나 특수관계인 거래였다면 값이 통째로 흔들립니다.' }
+    return { tone: 'serious',
+      head: `매매 ${u.n_sale_24m}건뿐이라 전세가율이 흔들립니다`,
+      body: `최근 2년 이 건물 매매가 ${u.n_sale_24m}건이라, 아래 전세가율은 그 한두 건에 `
+        + '좌우됩니다. 그 거래가 지분 거래나 특수관계인 거래였다면 값이 통째로 흔들립니다.' }
   }
+
+  /**
+   * 비교 기준이 깨진 값. 여기가 없어서 이 물건들이 good으로 떨어져 초록불을
+   * 켜고 있었다. 실측: 전세가율 150% 이상이 서울 604 + 경기 794개인데, 그중
+   * 매매 3건 이상이라 초록으로 나가던 것이 34개다. 조원동 639-30은 265.6%인데
+   * "실거래로 가격을 확인할 수 있는 드문 경우"라고 적혔다.
+   *
+   * **자리가 중요하다.** 처음에 이 블록을 매매 0건 분기 앞에 뒀다가 리뷰에서
+   * 잡혔다. 그러면 도달 집합이 34건이 아니라 1,212건이 되고 그중 1,069건(88%)이
+   * 이 건물 매매 0건짜리다. 그 물건들에게 "이 건물 매매가로 나누면"이라고 말하면
+   * 거짓이다. 값은 인근 유사 물건에서 온 추정치이고, 같은 카드 40px 아래
+   * metrics가 "중위 매매가 - 사례 없음"이라고 자기 화면으로 반증한다.
+   *
+   * 더 나쁜 것은 비율을 안 쓰는 증거 판정 둘(아파트 매매 0건 101건, 매매
+   * 1~2건 표본 얇음 109건)까지 삼켜 210건이 serious에서 muted로 내려간 것이다.
+   * Actions의 urgent가 tone으로 갈리므로 "위 확인이 끝나기 전에는 계약금을
+   * 보내지 마세요"가 통째로 사라졌다. 전세가율 763%짜리 숭인동 715-1에서도.
+   *
+   * 그래서 표본 관련 분기를 전부 지난 뒤, 마지막 추정 비율 판정 앞에 둔다.
+   * 여기 도달하면 n_sale_24m >= 3이라 "이 건물 매매가"가 사실이 된다.
+   */
+  if (ratioBroken(u.ratio)) {
+    return { tone: 'muted', head: '전세가율을 낼 수 없습니다',
+      body: `보증금을 이 건물 매매가로 나누면 ${pct0(u.ratio)}가 나옵니다. 이 값은 `
+        + '비교 기준이 깨졌다는 뜻이지 그만큼 위험하다는 뜻이 아닙니다. 전용면적이 크게 '
+        + '다른 호실끼리 견줬거나 그 매매가 지분·특수 거래였을 때 이런 값이 납니다. '
+        + '안전하다는 뜻도 아닙니다. 등기부로 직접 확인하셔야 합니다.' }
+  }
+
 
   // 매매는 있는데 비율이 인근 기준으로 잡힌 드문 조합. 100%를 넘으면 초록일 수 없다.
   if (r >= 1.0) {
@@ -128,10 +160,17 @@ function verdict(u) {
         + '여부를 확인하기 전에는 계약하지 마세요.' }
   }
 
-  return { tone: 'good', head: `이 건물 최근 2년 매매 ${u.n_sale_24m}건`,
-    body: (isR ? '전세 신고가 있는 빌라 중 3%만 여기 해당합니다. 실거래로 가격을 확인할 수 있는 드문 경우입니다.'
-               : '실거래로 가격을 확인할 수 있는 물건입니다.')
-      + (r != null ? ` 전세가율 ${pct0(r)}${r >= 0.8 ? ', 여유가 넉넉하지는 않습니다.' : '.'}` : '') }
+  // 헤드라인은 결론을 말한다. 표본 수는 근거라 본문으로 내린다. 이 자리에서
+  // "매매 131건"이 초록으로 크게 서면, 읽는 사람은 건수가 좋은 소식인 줄 안다.
+  // r은 여기서 절대 null이 아니다. 매매 3건 이상이면 빌더가 med_sale을 채우고,
+  // 깨진 값은 바로 위에서 빠진다(실측: 전세 있고 매매 3건 이상인 27,500행 중
+  // ratio가 null인 행 0건). 그래서 폴백 문장을 두지 않는다.
+  return { tone: 'good',
+    head: `보증금이 이 건물 매매가의 ${pct0(r)}입니다`,
+    body: `최근 2년 이 건물 매매 ${u.n_sale_24m}건으로 확인된 값입니다. `
+      + (isR ? '전세 신고가 있는 빌라 중 3%만 여기 해당하는 드문 경우입니다.'
+             : '실거래로 가격을 확인할 수 있는 물건입니다.')
+      + (r >= 0.8 ? ' 다만 여유가 넉넉하지는 않습니다.' : '') }
 }
 
 /**
@@ -820,22 +859,10 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
         {u.build_year ? ` · ${u.build_year}년 준공` : ''}
       </p>
 
-      {compare && lawd && (
-        <button className="cmp-btn" aria-pressed={compare.has(u.id)}
-                onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
-          {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
-        </button>
-      )}
-      {guard && lawd && <GuardAdd u={u} lawd={lawd} guard={guard} />}
-
       <div className={`verdict ${v.tone}`}>
         <strong>{v.head}</strong>
         <span>{v.body}</span>
       </div>
-
-      <Asking u={u} pctOf={pctOf} />
-
-      <Actions tone={v.tone} u={u} />
 
       <dl className="metrics">
         <div>
@@ -871,6 +898,10 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
           <small>{u.renew_hike == null ? '갱신 신고 없음' : '직전 계약 대비 중위'}</small>
         </div>
       </dl>
+
+      <Asking u={u} pctOf={pctOf} />
+
+      <Actions tone={v.tone} u={u} />
 
       {/* 직전 2년과 견준 추세. 데이터에 있으면서 화면에 없던 값이다. */}
       {u.ratio_prev != null && u.ratio != null && !ratioBroken(u.ratio) && (
@@ -918,6 +949,16 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
 
       {/* 좌표가 있는 물건에서만 낸다. 눌렀는데 아무 데도 안 가면 안 만든 것만 못하다. */}
       {onMap && <button className="more" onClick={onMap}>지도에서 위치 보기</button>}
+
+      {/* 담아 두기와 감시 걸기. 판정을 읽기 전에 물으면 위험한지 모르는 집을
+          먼저 파일링하라는 말이 된다. 전에는 이름 바로 밑에 있었다. */}
+      {compare && lawd && (
+        <button className="cmp-btn" aria-pressed={compare.has(u.id)}
+                onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
+          {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
+        </button>
+      )}
+      {guard && lawd && <GuardAdd u={u} lawd={lawd} guard={guard} />}
 
       <PkgOffer u={u} />
     </div>

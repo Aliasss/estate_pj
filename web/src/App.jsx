@@ -36,27 +36,21 @@ const delta = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(
 /**
  * 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다.
  *
- * 라벨은 짧게 쓴다. '계약 전 확인'이 라벨만으로 84.5px를 요구하는 바람에 다섯
- * 칸일 때도 옆 칸('동네', 30px)의 남는 자리를 빌려 겨우 한 줄로 섰고, 그래서
- * --fs-nav를 10.5px까지 낮춰 둔 상태였다(실측). 화면에 적힌 이름은 '계약 전
- * 확인' 그대로고 탭 라벨만 줄인다. 전체 이름은 aria-label로 남긴다.
+ * 여섯 칸에서 세 칸으로 줄였다. 여섯일 때는 320px에서 라벨 여유가 6.1px라
+ * --fs-nav를 10.5px까지 눌러야 했고, 그러고도 한 글자만 늘면 줄바꿈이 났다.
+ * 더 큰 문제는 여섯이 서로 다른 층위였다는 것이다. 확인은 이 앱의 본체이고
+ * 시세는 자기 화면에 "참고용"이라고 적어 두었는데 같은 크기의 칸을 나눠 가졌다.
  *
- * 그래서 생긴 여섯 번째 칸은 임장에 준다. 골목에 서서 한 손으로 여는 화면이라
- * 엄지에 닿는 자리가 필요하고, 헤더 링크는 그 자리가 아니었다.
+ * 화면은 하나도 안 버렸다. 내 주변은 확인 탭 안에서 열고, 인사이트는 동네
+ * 안에서, 시세는 알아두기 안에서 서브 세그로 고른다. 라벨은 짧게 쓰고 전체
+ * 이름은 aria-label로 남긴다(보이는 라벨이 접근 이름에 포함, WCAG 2.5.3).
  */
 const TABS = [
   ['verify', '확인', '계약 전 확인',
    'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z M9.5 11.5l2 2 3.5-3.5'],
-  ['nearby', '내 주변', '임장 중 내 주변',
-   'M12 3v2.6 M12 18.4V21 M3 12h2.6 M18.4 12H21 M12 16.6a4.6 4.6 0 1 0 0-9.2 4.6 4.6 0 0 0 0 9.2z'],
-  ['find', '동네', null,
+  ['find', '동네', '동네 살펴보기',
    'M12 21s-6.5-5.2-6.5-10A6.5 6.5 0 0 1 12 4.5 6.5 6.5 0 0 1 18.5 11c0 4.8-6.5 10-6.5 10z M12 13a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z'],
-  ['market', '시세', null,
-   'M4 19h16 M4 15l4-4 3 3 5-6 4 4'],
-  ['insight', '인사이트', null,
-   'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.5h6c0-1.1.3-1.9 1-2.5A6 6 0 0 0 12 3z'],
-  // 용어 사전이 함께 살면서 '법·제도'보다 넓은 이름이 필요해졌다. 아이콘도 책으로.
-  ['law', '알아두기', null,
+  ['law', '알아두기', '알아두기와 시세',
    'M4 5.5c2.2-1.2 5.3-1.2 8 .3 2.7-1.5 5.8-1.5 8-.3v13c-2.2-1.2-5.3-1.2-8 .3-2.7-1.5-5.8-1.5-8-.3v-13z M12 5.8v13'],
 ]
 
@@ -81,9 +75,14 @@ export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [housing, setHousing] = useState('연립다세대')
+  // 탭을 셋으로 줄이면서 흡수한 화면들. 탭이 아니라 그 탭 안의 갈래다.
+  const [findSub, setFindSub] = useState('risk')   // risk | insight
+  const [lawSub, setLawSub] = useState('law')      // law | market
   const [region, setRegion] = useState('11')  // 서울. 법정동코드 앞 2자리
   const [gu, setGu] = useState('11500')       // 강서구
   const [tab, setTab] = useState('verify')
+  // 시세는 알아두기 안 갈래다. 조건이 세 군데에 걸쳐 있어 이름을 준다.
+  const showMarket = tab === 'law' && lawSub === 'market'
   const [volRegion, setVolRegion] = useState('all')  // 거래량 조망: 전체/서울/경기
   const [volLines, setVolLines] = useState({ s: true, j: true, w: true })
   const [volGran, setVolGran] = useState('month')    // 표 단위: month | half
@@ -250,11 +249,27 @@ export default function App() {
 
   return (
     <main className="app">
+      {/* 히어로는 탭 스위치 밖이라 모든 화면 위에 얹힌다. 전에는 304px로 뷰포트의
+          36%를 먹어서, 이 앱의 결론인 판정을 보려면 늘 스크롤해야 했다. 이 화면에서
+          가장 큰 글자가 판정이 아니라 브랜드 이름이었다. 워드마크와 지역 토글을
+          한 줄로 합치고 인사 문장을 뺀다. 태그라인은 남긴다 - 처음 온 사람이
+          "고르는 앱이 아니라 확인하는 앱"임을 아는 유일한 자리다. */}
       <header className="hero">
-        <p className="hero-hi">부동산 계약의 세컨드 오피니언</p>
-        <h1><Wordmark /></h1>
-        {/* 처음 온 사람이 3초 안에 "고르는 앱이 아니라 확인하는 앱"임을 알아야 한다.
-            브랜드 태그라인("계약 전에 꼭 필요한 것들")은 소개와 앱 설명에 산다. */}
+        <div className="hero-top">
+          <h1><Wordmark /></h1>
+          {/* 법·제도는 전국 공통, 인사이트·소개는 서울·경기 통합이라 토글이 소음이다 */}
+          {/* 시세도 지역별 화면이다("경기 시군구별 전세가율"). 토글을 빼 놓으면 서울
+              기본값으로 들어온 경기 사용자가 그 화면 안에서 경기로 갈 길이 없다.
+              인사이트만 서울·경기 통합이라 제외한다. */}
+          {(showMarket || (['verify', 'find', 'nearby', 'history'].includes(tab)
+            && !(tab === 'find' && findSub === 'insight'))) && (
+            <div className="seg region-seg" role="group" aria-label="지역">
+              {Object.entries(REGIONS).map(([code, label]) => (
+                <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
+              ))}
+            </div>
+          )}
+        </div>
         <p className="hero-tag">계약하고 나서야 알게 되는 것들을 계약하기 전에</p>
         {tab !== 'about' && (
           <span className="hero-links">
@@ -270,28 +285,52 @@ export default function App() {
             )}
           </span>
         )}
-        {/* 법·제도는 전국 공통, 인사이트·소개는 서울·경기 통합이라 지역 토글이 소음이다 */}
-        {['verify', 'find', 'market', 'nearby', 'history'].includes(tab) && (
-          <div className="seg region-seg" role="group" aria-label="지역">
-            {Object.entries(REGIONS).map(([code, label]) => (
-              <button key={code} aria-pressed={region === code} onClick={() => setRegion(code)}>{label}</button>
-            ))}
-          </div>
-        )}
       </header>
 
-      {tab === 'verify' && <Verify guNames={view.guNames} region={region} />}
-      {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
+      {tab === 'verify' && (
+        <Verify guNames={view.guNames} region={region} onNearby={() => setTab('nearby')} />
+      )}
+
+      {/* 동네. 인사이트는 같은 대상(동네)을 통계로 보는 갈래라 여기 산다. */}
+      {tab === 'find' && (
+        <>
+          <div className="seg sub-seg" role="group" aria-label="동네 보기">
+            <button aria-pressed={findSub === 'risk'} onClick={() => setFindSub('risk')}>
+              조건으로 찾기
+            </button>
+            <button aria-pressed={findSub === 'insight'} onClick={() => setFindSub('insight')}>
+              동네 인사이트
+            </button>
+          </div>
+          {findSub === 'risk'
+            ? <Finder guNames={view.guNames} region={region} />
+            : <Insight onGoFind={() => setFindSub('risk')} />}
+        </>
+      )}
+
+      {/* 알아두기. 시세는 자기 화면에 "참고용"이라 적어 둔 읽을거리라 여기 산다. */}
+      {tab === 'law' && (
+        <div className="seg sub-seg" role="group" aria-label="알아두기 보기">
+          <button aria-pressed={lawSub === 'law'} onClick={() => setLawSub('law')}>
+            법·제도
+          </button>
+          <button aria-pressed={lawSub === 'market'} onClick={() => setLawSub('market')}>
+            시세 흐름
+          </button>
+        </div>
+      )}
       {/* 용어 사전과 조문 해설은 다른 물건이라 카드도 나눈다 */}
-      {tab === 'law' && <><Glossary /><Law /><Precedents /><Scams /></>}
-      {tab === 'nearby' && <Nearby guNames={view.guNames} region={region} onRegion={setRegion} />}
+      {tab === 'law' && lawSub === 'law' && <><Glossary /><Law /><Precedents /><Scams /></>}
+
+      {tab === 'nearby' && (
+        <Nearby guNames={view.guNames} region={region} onRegion={setRegion} />
+      )}
       {tab === 'history' && (
         <History guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
       )}
-      {tab === 'insight' && <Insight onGoFind={() => setTab('find')} />}
       {tab === 'about' && <About onBack={() => setTab('verify')} />}
 
-      {tab === 'market' && view.guList.length === 0 && (
+      {showMarket && view.guList.length === 0 && (
         <section className="card">
           <h2>{REGIONS[region]} 시세</h2>
           <p className="sub">
@@ -301,7 +340,7 @@ export default function App() {
         </section>
       )}
 
-      {tab === 'market' && view.guList.length > 0 && <>
+      {showMarket && view.guList.length > 0 && <>
       {/* 서울·경기 조망. 히어로의 지역 토글과 무관하게 자기 세그로 전체/서울/경기를
           오간다. 시장이 어디로 가는지 보고 나서 구 단위로 내려가는 순서다.
           '수도권'이라 부르지 않는다. 인천이 없다. */}
@@ -493,7 +532,7 @@ export default function App() {
       </>}
 
       {/* 평단가·잠정치 설명은 전부 시세 흐름 얘기다. 확인 탭에 온 사람에게는 소음이다. */}
-      {tab === 'market' && view.guList.length > 0 && <p className="note">
+      {showMarket && view.guList.length > 0 && <p className="note">
         <strong>읽는 법.</strong> 평단가는 <strong>전용면적</strong> 기준이라 공급면적으로 표시하는
         부동산 앱 숫자보다 20~30% 높게 나옵니다. 전세가율은 면적 구성의 차이를 걷어내려고
         평단가끼리 나눈 값입니다. 모든 통계는 중위값이며, 신고 후 해제된 거래는 제외했습니다.
@@ -512,7 +551,7 @@ export default function App() {
         <a href="mailto:necessities.qna@gmail.com">necessities.qna@gmail.com</a>
       </footer>
 
-      <TabBar tab={tab} onTab={setTab} />
+      <TabBar tab={tab === 'nearby' ? 'verify' : tab} onTab={setTab} />
     </main>
   )
 }

@@ -57,7 +57,7 @@ function ShareRow({ lawd, id }) {
   )
 }
 
-export default function Verify({ guNames, region = '11' }) {
+export default function Verify({ guNames, region = '11', onNearby }) {
   const fin = useFinder(region)
   const { byRow, byId } = useUnitLoader()
   const [q, setQ] = useState('')
@@ -219,6 +219,19 @@ export default function Verify({ guNames, region = '11' }) {
              placeholder="예: 화곡동 871-8 · 엔에스월드타워"
              onChange={(e) => setQ(e.target.value)} aria-label="주소 또는 건물명" />
 
+      {/* 임장 진입. 탭바 여섯 칸을 셋으로 줄이면서 이 자리로 왔다. 주소를 아는
+          사람은 위에 치고, 이미 그 골목에 서 있는 사람은 여기로 들어간다.
+          둘 다 "이 건물이 위험한가"를 묻는 같은 일이다. */}
+      {onNearby && !q.trim() && (
+        <button className="nearby-entry" onClick={onNearby}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+               strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 21s-6.5-5.2-6.5-10A6.5 6.5 0 0 1 12 4.5 6.5 6.5 0 0 1 18.5 11c0 4.8-6.5 10-6.5 10z M12 13a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z" />
+          </svg>
+          주소를 모르시면 <b>내 주변에서 찾기</b>
+        </button>
+      )}
+
       {compare.items.length > 0 && (
         <div className="cmp-bar">
           <button onClick={() => setShowCmp((v) => !v)} aria-expanded={showCmp}>
@@ -325,7 +338,7 @@ export default function Verify({ guNames, region = '11' }) {
           </ul>
           </>
         ) : (
-          <NoHit fin={fin} query={dq} />
+          <NoHit fin={fin} query={dq} region={region} />
         )
       )}
     </section>
@@ -588,7 +601,7 @@ function ComparePanel({ compare, byId, onOpen }) {
  * 앱이 최고 위험 신호로 잡는 패턴(신축·매매 0건·전세만 다수)의 바로 앞 단계다.
  * 침묵하면 안 되는 순간이다.
  */
-function NoHit({ fin, query }) {
+function NoHit({ fin, query, region }) {
   // 질의에 들어 있는 법정동을 찾는다. 있으면 그 동의 기준선을 대신 내 준다.
   // 동 찾기는 1천 개짜리 목록이고 통계는 32만 행 전수라, 둘을 한 메모에 묶으면
   // 오타를 치는 동안 같은 동을 매번 다시 센다. 통계는 동이 바뀔 때만 돈다.
@@ -620,14 +633,30 @@ function NoHit({ fin, query }) {
              med: deps.length ? deps[Math.floor(deps.length / 2)] : null }
   }, [fin, ui])
 
+  /**
+   * 동을 못 찾은 경우다. 전에는 "최근 2년 실거래 신고가 한 건도 없던 건물은
+   * 여기에 없습니다"라고 적었는데, 이 앱에서 신고 0건은 위험 신호의 앞 단계라
+   * 지역을 잘못 고른 사람에게 그 문장을 내는 것은 틀린 경보였다.
+   *
+   * 그다음엔 ui < 0으로 원인을 갈라 보려 했는데 그것도 틀렸다. ui < 0은
+   * "질의에 이 지역 법정동 이름이 안 들어 있다"는 뜻이지 "이 지역에 그 동이
+   * 없다"가 아니고, 동 꼴 토큰을 정규식으로 잡으면 법정동을 안 품은 건물명
+   * 115,255개 중 11.6%가 걸린다(도시빌리지·글로리아파크처럼 이름 안쪽이 걸린다).
+   * 경계를 붙여 6.2%로 줄이면 이번엔 신문로2가·명륜3가 같은 숫자 낀 법정동
+   * 35개를 놓친다. 어느 쪽으로 잘라도 누군가에게 틀린 길을 가리킨다.
+   *
+   * 그래서 가르지 않는다. 두 원인을 다 적고 사용자가 고르게 한다.
+   */
   if (!info) {
     return (
       <p className="muted-line">
-        찾지 못했습니다. 건물명 대신 <strong>법정동 + 지번</strong>으로 넣어 보세요
-        (예: 화곡동 871-8). 최근 2년 실거래 신고가 한 건도 없던 건물은 여기에 없습니다.
+        찾지 못했습니다. 지금 <strong>{REGIONS[region]}</strong> 물건만 보고 있으니,
+        다른 지역이시면 위 지역 단추를 바꿔 주세요. 지역이 맞다면 건물명 대신{' '}
+        <strong>법정동 + 지번</strong>으로 넣어 보세요 (예: 화곡동 871-8).
       </p>
     )
   }
+
   return (
     <div className="nohit">
       <p>

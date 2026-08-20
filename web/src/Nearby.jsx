@@ -5,7 +5,7 @@ import { NoJeonseSig, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 import { DEAL_KINDS, REGIONS, hasDeal, htName, useCompare, useFinder, useGuard, useSubway, useUnitLoader } from './units.js'
 
 /**
- * 임장 중 내 주변. 하단 탭바의 여섯 번째 칸이다.
+ * 임장 중 내 주변. 확인 탭 검색창 아래의 진입 버튼으로 들어온다.
  *
  * 동네 탭이 "조건으로 후보를 추리는" 곳이라면 여기는 이미 현장에 서 있는
  * 사람을 위한 화면이다. 조건 필터를 다 걷어내고 반경과 유형만 남겼다.

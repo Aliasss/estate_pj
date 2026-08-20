@@ -113,8 +113,8 @@ export default function Insight({ onGoFind }) {
           </ol>
           <p className="muted-line">
             지금 데이터가 확보된 범위에서 {cards.kkangtong.total.toLocaleString()}개 건물이
-            이 기준에 해당합니다. 동네 탭의 "확인된 깡통" 필터로 하나씩 확인하실 수 있습니다.
-            {onGoFind && <> <button className="ins-link" onClick={onGoFind}>동네 탭으로 →</button></>}
+            이 기준에 해당합니다. 조건으로 찾기의 "확인된 깡통" 필터로 하나씩 확인하실 수 있습니다.
+            {onGoFind && <> <button className="ins-link" onClick={onGoFind}>조건으로 찾기 →</button></>}
           </p>
           <Method>
             방법론: 근거 A단계(그 건물 매매 3건 이상)이면서 중위 전세가 중위 매매의

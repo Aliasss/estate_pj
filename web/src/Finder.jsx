@@ -51,32 +51,17 @@ const RISKS = [
     test: (c, i) => c.hike[i] != null && c.hike[i] <= -0.05 },
 ]
 
+/* 전에는 '안전한 순'이 기본이었다. 근거 40점 + 여유 60점을 더한 합성 점수로
+   물건을 줄 세운 것인데, 그건 우리가 안 하기로 한 추천 순위다. 점수를 화면에
+   안 보이면 순위가 아니게 되는 것도 아니다. 실제로 나온 결과도 잠실 주공5·리센츠를
+   안전한 순으로 세운 5~9억 아파트 목록이라, 전세 2~3억 들고 온 사람이 볼 화면이
+   아니었다. 단일 실측값으로만 정렬한다. */
 const SORTS = [
-  { key: 'safe', label: '안전한 순' },
+  { key: 'ratio', label: '전세가율 높은 순' },
+  { key: 'cheap', label: '보증금 낮은 순' },
   { key: 'new', label: '최근 준공 순' },
   { key: 'big', label: '넓은 순' },
-  { key: 'cheap', label: '보증금 낮은 순' },
 ]
-
-/**
- * 정렬용 보증금 안전 점수(0~100). 두 조각을 더한다.
- *  - 근거(최대 40): 그 건물 실거래로 값을 확인할 수 있느냐. 확인이 안 되면 나머지는 추정이다.
- *  - 여유(최대 60): 전세가율이 100%에서 얼마나 떨어져 있느냐.
- * 점수 자체는 화면에 숫자로 내지 않는다. 근거와 전세가율을 그대로 보여주는 편이 정직하다.
- */
-function safety(ratio, stage, ns, nj) {
-  // 전세가 아예 없는 물건은 이 점수의 대상이 아니다. 근거 점수만 주면 매매
-  // 3건짜리 전세 0건 건물(40점)이 전세가율 105%짜리 확인된 깡통(40점)과 같은
-  // 자리에 선다. "안전한 순"은 전세가율의 순서이므로, 잴 수 없는 것은 그 줄에
-  // 세우지 않고 뒤로 모은다.
-  if (!nj) return -1
-  const evidence = stage === 0 ? (ns >= 3 ? 40 : 25) : stage === 1 ? 15 : stage === 2 ? 8 : 0
-  // 비교 기준이 깨진 값은 "가장 위험함"이 아니라 "모름"이다. 안전 순 맨 뒤에 두면
-  // 정작 실거래로 확인된 깡통이 그 아래로 밀린다.
-  if (ratio == null || ratio >= RATIO_BROKEN) return evidence
-  const room = Math.max(0, Math.min(1, (1.05 - ratio) / 0.55))
-  return evidence + 60 * room
-}
 
 /** 거래 유형 코드 -> 문장에 넣을 이름. DEAL_KINDS와 같은 값을 문장용으로 쓴다. */
 const DEAL_LABEL = Object.fromEntries(DEAL_KINDS.filter(([v]) => v).map(([v, l]) => [v, l]))
@@ -102,8 +87,8 @@ export default function Finder({ guNames, region = '11' }) {
   const [minYear, setMinYear] = useState(0)
   const [ht, setHt] = useState('')               // '' 전체 / 'A' / 'R'
   // 데이터에 있는 건물을 처음부터 다 보여주고, 좁히는 것은 사용자가 고르게 한다.
-  // 전세가 없는 건물은 전세가율을 못 내므로 '안전한 순'에서는 뒤로 밀리고
-  // (safety), 목록 줄에는 전세 신고가 없다고 적힌다.
+  // 전세가 없는 건물은 전세가율을 못 내므로 전세가율 순에서는 뒤로 밀리고,
+  // 목록 줄에는 전세 신고가 없다고 적힌다.
   const [deal, setDeal] = useState('')           // '' 전체 / 'j' 전세 / 's' 매매 / 'w' 월세
   // 전세가율 상한. 값이 없는 물건(전세 없음·비교 불가·판단 보류)은 "미만"을
   // 증명할 수 없으므로 통과시키지 않는다. 필터는 확인된 것만 통과시켜야 한다.
@@ -116,7 +101,7 @@ export default function Finder({ guNames, region = '11' }) {
   const [needSale, setNeedSale] = useState(false)
   const [needElvt, setNeedElvt] = useState(false)
   const [risk, setRisk] = useState([])       // 켜진 위험 필터
-  const [sort, setSort] = useState('safe')
+  const [sort, setSort] = useState('ratio')
   const [view, setView] = useState('list')   // list | map
   const [limit, setLimit] = useState(PAGE)
   // 펼친 줄 하나만 들고 있는다. {key, u} | {key, loading} | {key, error}
@@ -216,9 +201,14 @@ export default function Finder({ guNames, region = '11' }) {
       out.push(i)
     }
     const key = {
-      // 안전 점수는 상위 3천여 개가 100점 동점이라, 2차 키(매매 표본 두께)가 없으면
-      // 첫 페이지가 파일 순서(구 -> 가나다)로 나온다. 표본 많은 순이 설명과 맞는 순서다.
-      safe: (i) => safety(col.ratio[i], col.stage[i], col.ns[i], col.nj[i]) * 1e4 + Math.min(col.ns[i] ?? 0, 999) * 10 + Math.min(col.nj[i] ?? 0, 9) ,
+      // 비교 기준이 깨진 값과 전세가 없어 못 재는 물건은 "가장 위험함"이 아니라
+      // "모름"이다. 맨 위에 세우면 실거래로 확인된 깡통이 그 아래로 밀린다.
+      // nj == 0이면 ratio가 예외 없이 null이라 앞 조건이 이미 잡는다(실측: nj가
+      // null인 행 0건, nj 0인 행은 전부 ratio null). 조건을 겹쳐 두지 않는다.
+      ratio: (i) => {
+        const r = col.ratio[i]
+        return r == null || r >= RATIO_BROKEN ? -1 : r
+      },
       new: (i) => col.by[i] ?? -1,
       big: (i) => col.area[i] ?? -1,
       cheap: (i) => -(col.jeonse[i] ?? Infinity),
@@ -527,11 +517,11 @@ export default function Finder({ guNames, region = '11' }) {
 
       <p className="muted-line">
         조건에 맞는 물건이 <strong>{hits.length.toLocaleString()}개</strong> 있습니다.
-        {sort === 'safe' && ' 그 건물 실거래로 값을 확인할 수 있는 물건이 먼저 오고, 그다음이 전세가율 여유 순입니다'}
+        {sort === 'ratio' && ' 전세가율이 높은 물건부터 옵니다. 순위나 추천이 아니라 한 가지 값의 순서이고, 이 건물 매매 사례가 없으면 인근 추정치라 "약"이 붙습니다.'}
         {/* 전세 없는 건물이 실제로 실려 있을 때만 말한다. 아직 전세만 담긴
             데이터가 배포된 동안에는 아무것도 아닌 것을 설명하게 된다. */}
-        {sort === 'safe' && deal !== 'j' && dealCount.j < d.n
-          && ' 전세 신고가 없어 전세가율을 낼 수 없는 건물은 맨 뒤에 옵니다'}
+        {sort === 'ratio' && deal !== 'j' && dealCount.j < d.n
+          && ' 전세 신고가 없거나 비교 기준이 깨진 건물은 잴 수 없으므로 맨 뒤에 옵니다'}
       </p>
 
       {/* 좌표 0%에서 지도 탭은 "물건 핀 0개"만 보여 준다. 만든 것만 못한 화면이라
