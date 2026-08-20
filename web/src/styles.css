@@ -248,7 +248,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 
 /* --- 인사이트 / 소개 --- */
 .about-link {
-  appearance: none; border: 1px solid rgb(247 242 228 / 0.35); background: transparent;
+  appearance: none; border: 1px solid rgb(247 242 228 / 0.42);  /* 0.35면 다크에서 2.96:1로 규격 미달 */ background: transparent;
   color: var(--hero-fg-dim); font: inherit; font-size: var(--fs-small); padding: 4px 10px;
   border-radius: 999px; cursor: pointer; margin-top: 12px; display: inline-block;
 }
@@ -872,9 +872,14 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 }
 .todo > b { display: block; margin-bottom: 6px; font-size: var(--fs-sub); }
 .todo ol { margin: 0; padding-left: 20px; }
+/* 판정 아래로 올라온 확인 목록. 이 앱이 답하지 못하는 부분이라 문장을 먼저 낸다. */
+.todo-lead { margin: 0 0 10px; font-size: var(--fs-sub); color: var(--text-secondary); line-height: 1.65; }
+.todo .checklist { margin: 0; }
 .todo li { margin-bottom: 7px; line-height: 1.65; color: var(--text-secondary); }
 .todo a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
-.todo > p { margin: 8px 0 0; font-weight: 600; color: var(--critical); font-size: var(--fs-small); }
+/* 경고는 이 자리에서 하나뿐이어야 한다. 클래스를 안 걸고 .todo > p로 잡으면
+   위에 새로 놓은 리드 문장까지 빨갛게 물들어 경고의 무게가 희석된다. */
+.todo-warn { margin: 10px 0 0; font-weight: 600; color: var(--critical); font-size: var(--fs-small); }
 
 /* 검색 0건 안내. 조작 실수 안내가 아니라 판정이다. */
 .nohit {

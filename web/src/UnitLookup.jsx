@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { latestRate, useRates, ym as ymKor, useSubway } from './units.js'
+import { CHECKLIST, latestRate, useRates, ym as ymKor, useSubway } from './units.js'
 import { fdTrack } from './fakedoor.js'
 
 export const pct0 = (v) => (v == null ? '-' : `${Math.round(v * 100)}%`)
@@ -452,8 +452,7 @@ function BuildingFacts({ u }) {
   const stations = useSubway()
   // 대장 유무는 대장에서 오는 열 전체로 판정한다. 일부만 보면 "층수는
   // 보이는데 대장은 수집 전"이라는 자기모순 화면이 나올 수 있다.
-  const hasBldg = [u.apr, u.strct, u.hhld, u.flr, u.elvt, u.park, u.n_dong]
-    .some((v) => v != null)
+  const hasBldg = hasBldgData(u)
   const commute = commuteText(stations, u)
   const items = [
     u.apr && ['준공', `${u.apr}년`],
@@ -687,36 +686,45 @@ function Asking({ u, pctOf }) {
   )
 }
 
+/** 대장에서 오는 열 전체로 판정한다. 일부만 보면 "층수는 보이는데 대장은
+ *  수집 전"이라는 자기모순 화면이 나온다. BuildingFacts와 같은 목록을 쓴다. */
+const hasBldgData = (u) =>
+  [u.apr, u.strct, u.hhld, u.flr, u.elvt, u.park, u.n_dong].some((x) => x != null)
+
 /**
  * 판정 다음에 할 일. 숫자를 보여주고 끝나면 읽고 끝난다. 이 앱이 답하지 못하는
  * 부분(등기부·보증보험)으로 가는 문이 판정 바로 아래에 있어야 한다.
+ *
+ * 전에는 여기 3항목짜리 짧은 판을 두고 같은 화면 4,371px 아래에 7항목짜리 긴
+ * 판을 또 뒀다. 짧은 판이 긴 판의 부분집합이라, 짧은 쪽만 본 사람은 갑구
+ * (신탁·압류)·전입세대 확인서·세금 체납을 영영 안 봤다. 한 벌로 합친다.
  */
 function Actions({ tone, u }) {
   const urgent = tone === 'critical' || tone === 'serious'
   return (
     <div className="todo">
       <b>{urgent ? '계약 전에 반드시' : '계약 전에 확인'}</b>
-      <ol>
-        <li>
-          등기부등본 을구에서 근저당 잔액을 확인하세요. 선순위 채권과 내 보증금
-          {/* 전세가 없는 건물은 med_jeonse가 null이다. 괄호 안이 '-'로 나가면
-              보증금이 0원이라는 말처럼 읽힌다. 둘 다 있을 때만 숫자를 쓴다. */}
-          {u.med_sale && u.med_jeonse
-            ? `(${eok(u.med_jeonse)})의 합이 매매가 ${eok(u.med_sale)}을 넘으면 경매에서 못 받습니다`
-            : '의 합이 집값을 넘으면 경매에서 못 받습니다'}.{' '}
-          <a href="https://www.iros.go.kr" target="_blank" rel="noopener noreferrer">인터넷등기소 ↗</a>
-        </li>
-        <li>
-          보증보험 가입 가능 여부를 계약 전에 확인하고, 안 되면 계약을 해제한다는
-          특약을 넣으세요. 거절 자체가 신호입니다.{' '}
-          <a href="https://www.khug.or.kr" target="_blank" rel="noopener noreferrer">HUG ↗</a>
-        </li>
-        <li>
-          건축물대장에서 위반건축물 표기를 확인하세요. 위반이면 보증보험이 안 됩니다.{' '}
-          <a href="https://www.gov.kr" target="_blank" rel="noopener noreferrer">정부24 ↗</a>
-        </li>
-      </ol>
-      {urgent && <p>위 확인이 끝나기 전에는 계약금을 보내지 마세요.</p>}
+      <p className="todo-lead">
+        위 숫자는 <strong>실거래 신고 기록</strong>일 뿐입니다. 보증금을 실제로 돌려받을 수
+        있는지는 아래를 직접 확인해야 알 수 있고, 여기서는 볼 수 없습니다.
+      </p>
+      <ul className="checklist">
+        {CHECKLIST.map(([what, why, href, where], k) => (
+          <li key={what}>
+            <b>{what}</b>
+            <span>
+              {why}
+              {/* 첫 항목에만 이 건물의 숫자를 붙인다. 남의 기준이 아니라 지금 보고
+                  있는 건물로 말해야 확인할 것이 구체적으로 잡힌다. 전세가 없는
+                  건물은 med_jeonse가 null이라 둘 다 있을 때만 쓴다. */}
+              {k === 0 && u.med_sale && u.med_jeonse
+                && ` (이 건물이면 보증금 ${eok(u.med_jeonse)}, 매매가 ${eok(u.med_sale)})`}
+            </span>
+            <a href={href} target="_blank" rel="noopener noreferrer">{where} ↗</a>
+          </li>
+        ))}
+      </ul>
+      {urgent && <p className="todo-warn">위 확인이 끝나기 전에는 계약금을 보내지 마세요.</p>}
     </div>
   )
 }
@@ -863,6 +871,18 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
         <strong>{v.head}</strong>
         <span>{v.body}</span>
       </div>
+
+      {/* 건축물대장이 없으면 준공·세대수·구조·승강기·주차가 통째로 빈다. 경기는
+          아직 0%라 그쪽 이용자에게는 늘 비어 있다. 전에는 그 사실이 카드
+          3,733px 아래에 14px 회색으로만 있어서, 화면이 조용한 것을 "그런 건물"로
+          읽게 만들었다. 판정 바로 옆에서 밝힌다. */}
+      {!hasBldgData(u) && (
+        <p className="muted-line">
+          이 건물은 <strong>건축물대장이 아직 수집 전</strong>이라 준공·세대수·구조·승강기·주차를
+          보여 드리지 못합니다. 위 판정은 실거래만으로 낸 것이고, 건물 자체의 문제는
+          여기서 알 수 없습니다. 정부24에서 무료로 발급받아 확인하실 수 있습니다.
+        </p>
+      )}
 
       <dl className="metrics">
         <div>

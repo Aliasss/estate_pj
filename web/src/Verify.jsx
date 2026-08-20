@@ -22,24 +22,6 @@ const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억
  * 우리가 못 보는 것들. 전세가율은 안전의 한 조각일 뿐이고, 사람을 실제로 다치게 하는
  * 대부분은 여기 있다. 못 본다고 입을 다물면 앱을 본 사람이 다 봤다고 착각한다.
  */
-const CHECKLIST = [
-  ['등기부등본 을구', '근저당이 얼마나 잡혀 있는지 봅니다. 선순위 채권과 내 보증금의 합이 매매가를 넘으면 경매에서 못 받습니다',
-   'https://www.iros.go.kr', '인터넷등기소 · 열람 700원'],
-  ['등기부등본 갑구', '신탁등기가 있으면 집주인에게 계약 권한이 없을 수 있습니다. 압류·가압류도 여기서 봅니다',
-   'https://www.iros.go.kr', '인터넷등기소'],
-  ['전입세대 확인서', '나보다 먼저 들어온 세대가 있는지 봅니다. 선순위 임차인은 배당에서 나보다 앞섭니다',
-   'https://www.gov.kr', '정부24 또는 주민센터'],
-  ['보증보험 가입 가능 여부', 'HUG/HF에서 거절되면 그 자체가 신호입니다. 가입이 안 되면 해제한다는 특약을 넣어 두세요',
-   'https://www.khug.or.kr', 'HUG 주택도시보증공사'],
-  ['집주인 신분과 세금 체납', '계약서상 소유자와 등기부상 소유자가 같은지 봅니다. 국세 완납증명서를 요구할 수 있습니다',
-   'https://www.hometax.go.kr', '홈택스 · 미납국세 열람은 세무서'],
-  ['건축물대장 위반건축물 표기', '위반건축물이면 보증보험이 안 됩니다',
-   'https://www.gov.kr', '정부24 · 무료 발급'],
-  // 치안은 이 앱이 판정하지 않는다. 경찰서 관할 단위 통계를 동네에 얹으면
-  // 다른 경계의 숫자를 우리 동네 숫자로 읽게 만든다. 판단은 국가 지도에 넘긴다.
-  ['동네 치안 정보', '이 앱은 치안을 판정하지 않습니다. 범죄주의구간과 안전시설 위치는 국가가 운영하는 지도에서 직접 보실 수 있습니다',
-   'https://www.safemap.go.kr', '행정안전부 생활안전지도'],
-]
 
 function ShareRow({ lawd, id }) {
   const [done, setDone] = useState(false)
@@ -278,19 +260,6 @@ export default function Verify({ guNames, region = '11', onNearby }) {
           )}
           <ShareRow lawd={open.lawd} id={open.u.id} />
 
-          <h3 className="facts-h">이 앱이 답하지 못하는 것</h3>
-          <p className="muted-line">
-            위 숫자는 <strong>실거래 신고 기록</strong>일 뿐입니다. 보증금을 실제로 돌려받을 수
-            있는지는 아래를 직접 확인해야 알 수 있고, 여기서는 볼 수 없습니다.
-          </p>
-          <ul className="checklist">
-            {CHECKLIST.map(([what, why, href, where]) => (
-              <li key={what}>
-                <b>{what}</b><span>{why}</span>
-                <a href={href} target="_blank" rel="noopener noreferrer">{where} ↗</a>
-              </li>
-            ))}
-          </ul>
         </>
       )}
 
