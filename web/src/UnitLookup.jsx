@@ -295,6 +295,43 @@ const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
 // 건물에서 "6건"은 전부처럼 읽혀서, 실제로 있는 계약이 없는 것처럼 보인다.
 const DEAL_CAPS = { j: 15, s: 10, w: 12 }
 
+/* 그룹마다 처음 몇 건만 펴 둔다. 전세 15 · 매매 10 · 월세 12건까지 실려서
+   다 펴면 표만 1,313px이고 카드 3,800px의 3분의 1이다. 그렇다고 통째로 감추면
+   이 앱이 판정의 근거로 삼는 것이 안 보인다. 최근 흐름은 보이고 나머지는
+   부르면 오게 한다. */
+const DEAL_PEEK = 4
+
+function DealTable({ kind, label, rows, fmt, cap }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? rows : rows.slice(0, DEAL_PEEK)
+  const rest = rows.length - shown.length
+  return (
+    <div className={`deals deals-${kind}`}>
+      <h4>{label} <small>{rows.length >= cap ? `최근 ${rows.length}건` : `${rows.length}건`}</small></h4>
+      <table>
+        <tbody>
+          {shown.map((r, i) => {
+            const [amount, floor, tag] = fmt(r)
+            return (
+              <tr key={i}>
+                <td className="d-ym">{ym(r[0])}</td>
+                <td className="d-amt">{amount}</td>
+                <td className={floor === '반지하' ? 'serious' : ''}>{floor}</td>
+                <td className="d-tag">{tag}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {(rest > 0 || all) && (
+        <button className="deal-more" onClick={() => setAll((v) => !v)} aria-expanded={all}>
+          {all ? '접기' : `${rest}건 더 보기`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Deals({ deals }) {
   if (!deals) return null
   // 행 끝의 'P'는 신고 기한이 아직 안 지난 달의 계약이다. 월 통계에는 안 들어가지만
@@ -307,31 +344,13 @@ function Deals({ deals }) {
     ['w', '월세', (r) => [`${eok(r[1])} / ${r[2]}만`, floorText(r[3]), prov(r) ? '잠정' : '']],
   ].filter(([k]) => deals[k]?.length)
   if (!groups.length) return null
+  // 잠정 안내는 접힌 행에도 걸릴 수 있다. 펴 보면 나오는 꼬리표라 미리 설명해 둔다.
   const hasProv = groups.some(([k]) => deals[k].some(prov))
   return (
     <>
       <h3 className="facts-h">최근 거래</h3>
       {groups.map(([k, label, fmt]) => (
-        <div key={k} className="deals">
-          <h4>{label} <small>
-            {deals[k].length >= DEAL_CAPS[k] ? `최근 ${deals[k].length}건` : `${deals[k].length}건`}
-          </small></h4>
-          <table>
-            <tbody>
-              {deals[k].map((r, i) => {
-                const [amount, floor, tag] = fmt(r)
-                return (
-                  <tr key={i}>
-                    <td className="d-ym">{ym(r[0])}</td>
-                    <td className="d-amt">{amount}</td>
-                    <td className={floor === '반지하' ? 'serious' : ''}>{floor}</td>
-                    <td className="d-tag">{tag}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DealTable key={k} kind={k} label={label} rows={deals[k]} fmt={fmt} cap={DEAL_CAPS[k]} />
       ))}
       {hasProv && (
         <p className="muted-line">

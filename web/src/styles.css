@@ -676,6 +676,10 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .deals tr:last-child td { border-bottom: 0; }
 .d-ym { color: var(--text-muted); width: 50px; }
 .d-amt { font-weight: 600; color: var(--text-primary); text-align: right; width: 84px; }
+/* 월세는 한 칸에 보증금과 월세를 같이 적는다("1,000만 / 65만"). 84px에 안 들어가
+   두 줄로 깨지면서 행 높이가 전세의 두 배가 됐다. 이 표에서만 금액 칸을 넓힌다. */
+.deals-w .d-amt { width: 108px; white-space: nowrap; }
+.deals-w .d-ym { width: 46px; }
 .d-tag { color: var(--text-muted); text-align: right; font-size: var(--fs-tiny); }
 
 /* --- 같은 건물 다른 평형 --- */
@@ -937,6 +941,14 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* 담아 두기와 감시 걸기. 바로 위 "지도에서 위치 보기"는 이 카드를 더 읽는
    일이고 이쪽은 카드를 덮고 나서 하는 일이라, 붙여 두면 한 묶음으로 읽힌다.
    .more에 margin-bottom이 없어 실제로 0px로 붙어 있었다. */
+/* 거래 표를 더 부르는 자리. 표의 일부라 카드 CTA(.more)와 같은 무게면 안 된다. */
+.deal-more {
+  margin: 2px 0 0; padding: 6px 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-small); color: var(--text-muted);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.deal-more:hover, .deal-more:focus-visible { color: var(--text-primary); }
+
 .save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .save-row .cmp-btn { margin: 0; }
 
