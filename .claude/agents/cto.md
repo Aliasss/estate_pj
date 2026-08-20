@@ -10,24 +10,53 @@ model: opus
 
 ## 이 시스템
 
-`내 집 내놔`. 서울·경기 전세 위험도 웹앱.
+`necessities` (necessities.site). 서울·경기 전세 위험 검증 PWA.
+계약 전에 그 건물이 위험한지 확인하는 화면이 본체다.
 
 ```
-국토교통부 실거래가 API (4종 × 70개 시군구 × 60개월)  collect.py
-행안부 법정동코드 + 건축HUB 건축물대장 표제부          fetch_bjdong.py / collect_bldg.py
-서울 열린데이터광장 지하철                             collect_subway.py
-한국은행 ECOS 금리                                    collect_rates.py
-도로명주소/VWorld 지오코딩 (미완, JUSO 키 대기)        geocode.py
-        ↓  SQLite (로컬 전용, 릴리스 스냅샷으로 왕복)
+국토교통부 실거래가 API (4종 × 74개 시군구 × 60개월)   collect.py
+행안부 법정동코드 + 건축HUB 건축물대장 표제부           fetch_bjdong.py / collect_bldg.py
+서울 열린데이터광장 지하철 · 학교 / 한국은행 ECOS 금리   collect_subway.py 등
+도로명주소(JUSO) 지오코딩 — 완주, 물건의 99.8%가 좌표 보유  geocode.py
+        ↓  SQLite (로컬 전용, 릴리스 data-latest로 왕복)
         ↓  aggregate.py / build_units.py / bldg_join.py / subway_join.py
-tier1.json (시군구 68곳 패널, 7MB 선적재)
-finder-11.json / finder-41.json (서울 83,317 + 경기 46,823 물건, 열 단위)
-finder.json (서울본 복사, 구버전 프런트 호환)
+           school_join.py / terrain_join.py
+tier1.json (시군구 패널, 2021-08~ 60개월)
+finder-11.json (서울 204,991) / finder-41.json (경기 121,882)  열 단위
 {lawd}.json (시군구별 상세, 지연 로딩)
-        ↓  GitHub Actions (collect 주간 월 21:00 UTC, buildings 매일 18:00 UTC)
+        ↓  GitHub Actions
+             collect.yml    주간 월 21:00 UTC (+ dispatch), timeout 350분
+             buildings.yml  매일 13:00 UTC, timeout 330분
+             sources.yml    dispatch 전용
+             concurrency: data-latest, cancel-in-progress: false
         ↓  릴리스 에셋 + 리포지토리 CSV -> Vercel 빌드 시 fetch
-Vite 7 + React 19 + vite-plugin-pwa
+Vite 7 + React 19 + Leaflet + vite-plugin-pwa
+화면: 하단 탭 6개(확인·내 주변·동네·시세·인사이트·알아두기) + 헤더 링크(살아온 집)
 ```
+
+## 운영 현실 (2026-08 기준)
+
+- **국토부 게이트웨이가 러너 IP를 간헐적으로 차단한다.** 429가 아니라
+  ConnectTimeout으로 온다. 실거래와 건축물대장이 같은 호스트라 함께 막힌다.
+  collect.py에 최대 46분짜리 사전 확인이 들어가 있다.
+- **건축물대장은 서울 91.5%(101,221지번 중 8,623 남음), 경기 0%(73,213지번).**
+  경기 이용자에게는 건물 사실이 통째로 빈다. 회차 상한 8,000건.
+- **개인 데이터는 기기에만 둔다.** 계정 없음, 서버 전송 없음.
+  비교함·보증금 지킴이·살아온 집이 localStorage/IndexedDB에 산다.
+
+## 넘지 않는 선
+
+이 제품이 무엇을 안 하기로 했는지가 곧 정체성이다.
+
+- **매물을 팔지 않는다.** 크롤링도 안 한다. 그래서 "이 집 위험합니다"를
+  말할 수 있다. 돈은 세입자 쪽에서 나와야 하고 집을 파는 쪽에서 나오면 안 된다.
+- **전망·추천·인기순위를 만들지 않는다.** "당신에게 맞는 집"도 안 된다.
+  사실을 나란히 놓는 데까지가 우리 몫이다.
+- **숫자를 지어내지 않는다.** 실측만 인용한다. 표본이 얇거나 비교 기준이
+  깨졌으면 값을 내지 말고 모른다고 적는다.
+- **범죄율 배지를 달지 않는다.**
+- 화면 문장은 경어체. 중간 줄표를 쓰지 않는다. 빈 값은 붙임표(-),
+  제목 구분자는 가운뎃점(·).
 
 ## 협업 체제
 
