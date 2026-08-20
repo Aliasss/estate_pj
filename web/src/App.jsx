@@ -33,26 +33,39 @@ const VOL_DEFS = [
 const delta = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 
 
-/** 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다. */
+/**
+ * 하단 탭바. 화면 위 탭 줄보다 엄지에 가깝고, 앱으로 읽힌다.
+ *
+ * 라벨은 짧게 쓴다. '계약 전 확인'이 라벨만으로 84.5px를 요구하는 바람에 다섯
+ * 칸일 때도 옆 칸('동네', 30px)의 남는 자리를 빌려 겨우 한 줄로 섰고, 그래서
+ * --fs-nav를 10.5px까지 낮춰 둔 상태였다(실측). 화면에 적힌 이름은 '계약 전
+ * 확인' 그대로고 탭 라벨만 줄인다. 전체 이름은 aria-label로 남긴다.
+ *
+ * 그래서 생긴 여섯 번째 칸은 임장에 준다. 골목에 서서 한 손으로 여는 화면이라
+ * 엄지에 닿는 자리가 필요하고, 헤더 링크는 그 자리가 아니었다.
+ */
 const TABS = [
-  ['verify', '계약 전 확인',
+  ['verify', '확인', '계약 전 확인',
    'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z M9.5 11.5l2 2 3.5-3.5'],
-  ['find', '동네',
+  ['nearby', '내 주변', '임장 중 내 주변',
+   'M12 3v2.6 M12 18.4V21 M3 12h2.6 M18.4 12H21 M12 16.6a4.6 4.6 0 1 0 0-9.2 4.6 4.6 0 0 0 0 9.2z'],
+  ['find', '동네', null,
    'M12 21s-6.5-5.2-6.5-10A6.5 6.5 0 0 1 12 4.5 6.5 6.5 0 0 1 18.5 11c0 4.8-6.5 10-6.5 10z M12 13a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z'],
-  ['market', '시세',
+  ['market', '시세', null,
    'M4 19h16 M4 15l4-4 3 3 5-6 4 4'],
-  ['insight', '인사이트',
+  ['insight', '인사이트', null,
    'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.5h6c0-1.1.3-1.9 1-2.5A6 6 0 0 0 12 3z'],
   // 용어 사전이 함께 살면서 '법·제도'보다 넓은 이름이 필요해졌다. 아이콘도 책으로.
-  ['law', '알아두기',
+  ['law', '알아두기', null,
    'M4 5.5c2.2-1.2 5.3-1.2 8 .3 2.7-1.5 5.8-1.5 8-.3v13c-2.2-1.2-5.3-1.2-8 .3-2.7-1.5-5.8-1.5-8-.3v-13z M12 5.8v13'],
 ]
 
 function TabBar({ tab, onTab }) {
   return (
     <nav className="tabbar" role="tablist" aria-label="화면">
-      {TABS.map(([key, label, d]) => (
-        <button key={key} role="tab" aria-pressed={tab === key} onClick={() => onTab(key)}>
+      {TABS.map(([key, label, full, d]) => (
+        <button key={key} role="tab" aria-pressed={tab === key} aria-label={full ?? undefined}
+                onClick={() => onTab(key)}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
                stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d={d} />
@@ -248,15 +261,8 @@ export default function App() {
             <button className="about-link" onClick={() => setTab('about')}>
               어떤 서비스인가요 →
             </button>
-            {/* 현장에 서 있는 사람은 조건 검색이 아니라 "지금 여기"가 필요하다.
-                첫 화면에서 한 번에 닿게 둔다. */}
-            {tab !== 'nearby' && (
-              <button className="about-link" onClick={() => setTab('nearby')}>
-                임장 중이신가요 →
-              </button>
-            )}
-            {/* 살아온 집. 탭바에는 자리가 없다. "계약 전 확인"이 라벨만으로
-                84.5px를 요구하는데 6개가 되면 버튼이 57.7px가 된다(실측). */}
+            {/* 살아온 집. 탭바 여섯 번째 칸은 임장에 줬다. 기록은 계약 뒤 한 번
+                적고 마는 화면이라 엄지에 닿는 자리를 상시로 차지할 빈도가 아니다. */}
             {tab !== 'history' && (
               <button className="about-link" onClick={() => setTab('history')}>
                 살아온 집 →
@@ -278,9 +284,7 @@ export default function App() {
       {tab === 'find' && <Finder guNames={view.guNames} region={region} />}
       {/* 용어 사전과 조문 해설은 다른 물건이라 카드도 나눈다 */}
       {tab === 'law' && <><Glossary /><Law /><Precedents /><Scams /></>}
-      {tab === 'nearby' && (
-        <Nearby guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
-      )}
+      {tab === 'nearby' && <Nearby guNames={view.guNames} region={region} onRegion={setRegion} />}
       {tab === 'history' && (
         <History guNames={view.guNames} region={region} onBack={() => setTab('verify')} />
       )}

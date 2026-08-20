@@ -72,6 +72,11 @@ export function useFinder(region = '11') {
   const [state, setState] = useState({ status: 'loading' })
   useEffect(() => {
     setState({ status: 'loading' })
+    // 서울(22.4MB)과 경기(13.9MB)는 저사양 회선에서 몇 초씩 걸린다. 그 사이
+    // 지역을 두 번 바꾸면 먼저 시작한 쪽이 나중에 도착해 새 지역을 덮어쓴다.
+    // 실측으로 재현했다: 라벨은 서울인데 안에는 경기 물건이 앉아 강서구
+    // 한복판에서 "0개"가 나왔다. 자기 세대가 아니면 상태를 만지지 않는다.
+    let alive = true
     const base = import.meta.env.BASE_URL
     // 없는 파일이 늘 404로 오지는 않는다. SPA 폴백이 있는 서버(vite preview 등)는
     // index.html을 200으로 준다. content-type까지 봐야 "파일 없음"을 제대로 읽는다.
@@ -111,9 +116,12 @@ export function useFinder(region = '11') {
           flat[i] = (col.name[i] || '').replace(/\s+/g, '')
           addr[i] = (d.umds[col.u[i]] || '') + (col.jibun?.[i] ?? '')
         }
-        setState({ status: 'ready', d, col, flat, addr })
+        if (alive) setState({ status: 'ready', d, col, flat, addr })
       })
-      .catch((e) => setState({ status: e.pending ? 'pending' : 'error', message: e.message }))
+      .catch((e) => {
+        if (alive) setState({ status: e.pending ? 'pending' : 'error', message: e.message })
+      })
+    return () => { alive = false }
   }, [region])
   return state
 }

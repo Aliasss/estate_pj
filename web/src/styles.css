@@ -37,7 +37,11 @@
      0.5px 간격)를 7단계로 접으면서 한 단계씩 올렸다. 0.5px 차이는 한국어
      고딕에서 구분되지 않아 위계 노릇을 못 했다. 입력류 16px은 iOS 포커스
      자동 줌의 방지선. SVG 축(.axis)은 viewBox 스케일이라 제외. */
-  --fs-nav: 10.5px;    /* 탭바 라벨. 11px면 "계약 전 확인"이 360px에서도 줄바꿈 (실측) */
+  /* 탭바 라벨. '계약 전 확인'을 '확인'으로 줄이기 전에는 10.5px가 상한이었다.
+     지금 최장 라벨은 '인사이트'·'알아두기'로 11.5px에서 45.1px를 요구하고,
+     여섯 칸일 때 버튼 안쪽 폭이 360px 화면에서 48.7px, 320px에서 42px다(실측).
+     좁은 화면에서만 내려가도록 화면 폭에 걸어 둔다. 3.19vw가 360px에서 11.5px. */
+  --fs-nav: clamp(10px, 3.19vw, 11.5px);
   --fs-tiny: 12px;     /* 각주·단위·캡션 */
   --fs-small: 13px;    /* 밀도 UI: 표·칩·랭킹·툴팁. 표의 상한 */
   --fs-sub: 14px;      /* 보조 본문. 볼륨이 가장 크다 */
@@ -446,6 +450,104 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   font-variant-numeric: tabular-nums; vertical-align: 1px;
 }
 
+/* --- 임장 전면 지도 ---
+   위치를 잡고 나면 이 화면은 문서가 아니라 지도다. 카드 밖으로 나가 화면을
+   통째로 덮고, 결과는 아래에서 올라오는 시트가 맡는다. 탭바(z-index 60)만은
+   덮지 않는다 - 다른 탭으로 나가는 길이 사라지면 갇힌다. */
+.nb-full {
+  position: fixed; z-index: 30; top: 0; bottom: 0;
+  left: 50%; transform: translateX(-50%);
+  width: min(100%, 760px);
+  display: flex; flex-direction: column;
+  background: var(--surface-0);
+  /* 탭바가 차지하는 높이. 버튼 52px + 패딩 11px + 테두리 2px = 65px에
+     시트와 탭바가 서로 닿아 보이지 않게 8px를 더한다. */
+  --nb-dock: calc(73px + max(10px, env(safe-area-inset-bottom)));
+}
+.nb-top {
+  padding: max(10px, env(safe-area-inset-top)) 12px 8px;
+  background: var(--surface-1); border-bottom: 1px solid var(--border);
+}
+.nb-top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* 칩 세 줄이 접히면 지도가 그만큼 줄어든다. 줄마다 옆으로 흘려보낸다. */
+.nb-chips { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.nb-chips .filters {
+  flex-wrap: nowrap; overflow-x: auto; margin: 0; padding-bottom: 1px;
+  scrollbar-width: none;
+}
+.nb-chips .filters::-webkit-scrollbar { display: none; }
+.nb-chips .chip { flex: 0 0 auto; }
+/* z-index 0으로 스태킹 컨텍스트를 연다. 안 열면 Leaflet 내부 판(z-index
+   200~700)이 이 상자 밖으로 나가 시트를 덮어, 손잡이를 눌러도 지도 캔버스가
+   먼저 먹는다. */
+.nb-canvas { position: relative; z-index: 0; flex: 1; min-height: 0; overflow: hidden; }
+.nb-dock { flex: 0 0 auto; height: var(--nb-dock); }
+/* min-height를 반드시 풀어야 한다. .map의 320px가 남아 있으면 짧은 화면과
+   가로 모드에서 지도가 캔버스 밖으로 넘치고(vh 400에서 105.1px 실측),
+   Leaflet이 320px 상자를 기준으로 중심을 잡아 '지금 계신 곳' 점이 시트
+   아래로 내려간다. */
+.map.fill { height: 100%; min-height: 0; border: 0; border-radius: 0; }
+/* 지도 위에 뜨는 단 하나의 버튼. 여기서 제일 자주 누르는 동작이다.
+   Leaflet 판 위에 서야 하므로 z-index는 캔버스 안에서 800을 쓴다. */
+.nb-locate {
+  position: absolute; right: 12px; z-index: 800;
+  padding: 9px 14px; min-height: 40px;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 999px;
+  font: inherit; font-size: var(--fs-small); font-weight: 600; cursor: pointer;
+  box-shadow: var(--shadow-float);
+}
+.nb-locate:disabled { opacity: 0.6; cursor: default; }
+
+/* 시트는 지도 위에 겹쳐 뜬다. 나란히 놓으면 시트를 올릴 때 지도가 눌려
+   full 단에서 지도가 통째로 사라진다. */
+.nb-sheet {
+  position: absolute; z-index: 1; left: 0; right: 0; bottom: var(--nb-dock);
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--shadow-float);
+  transition: height 0.18s ease;
+}
+.nb-sheet[data-dragging='true'] { transition: none; }
+@media (prefers-reduced-motion: reduce) { .nb-sheet { transition: none; } }
+/* 손잡이. 여기만 잡아 끌 수 있고, 그냥 누르면 다음 단으로 간다. */
+.nb-grip {
+  flex: 0 0 auto; padding: 0 16px 6px; cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.nb-grip:active { cursor: grabbing; }
+/* 막대는 4px지만 누를 자리는 시트 폭 전체에 20px 높이로 준다. 골목에서
+   한 손으로 미는 화면이라 4px 과녁을 겨눌 수 없다. */
+.nb-grip-bar {
+  display: block; width: 100%; padding: 10px 0 8px; margin: 0;
+  background: none; border: 0; cursor: inherit; font: inherit;
+}
+.nb-grip-bar > i {
+  display: block; width: 38px; height: 4px; margin: 0 auto;
+  border-radius: 999px; background: var(--border);
+}
+.nb-sum { margin: 0; font-size: var(--fs-small); color: var(--text-muted); }
+.nb-sum b { color: var(--text-primary); }
+.nb-sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 16px 16px;
+}
+/* 유형·거래는 목록을 내리는 동안에도 손에 닿아야 한다. 시트 안에서 붙여 둔다. */
+.nb-sheet-filters {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 0 8px; background: var(--surface-1);
+}
+.nb-sheet-filters .filters {
+  flex-wrap: nowrap; overflow-x: auto; margin: 0; scrollbar-width: none;
+}
+.nb-sheet-filters .filters::-webkit-scrollbar { display: none; }
+.nb-sheet-filters .chip { flex: 0 0 auto; }
+/* 지도에서 고른 건물의 카드. 목록 밖에 서야 목록에 없는 핀도 열린다. */
+.nb-pick { margin: 4px 0 10px; }
+
 /* --- 계약 패키지 (가짜 문) --- */
 .pkg {
   margin-top: 16px; padding: 14px;
@@ -476,7 +578,10 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .pkg-note > p { margin: 6px 0 8px; font-size: var(--fs-small); color: var(--text-muted); line-height: 1.55; }
 
 /* --- 지도 --- */
-.mapwrap { margin: 0 0 8px; }
+/* z-index 0으로 스태킹 컨텍스트를 연다. 안 열면 Leaflet 내부 판(z-index
+   200~700)이 문서 뿌리에서 겨루면서 떠 있는 탭바(z-index 40)를 덮어, 지도를
+   켠 화면에서는 탭이 아예 안 눌린다. */
+.mapwrap { margin: 0 0 8px; position: relative; z-index: 0; }
 .map {
   height: 62vh; min-height: 320px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--surface-0);
@@ -753,7 +858,9 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* ── 하단 탭바. 엄지가 닿는 곳에 두고, 화면 위 탭 줄을 없앴다 ── */
 .app { padding-bottom: 104px; }
 .tabbar {
-  position: fixed; left: 50%; transform: translateX(-50%); z-index: 40;
+  /* 지도 위에서도 탭은 눌려야 한다. 지도 쪽을 가둬 두었지만, 새로 얹는
+     화면이 또 새면 여기서 갇힌다. */
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
   bottom: max(10px, env(safe-area-inset-bottom));
   width: min(calc(100% - 20px), 740px);
   display: flex; gap: 2px;

@@ -38,9 +38,44 @@ const LEGEND = [
   [STATION_COLOR, '지하철역'],
 ]
 
-// 범례는 화면마다 뜻이 다르다. 임장·동네는 전세가율이지만, 살아온 집은
-// 지금과 과거를 가른다. 안 넘기면 기존 화면 그대로다.
-export default function MapView({ points, stations, selected, here, onPick, note, legend, path }) {
+/**
+ * 시트가 아래를 덮으면 지도 한가운데는 사람이 보는 한가운데가 아니다.
+ * 중심을 덮인 높이의 절반만큼 남쪽으로 밀어 두면 짚은 점이 시트 위에 선다.
+ * panBy로 뒤늦게 밀면 setView의 애니메이션과 겹쳐 자리가 튀어서, 중심 자체를
+ * 투영 좌표에서 옮긴다.
+ */
+function centerAbove(map, lat, lon, zoom, padBottom) {
+  if (!padBottom) return map.unproject(map.project([lat, lon], zoom), zoom)
+  return map.unproject(map.project([lat, lon], zoom).add([0, padBottom / 2]), zoom)
+}
+
+/** 잘라 낸 사실은 화면에 적는다. 지도에 없는 것을 없다고 읽으면 안 된다. */
+function pinNote(count) {
+  return count > MAX_PINS
+    ? `조건에 맞는 ${count.toLocaleString()}개 중 상위 ${MAX_PINS.toLocaleString()}개만 표시합니다. 조건을 좁히면 전부 보입니다.`
+    : `${count.toLocaleString()}개 표시`
+}
+
+/** 범례만 따로. 전면 모드에서는 지도 아래가 아니라 시트 안에 선다.
+ *  범례는 화면마다 뜻이 다르다. 임장·동네는 전세가율이지만, 살아온 집은
+ *  지금과 과거를 가른다. 안 넘기면 기존 화면 그대로다. */
+export function MapLegend({ legend }) {
+  return (
+    <p className="map-legend">
+      {(legend ?? LEGEND).map(([color, label]) => (
+        <span key={label}><i style={{ background: color }} />{label}</span>
+      ))}
+    </p>
+  )
+}
+
+/**
+ * fill을 켜면 지도가 부모 높이를 다 쓰고 범례·설명을 스스로 그리지 않는다.
+ * 임장 전면 모드에서 그 둘은 하단 시트가 맡는다. padBottom은 시트가 덮는
+ * 높이다. 안 넘기면 시트 뒤에서 fitBounds가 끝나 점 절반이 안 보인다.
+ */
+export default function MapView({ points, stations, selected, here, onPick, note, legend, path,
+                                  fill = false, padBottom = 0 }) {
   const holder = useRef(null)
   const map = useRef(null)
   const layer = useRef(null)
@@ -53,6 +88,11 @@ export default function MapView({ points, stations, selected, here, onPick, note
   // 돌아, 방금 확대해 둔 지도가 전체 보기로 튕긴다. 최신 핸들러는 ref로 나른다.
   const onPickRef = useRef(onPick)
   useEffect(() => { onPickRef.current = onPick })
+  // 시트 높이는 드래그로 계속 변한다. 이걸 의존성에 넣으면 손가락이 움직이는
+  // 동안 fitBounds가 매 프레임 돌아 지도가 요동친다. 최신 값만 ref로 나른다.
+  const fillRef = useRef(fill)
+  const padRef = useRef(padBottom)
+  useEffect(() => { fillRef.current = fill; padRef.current = padBottom })
 
   // 지도는 한 번만 만든다. 조건이 바뀔 때마다 다시 만들면 보던 위치가 튄다.
   useEffect(() => {
@@ -74,7 +114,8 @@ export default function MapView({ points, stations, selected, here, onPick, note
     // 컨테이너가 늦게 자리를 잡으면 타일이 반쪽만 그려진다
     setTimeout(() => map.current?.invalidateSize(), 0)
     // 조건 입력칸이 위에 길게 깔려 있어서, 지도를 켜면 화면 밖에서 열린다.
-    holder.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    // 전면 모드는 화면을 통째로 덮으므로 밀어낼 곳이 없다.
+    if (!fillRef.current) holder.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     return () => { map.current?.remove(); map.current = null }
   }, [])
 
@@ -106,7 +147,9 @@ export default function MapView({ points, stations, selected, here, onPick, note
         .addTo(layer.current)
     }
     if (bounds.length) {
-      map.current.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 })
+      map.current.fitBounds(bounds, {
+        paddingTopLeft: [24, 24], paddingBottomRight: [24, 24 + padRef.current], maxZoom: 15,
+      })
     }
   }, [shown])
 
@@ -125,7 +168,9 @@ export default function MapView({ points, stations, selected, here, onPick, note
       fillOpacity: 1,
     }).bindTooltip(selected.label, { direction: 'top', permanent: true })
       .addTo(pickLayer.current)
-    map.current.panTo([selected.lat, selected.lon], { animate: true })
+    const m = map.current
+    m.panTo(centerAbove(m, selected.lat, selected.lon, m.getZoom(), padRef.current),
+            { animate: true })
   }, [selected])
 
   // 내가 지금 서 있는 곳. 임장 중에는 이 점이 기준이라 물건 위에 그린다.
@@ -143,7 +188,8 @@ export default function MapView({ points, stations, selected, here, onPick, note
     L.circleMarker([here.lat, here.lon], {
       radius: 7, weight: 3, color: '#fff', fillColor: HERE_COLOR, fillOpacity: 1,
     }).bindTooltip('지금 계신 곳', { direction: 'top' }).addTo(hereLayer.current)
-    map.current.setView([here.lat, here.lon], Math.max(map.current.getZoom(), 15))
+    const z = Math.max(map.current.getZoom(), 15)
+    map.current.setView(centerAbove(map.current, here.lat, here.lon, z, padRef.current), z)
   }, [here])
 
   // 역은 조건과 무관하게 늘 같은 자리라 따로 그린다. 통근 판단의 기준점이다.
@@ -158,19 +204,14 @@ export default function MapView({ points, stations, selected, here, onPick, note
     }
   }, [stations])
 
+  if (fill) return <div ref={holder} className="map fill" />
+
   return (
     <figure className="mapwrap">
       <div ref={holder} className="map" />
-      <p className="map-legend">
-        {(legend ?? LEGEND).map(([color, label]) => (
-          <span key={label}><i style={{ background: color }} />{label}</span>
-        ))}
-      </p>
+      <MapLegend legend={legend} />
       <figcaption className="muted-line">
-        {points.length > MAX_PINS
-          ? `조건에 맞는 ${points.length.toLocaleString()}개 중 상위 ${MAX_PINS.toLocaleString()}개만 표시합니다. 조건을 좁히면 전부 보입니다.`
-          : `${points.length.toLocaleString()}개 표시`}
-        {note ? ` · ${note}` : ''}
+        {pinNote(points.length)}{note ? ` · ${note}` : ''}
       </figcaption>
     </figure>
   )
