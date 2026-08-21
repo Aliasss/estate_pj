@@ -11,7 +11,7 @@ import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
 import About from './About.jsx'
 import Wordmark from './Wordmark.jsx'
-import { REGIONS, usePop, useRates, ym as ymKo } from './units.js'
+import { REGIONS, ratioBroken, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
 const pct = (v) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
@@ -22,7 +22,7 @@ const manwon = (v) => (v == null ? '-' : `${Math.round(v).toLocaleString()}만`)
 const ymDot = (s) => (s ? `${s.slice(0, 4)}년 ${+s.slice(5, 7)}월` : '-')
 // 구 단위에도 면적 믹스가 깨진 달이 있다 (2022-09 영등포 아파트 168.9%). 물건 단위와
 // 같은 기준으로, 정상 범위를 벗어난 값은 차트와 표에 내지 않는다.
-const sane = (r) => (r != null && r < 1.5 ? r : null)
+const sane = (r) => (ratioBroken(r) ? null : r ?? null)
 
 // 거래량 조망의 세 계열. 키는 volumes의 열 이름과 같다.
 const VOL_DEFS = [

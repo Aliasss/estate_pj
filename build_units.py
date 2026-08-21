@@ -34,7 +34,7 @@ from subway_join import Nearest
 from terrain_join import Terrain
 from match_probe import area_key, norm_jibun, norm_name
 
-AREA_BAND = 0.5      # 실측으로 고른 값
+AREA_BAND = 0.5      # 실측으로 고른 값. unit_id의 재료라 바꾸면 공유 링크가 끊긴다
 UMD_BAND = 10.0      # B단계 면적대 폭
 YEAR_BAND = 10       # B단계 준공연도 폭. 신축 전세를 구축 매매와 비교하면 전세가율이 터진다
 RECENT_MONTHS = 24
@@ -68,7 +68,14 @@ def shift_ym(ym: str, months: int) -> str:
 
 
 def unit_id(key: tuple) -> str:
-    """물건 식별자. 실행마다 바뀌면 즐겨찾기·비교함이 깨지므로 내용 해시로 고정한다."""
+    """물건 식별자. 실행마다 바뀌면 즐겨찾기·비교함이 깨지므로 내용 해시로 고정한다.
+
+    이 값이 공유 링크(/s/{lawd}.{id})에 그대로 들어간다. 카톡 대화방에 남은
+    링크는 몇 달을 사는데, 키를 만드는 재료(norm_jibun, norm_name, AREA_BAND)를
+    건드리면 이미 뿌려진 링크가 전부 조용히 일반 카드로 떨어진다. 오류가 아니라
+    "그 물건을 못 찾음"으로 폴백하므로 아무도 모른다. 바꿔야 한다면 그 사실을
+    알고 바꾼다.
+    """
     blob = "|".join(str(part) for part in key)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 

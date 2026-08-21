@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } from './guard-sync.js'
 import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
-import { NoJeonseSig, UnitCard, questionsFor, ratioTone } from './UnitLookup.jsx'
+import { NoJeonseSig, UnitCard, questionsFor, ratioBroken, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 
 /**
@@ -23,9 +23,18 @@ const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억
  * 대부분은 여기 있다. 못 본다고 입을 다물면 앱을 본 사람이 다 봤다고 착각한다.
  */
 
+/**
+ * 공유 링크. /s/{lawd}.{id}는 서버 함수가 받아 이 물건의 판정을 메타에 박은 뒤
+ * 앱으로 보낸다. 전에는 ?u= 링크를 그대로 줬는데, 크롤러는 자바스크립트를 안
+ * 돌리므로 어느 집이든 첫 화면의 같은 카드가 떴다. 판정을 보여 주려고 복사한
+ * 링크에 판정이 없었다.
+ *
+ * 함수가 죽어도 ?u= 경로는 그대로 살아 있다. 되돌릴 일이 생기면 이 한 줄만
+ * 옛 형태로 돌리면 된다.
+ */
 function ShareRow({ lawd, id }) {
   const [done, setDone] = useState(false)
-  const url = `${location.origin}${location.pathname}?u=${lawd}.${id}`
+  const url = `${location.origin}/s/${lawd}.${id}`
   return (
     <div className="share">
       <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="공유 링크" />
@@ -536,7 +545,7 @@ function ComparePanel({ compare, byId, onOpen }) {
                 무관하게 매겨지므로 근거 행도 함께 막아야 한다. 추정한 적이 없다. */}
             {row('전세가율', (u) => !u.n_jeonse_24m ? '전세 0건'
               : u.ratio == null ? '-'
-              : u.ratio >= 1.5 ? '판단 보류' : `${Math.round(u.ratio * 100)}%`)}
+              : ratioBroken(u.ratio) ? '판단 보류' : `${Math.round(u.ratio * 100)}%`)}
             {row('근거', (u) => !u.n_jeonse_24m ? '전세 신고 없음'
               : u.stage === 'A' ? `이 건물 매매 ${u.n_sale_24m}건` : '인근 추정')}
             {row('중위 전세', (u) => !u.n_jeonse_24m ? '전세 0건' : cmpEok(u.med_jeonse))}

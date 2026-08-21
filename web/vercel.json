@@ -37,5 +37,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/s/:key",
+      "destination": "/api/s?key=:key"
+    }
   ]
 }

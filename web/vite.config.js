@@ -27,6 +27,12 @@ export default defineConfig({
       workbox: {
         // 지킴이 백그라운드 점검. workbox 생성 워커에 스크립트로 붙는다.
         importScripts: ['guard-sw.js'],
+        // /s/는 공유 카드를 내는 서버 함수다. workbox의 NavigationRoute는 기본이
+        // allowlist [/./]라 navigate 요청을 전부 index.html로 돌려보내는데, 그러면
+        // 함수가 호출조차 안 되고 앱이 /s/... 경로에서 부팅한다. ?u=가 없으니
+        // 사용자는 판정 대신 빈 검색 화면을 본다. 에러도 404도 안 난다.
+        // 이 앱을 한 번이라도 연 브라우저와 설치형 PWA 전부가 그렇게 된다.
+        navigateFallbackDenylist: [/^\/s\//],
         // 티어 1은 프리캐시(오프라인 필수). 티어 2는 구를 열어봤을 때만 캐시에 남긴다.
         globPatterns: ['**/*.{js,css,html,svg,png}', 'data/tier1.json'],
         // tier1.json이 한도를 넘으면 workbox는 빌드를 실패시키는 게 아니라

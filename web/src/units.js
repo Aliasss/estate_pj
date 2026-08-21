@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+// 판정과 금액 표기는 verdict.js에 산다. 공유 카드를 내는 서버 함수도 같은 것을
+// 써야 하는데, 이 파일은 React를 끌어오므로 순수한 쪽만 따로 뒀다.
+export { RATIO_BROKEN, eok, pct0, ratioBroken, verdict } from './verdict.js'
 
 /**
  * 지하철역 목록. 물건 데이터의 stn 열은 이 배열의 번호다 — 이름을 물건마다
