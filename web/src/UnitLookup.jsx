@@ -724,19 +724,24 @@ function Actions({ tone, u }) {
         위 숫자는 <strong>실거래 신고 기록</strong>일 뿐입니다. 보증금을 실제로 돌려받을 수
         있는지는 아래를 직접 확인해야 알 수 있고, 여기서는 볼 수 없습니다.
       </p>
+      {/* 일곱 항목을 한 벌로 합쳤더니 이 블록만 1,082px로 카드의 29%가 됐다.
+          항목을 줄이면 다시 "짧은 판만 본 사람이 못 보는" 문제로 돌아가므로,
+          무엇을 확인해야 하는지는 일곱 개 다 보이게 두고 왜·어디서만 접는다. */}
       <ul className="checklist">
         {CHECKLIST.map(([what, why, href, where], k) => (
           <li key={what}>
-            <b>{what}</b>
-            <span>
-              {why}
-              {/* 첫 항목에만 이 건물의 숫자를 붙인다. 남의 기준이 아니라 지금 보고
-                  있는 건물로 말해야 확인할 것이 구체적으로 잡힌다. 전세가 없는
-                  건물은 med_jeonse가 null이라 둘 다 있을 때만 쓴다. */}
-              {k === 0 && u.med_sale && u.med_jeonse
-                && ` (이 건물이면 보증금 ${eok(u.med_jeonse)}, 매매가 ${eok(u.med_sale)})`}
-            </span>
-            <a href={href} target="_blank" rel="noopener noreferrer">{where} ↗</a>
+            <details>
+              <summary>{what}</summary>
+              <p>
+                {why}
+                {/* 첫 항목에만 이 건물의 숫자를 붙인다. 남의 기준이 아니라 지금 보고
+                    있는 건물로 말해야 확인할 것이 구체적으로 잡힌다. 전세가 없는
+                    건물은 med_jeonse가 null이라 둘 다 있을 때만 쓴다. */}
+                {k === 0 && u.med_sale && u.med_jeonse
+                  && ` (이 건물이면 보증금 ${eok(u.med_jeonse)}, 매매가 ${eok(u.med_sale)})`}
+              </p>
+              <a href={href} target="_blank" rel="noopener noreferrer">{where} ↗</a>
+            </details>
           </li>
         ))}
       </ul>
