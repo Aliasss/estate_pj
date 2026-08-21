@@ -23,30 +23,6 @@ const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억
  * 대부분은 여기 있다. 못 본다고 입을 다물면 앱을 본 사람이 다 봤다고 착각한다.
  */
 
-/**
- * 공유 링크. /s/{lawd}.{id}는 서버 함수가 받아 이 물건의 판정을 메타에 박은 뒤
- * 앱으로 보낸다. 전에는 ?u= 링크를 그대로 줬는데, 크롤러는 자바스크립트를 안
- * 돌리므로 어느 집이든 첫 화면의 같은 카드가 떴다. 판정을 보여 주려고 복사한
- * 링크에 판정이 없었다.
- *
- * 함수가 죽어도 ?u= 경로는 그대로 살아 있다. 되돌릴 일이 생기면 이 한 줄만
- * 옛 형태로 돌리면 된다.
- */
-function ShareRow({ lawd, id }) {
-  const [done, setDone] = useState(false)
-  const url = `${location.origin}/s/${lawd}.${id}`
-  return (
-    <div className="share">
-      <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="공유 링크" />
-      <button onClick={() => {
-        navigator.clipboard?.writeText(url).then(() => {
-          setDone(true)
-          setTimeout(() => setDone(false), 1800)
-        })
-      }}>{done ? '복사됨' : '링크 복사'}</button>
-    </div>
-  )
-}
 
 export default function Verify({ guNames, region = '11', onNearby }) {
   const fin = useFinder(region)
@@ -267,8 +243,6 @@ export default function Verify({ guNames, region = '11', onNearby }) {
                      }]}
                      stations={stationPins} note="파란 점은 지하철역입니다" />
           )}
-          <ShareRow lawd={open.lawd} id={open.u.id} />
-
         </>
       )}
 

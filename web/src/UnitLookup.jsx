@@ -544,6 +544,35 @@ function Asking({ u, pctOf }) {
   )
 }
 
+/**
+ * 공유 링크. /s/{lawd}.{id}는 서버 함수가 받아 이 물건의 판정을 메타에 박은 뒤
+ * 앱으로 보낸다. 전에는 ?u= 링크를 그대로 줬는데, 크롤러는 자바스크립트를 안
+ * 돌리므로 어느 집이든 첫 화면의 같은 카드가 떴다. 판정을 보여 주려고 복사한
+ * 링크에 판정이 없었다.
+ *
+ * 함수가 죽어도 ?u= 경로는 그대로 살아 있다. 되돌릴 일이 생기면 이 한 줄만
+ * 옛 형태로 돌리면 된다.
+ *
+ * 자리도 옮겼다. 전에는 Verify.jsx 안 카드 밖에 있어서 확인 탭에서만 나왔고,
+ * 임장과 동네에서 연 같은 리포트에는 공유가 아예 없었다. 진입 경로에 따라
+ * 기능이 달랐던 것이라 카드 안으로 들인다.
+ */
+function ShareRow({ lawd, id }) {
+  const [done, setDone] = useState(false)
+  const url = `${location.origin}/s/${lawd}.${id}`
+  return (
+    <div className="share">
+      <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="공유 링크" />
+      <button onClick={() => {
+        navigator.clipboard?.writeText(url).then(() => {
+          setDone(true)
+          setTimeout(() => setDone(false), 1800)
+        })
+      }}>{done ? '복사됨' : '링크 복사'}</button>
+    </div>
+  )
+}
+
 /** 대장에서 오는 열 전체로 판정한다. 일부만 보면 "층수는 보이는데 대장은
  *  수집 전"이라는 자기모순 화면이 나온다. BuildingFacts와 같은 목록을 쓴다. */
 const hasBldgData = (u) =>
@@ -846,6 +875,8 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
           {guard && <GuardAdd u={u} lawd={lawd} guard={guard} />}
         </div>
       )}
+
+      {lawd && u.id && <ShareRow lawd={lawd} id={u.id} />}
 
       <PkgOffer u={u} />
     </div>
