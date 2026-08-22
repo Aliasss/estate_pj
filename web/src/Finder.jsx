@@ -550,7 +550,7 @@ export default function Finder({ guNames, region = '11' }) {
           {open && (
             open.u ? (
               // open.key 앞자리가 구 인덱스다. 목록과 같은 카드를 지도 아래에 편다.
-              <UnitCard u={open.u} lawd={d.gus[+open.key.split('-')[0]]} compare={compare}
+              <UnitCard u={open.u} lawd={d.gus[+open.key.split('-')[0]]} guNames={guNames} compare={compare}
                         guard={guard} onClose={() => setOpen(null)} />
             )
             : open.error ? <p className="muted-line critical">상세를 불러오지 못했습니다 ({open.error})</p>
@@ -589,7 +589,7 @@ export default function Finder({ guNames, region = '11' }) {
             </button>
             {open?.key === key && (
               open.u ? (
-                <UnitCard u={open.u} lawd={d.gus[col.g[i]]} compare={compare} guard={guard}
+                <UnitCard u={open.u} lawd={d.gus[col.g[i]]} guNames={guNames} compare={compare} guard={guard}
                           onClose={() => setOpen(null)}
                           onMap={col.lat[i] != null ? () => setView('map') : null} />
               )

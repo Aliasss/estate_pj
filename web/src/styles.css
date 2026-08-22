@@ -408,7 +408,34 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   background: var(--brand); color: var(--on-brand); border: 0; border-radius: var(--r-lg);
   font: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer;
 }
-.more:hover, .more:focus-visible { color: var(--text-primary); outline: none; }
+/* 예전에는 여기서 color를 --text-primary로 바꿨는데, 두 테마 모두 --brand와
+   같은 값이라 글자가 배경에 먹혀 라벨이 통째로 사라졌다. 배경을 한 단계
+   눌러 주는 것이 원래 의도였다. */
+.more:hover, .more:focus-visible { background: var(--brand-deep); }
+.more:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* 지도와 거리뷰. 둘 다 "가기 전에 본다"는 같은 일이라 한 줄에 세운다.
+   좁은 화면에서는 접혀 위아래가 되는데, 그때도 gap이 간격을 잡아 준다. */
+.go-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 한글은 기본으로 글자 단위로 끊긴다. keep-all이라야 "보 / 기"가 안 생긴다. */
+.go-row .more { flex: 1 1 140px; width: auto; word-break: keep-all; }
+/* 링크에만 테두리가 있어서 나란히 서면 버튼이 1px 낮았다. 자리만 잡아 준다. */
+.go-row button.more { border: 1px solid transparent; }
+.more-out {
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; text-decoration: none;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+/* 배경을 다시 못박아야 한다. .more:hover(0,2,0)가 .more-out(0,1,0)을 이겨서
+   배경이 --brand-deep으로 깔리는데, .more-out의 글자색은 --text-primary라
+   두 테마 모두 대비가 1.08:1로 떨어져 라벨이 통째로 사라진다. 위 411행에서
+   고친 것과 같은 사고가 새 요소로 옮겨 간 것이다. focus-visible도 같이 걸려서
+   키보드로 탭만 해도 글자가 없어졌다. */
+.more-out:hover, .more-out:focus-visible {
+  background: var(--surface-1); border-color: var(--brand);
+}
+.more-out:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; align-items: center; }
 .filters select { font-size: var(--fs-input); padding: 6px 8px; min-height: 34px; }

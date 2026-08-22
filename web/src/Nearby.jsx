@@ -413,7 +413,7 @@ export default function Nearby({ guNames, region = '11', onRegion }) {
             {inline && on && open.loading && <p className="muted-line">불러오는 중…</p>}
             {inline && on && open.error && <p className="warnline">{open.error}</p>}
             {inline && on && open.u && (
-              <UnitCard u={open.u} lawd={open.lawd} compare={compare} guard={guard}
+              <UnitCard u={open.u} lawd={open.lawd} guNames={guNames} compare={compare} guard={guard}
                         onClose={() => setOpen(null)} />
             )}
           </li>
@@ -425,7 +425,7 @@ export default function Nearby({ guNames, region = '11', onRegion }) {
   const pickCard = open && (
     <div className="nb-pick">
       {open.u ? (
-        <UnitCard u={open.u} lawd={open.lawd} compare={compare} guard={guard}
+        <UnitCard u={open.u} lawd={open.lawd} guNames={guNames} compare={compare} guard={guard}
                   onClose={() => setOpen(null)} />
       ) : open.error ? (
         <p className="warnline">상세를 불러오지 못했습니다 ({open.error})</p>

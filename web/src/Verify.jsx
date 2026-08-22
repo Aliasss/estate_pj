@@ -226,7 +226,7 @@ export default function Verify({ guNames, region = '11', onNearby }) {
           {/* 스크롤 도착점. 리포트 카드 자체에 ref를 걸면 UnitCard가 ref를
               넘겨받아야 하므로, 높이 0짜리 표식을 바로 앞에 둔다. */}
           <div ref={reportRef} aria-hidden="true" />
-          <UnitCard u={open.u} lawd={open.lawd} onClose={close} rank={rank}
+          <UnitCard u={open.u} lawd={open.lawd} guNames={guNames} onClose={close} rank={rank}
                     compare={compare} guard={guard} pctOf={rank?.pctOf}
                     onMap={open.u.lat != null ? () => setShowMap((v) => !v) : null}
                     onSibling={(id) => byId(open.lawd, id).then((v) => {

@@ -4,6 +4,7 @@ import { CHECKLIST, RATIO_BROKEN, eok, latestRate, pct0, ratioBroken, useRates, 
 // JSX 밖으로 옮겼다. 두 벌이 되면 화면과 공유 카드가 다른 말을 하게 된다.
 export { RATIO_BROKEN, eok, pct0, ratioBroken }
 import { fdTrack } from './fakedoor.js'
+import { naverSearchUrl, placeQuery } from './navermap.js'
 
 const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 
@@ -747,9 +748,11 @@ function PkgOffer({ u }) {
   )
 }
 
-export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
+export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
+  const nq = placeQuery(lawd, guNames?.[lawd], u.umd, u.jibun)
+  const nmap = naverSearchUrl(nq)
   return (
     <div className="card unit-detail">
       <button className="close" onClick={onClose} aria-label="닫기">✕</button>
@@ -859,8 +862,32 @@ export function UnitCard({ u, lawd, onClose, onMap, onSibling, rank, compare, gu
       <Deals deals={u.deals} />
       <BuildingFacts u={u} />
 
-      {/* 좌표가 있는 물건에서만 낸다. 눌렀는데 아무 데도 안 가면 안 만든 것만 못하다. */}
-      {onMap && <button className="more" onClick={onMap}>지도에서 위치 보기</button>}
+      {/* 둘 다 "눌렀는데 아무 데도 안 가면 안 만든 것만 못하다"를 따른다. 다만
+          근거가 다르다. 안쪽 지도는 좌표가 있어야 하고(onMap을 안 넘기는 화면도
+          있다. 이미 지도 위라서다), 네이버는 지번이 주소 꼴이어야 한다. */}
+      {(onMap || nmap) && (
+        <div className="go-row">
+          {onMap && <button className="more" onClick={onMap}>지도로 보기</button>}
+          {/* noreferrer는 취향이 아니라 약속이다. 이걸 지우면 ?u={lawd}.{id}가
+              올라온 주소창에서 눌렀을 때 어느 물건을 봤는지가 네이버로 간다. */}
+          {nmap && (
+            <a className="more more-out" href={nmap} target="_blank" rel="noopener noreferrer">
+              네이버 지도 ↗
+            </a>
+          )}
+        </div>
+      )}
+      {/* 검색어를 그대로 적는다. 이 방식의 값어치는 정확도가 아니라 틀렸을 때
+          티가 난다는 것인데, 검색어가 네이버 화면에만 뜨면 누른 뒤에야 안다.
+          여기 박아 두면 이상한 주소를 누르기 전에 알아본다. */}
+      {nmap && (
+        <p className="muted-line">
+          네이버 지도에서 이 주소로 검색합니다. <strong>{nq}</strong>. 주소를 못 찾는
+          경우도 있습니다. 거기서 거리뷰를 켜면 골목과 건물 겉모습을 미리 볼 수 있습니다.
+          한 지번에 건물이 여럿이면 옆 건물이 나올 수 있고, 촬영 시점은 저희가 알 수
+          없으며, 안 찍힌 골목도 있습니다.
+        </p>
+      )}
 
       {/* 담아 두기와 감시 걸기. 판정을 읽기 전에 물으면 위험한지 모르는 집을
           먼저 파일링하라는 말이 된다. 전에는 이름 바로 밑에 있었다. */}
