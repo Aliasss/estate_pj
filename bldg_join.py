@@ -155,6 +155,10 @@ class Registry:
     def __init__(self, db_path: str | None):
         self.idx = load(db_path) if db_path else {}
         self.hit = self.miss = 0
+        # 이 units가 어느 세대의 대장으로 구워졌는지를 index.json에 남기기 위한 값.
+        # 매일 도는 재조인이 "붙일 것이 새로 생겼나"를 자산 시각이 아니라 이 수로
+        # 판단한다. 시각으로 보면 빈 응답만 있던 날에도 자산이 움직여 매일 헛돈다.
+        self.n = sum(len(v) for v in self.idx.values())
 
     def lookup(self, lawd: str, umd: str, jibun: str | None, name: str | None) -> dict:
         parsed = parse_jibun(jibun)

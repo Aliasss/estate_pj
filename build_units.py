@@ -179,11 +179,22 @@ def trim_deals(d: dict | None) -> dict | None:
 
 
 def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
-          nearest: Nearest, schools: Schools, terrain: Terrain) -> None:
+          nearest: Nearest, schools: Schools, terrain: Terrain,
+          complete_end_max: str = "") -> None:
     end = conn.execute("SELECT MAX(deal_ymd) FROM transactions").fetchone()[0]
     import datetime
     # 완성 여부는 달력이 정하고, 수집이 거기 못 미치면 수집된 데까지만 쓴다
     complete_end = min(calendar_complete_end(datetime.date.today()), end)
+    # 대장 회차(매일)가 이걸 부를 때는 실거래 스냅샷이 주간이라, 달력이 수집을
+    # 앞지르는 창이 매달 한 번 생긴다. 9월 5일이면 달력은 202607을 확정으로 넘기는데
+    # 그때 스냅샷은 9월 1일 수집분이라 나흘치 신고가 빠져 있다. 그 달을 확정 통계에
+    # 넣으면 중위값과 표본 두께가 실제보다 얇게 나가고, 이 앱은 표본 두께를 그 자체로
+    # 위험 신호로 화면에 낸다. 부르는 쪽이 직전 확정월을 넘기면 거기서 멈추고,
+    # 수집이 따라잡은 뒤 주간 배치가 연다.
+    if complete_end_max and complete_end > complete_end_max:
+        print(f"달력은 {complete_end}까지 열지만 실거래 수집이 거기 못 미쳐 "
+              f"{complete_end_max}에서 멈춥니다 (--complete-end)")
+        complete_end = complete_end_max
     recent_start = shift_ym(complete_end, -(RECENT_MONTHS - 1))
     prev_start = shift_ym(recent_start, -RECENT_MONTHS)
     print(f"수집 최종 {end} / 완성 구간 ~{complete_end}")
@@ -403,7 +414,14 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     os.makedirs(out_dir, exist_ok=True)
     # 같은 실행에서 나온 파일들끼리만 섞이도록 세대 표식을 박는다. finder.json의 행 번호는
     # 빌드마다 밀리므로, 서비스워커가 구버전 finder와 신버전 구 파일을 섞으면 클릭한 것과
-    # 다른 물건의 상세가 뜬다. 표식이 어긋나면 프런트가 finder를 다시 받는다.
+    # 다른 물건의 상세가 뜬다.
+    #
+    # 표식이 어긋날 때 프런트가 하는 일은 "다시 받는다"가 아니라 "멈추고 새로고침을
+    # 청한다"이다(web/src/units.js와 web/src/Finder.jsx). 이 주석이 오래 반대로
+    # 적혀 있었다. 매일 재조인이 들어오면서 이 값이 매일 바뀌므로, 대장이 매일 느는
+    # 동안에는 그 안내가 매일 뜬다. 경기 73,213지번이 남아 있어 두 달 넘게 그렇다.
+    # 자동 재요청으로 바꾸는 것은 프런트와 서비스워커 캐시 정책을 손대야 해서
+    # 별건으로 뺐다. 이슈 #1.
     build_id = f"{complete_end}-{int(time.time())}"
     index = []
     total_bytes = 0
@@ -419,7 +437,8 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         index.append({"lawd_cd": lawd, "n_units": len(rows), "bytes": size})
 
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
-        json.dump({"window": [recent_start, complete_end], "gu": index}, fh, ensure_ascii=False)
+        json.dump({"window": [recent_start, complete_end], "gu": index,
+                   "bldg_rows": registry.n, "sch_hit": schools.hit}, fh, ensure_ascii=False)
 
     prefixes = sorted({lawd[:2] for lawd in by_gu})
     for pref in prefixes:
@@ -454,6 +473,8 @@ def main() -> int:
     parser.add_argument("--geo", default="", help="좌표 DB (geocode.py 결과)")
     parser.add_argument("--subway", default="", help="지하철 subway.json")
     parser.add_argument("--schools", default="", help="학교 schools.json")
+    parser.add_argument("--complete-end", default="", metavar="YYYYMM",
+                        help="확정 구간 상한. 달력이 실거래 수집을 앞설 때 쓴다")
     args = parser.parse_args()
 
     bldg = args.bldg if args.bldg and os.path.exists(args.bldg) else None
@@ -467,7 +488,8 @@ def main() -> int:
     if args.schools and not sch:
         print(f"학교 자료가 없습니다: {args.schools} — 학교 열 없이 생성합니다")
     conn = sqlite3.connect(args.db)
-    build(conn, args.out, Registry(bldg), Nearest(geo, sub), Schools(sch), Terrain(geo))
+    build(conn, args.out, Registry(bldg), Nearest(geo, sub), Schools(sch), Terrain(geo),
+          complete_end_max=args.complete_end)
     conn.close()
     return 0
 

@@ -166,14 +166,35 @@ async function copySmall(name, offMessage) {
 /**
  * 인사이트와 데이터 시의성을 빌드 시점에 계산해 insights.json으로 굽는다.
  *
- * 재빌드를 부르는 것은 주간 collect 배치다(대장은 매일 수집되지만 물건에
- * 결합되는 건 주간 재계산에서다). 그때마다 여기서 계산한 "언제까지의
+ * 재빌드를 부르는 배치는 둘이다. 주간 collect가 실거래를 새로 받아 물건을
+ * 다시 계산하고, 매일 도는 buildings가 그날의 대장 회차를 끝낸 뒤 그 대장을
+ * 물건에 다시 조인해 발행한다. 어느 쪽이 돌든 여기서 계산한 "언제까지의
  * 데이터인가"가 데이터와 같은 시점으로 저절로 따라온다. 화면이 따로 계산하지 않는 이유는 둘이다. finder 13MB를 인사이트
  * 한 번 보자고 내려받게 할 수 없고, 시의성 표기는 데이터와 같은 시점에 같은
  * 손으로 만들어져야 어긋나지 않는다.
  */
 async function buildInsights(tier1) {
-  const out = { generatedAt: new Date().toISOString(), freshness: [], cards: {} }
+  // 빌드 시각을 쓰면 안 된다. 매일 도는 재조인이 Vercel 빌드를 부르므로 이 값이
+  // 매일 움직이는데, 이 화면의 지표(전세가율·깡통·역전세)는 data/*.csv 기반이라
+  // 주간 회차에만 바뀐다. 화면은 이걸 "마지막 갱신 8월 23일"로 읽어 주고, 그 옆에
+  // "다음 갱신은 8월 26일 화요일"을 붙인다. 매일 숫자가 새로 나온다는 뜻이 된다.
+  // 그 CSV가 마지막으로 커밋된 시각을 쓴다. 얕은 클론이라 못 읽으면 아예 말하지
+  // 않는다(화면이 조건부로 렌더한다). 모르는 것을 지어내는 것보다 낫다.
+  let generatedAt = null
+  try {
+    generatedAt = (await readFile(path.join(repo, 'data', 'collected_at.txt'), 'utf8')).trim() || null
+  } catch { /* 다음 주간 회차부터 생긴다 */ }
+  if (!generatedAt) {
+    // 그 파일이 생기기 전까지의 대비책. Vercel은 얕은 클론이라 이 CSV가 받아 온
+    // 깊이 밖이면 빈 값이 나온다. 그때는 아예 말하지 않는다.
+    try {
+      const { stdout } = await run('git', ['log', '-1', '--format=%cI', '--', 'data/monthly_panel.csv'],
+                                   { cwd: repo })
+      generatedAt = stdout.trim() || null
+    } catch { /* git이 없다 */ }
+  }
+  if (!generatedAt) console.warn('  주의: 집계 CSV의 커밋 시각을 못 읽어 "마지막 갱신"을 생략합니다.')
+  const out = { generatedAt, freshness: [], cards: {} }
 
   // ---- 시의성: 소스별 최신 시점 ----
   const lastSolid = tier1 ? tier1.months.filter((m) => !tier1.provisional.includes(m)).at(-1) : null
@@ -201,7 +222,7 @@ async function buildInsights(tier1) {
         + '두 산출물의 세대가 어긋났는지 확인하세요.')
     }
     out.freshness.push({
-      key: 'units', name: '건물 단위 위험 판정', cycle: '매주 화요일 재계산',
+      key: 'units', name: '건물 단위 위험 판정', cycle: '매주 화요일 재계산 · 대장 갱신일 재조인',
       asof: `${fin11.window[0].slice(0, 4)}-${fin11.window[0].slice(4)} ~ ${fin11.window[1].slice(0, 4)}-${fin11.window[1].slice(4)}`,
       note: `건물 ${n.toLocaleString()}개 (서울 ${fin11.n.toLocaleString()}${fin41 ? ` + 경기 ${fin41.n.toLocaleString()}` : ''})`,
     })
@@ -212,7 +233,7 @@ async function buildInsights(tier1) {
       if (col.elvt) elvt += col.elvt.filter((v) => v != null).length
     }
     out.freshness.push({
-      key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 수집 · 화요일 반영',
+      key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 밤 수집 · 끝나는 대로 반영',
       asof: null, note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
     })
     // 좌표 커버리지: lat 열이 붙은 비율. 지형(표고·경사)은 좌표 있는 지번에 함께 결합된다.
@@ -222,7 +243,7 @@ async function buildInsights(tier1) {
       if (col.lat) geo += col.lat.filter((v) => v != null).length
     }
     out.freshness.push({
-      key: 'geo', name: '도로명주소 좌표 · NASA SRTM 지형', cycle: '수시 수집 · 화요일 반영',
+      key: 'geo', name: '도로명주소 좌표 · NASA SRTM 지형', cycle: '수시 수집 · 재계산 때 반영',
       asof: null, note: `건물의 약 ${Math.round((geo / Math.max(n, 1)) * 100)}%에 좌표·표고·경사 결합`,
     })
   }

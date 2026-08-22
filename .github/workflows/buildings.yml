@@ -127,9 +127,16 @@ jobs:
             gunzip -f bldg.sqlite.gz
             python -c "import sqlite3;c=sqlite3.connect('bldg.sqlite');print('복원:', c.execute('SELECT COUNT(*) FROM buildings').fetchone()[0], '동')"
             sqlite3 bldg.sqlite "SELECT COUNT(*) FROM buildings" > .rows_before
+            # 진행분은 둘이다. 빈 응답 지번은 buildings 행을 절대 안 늘리고
+            # bldg_log에만 status='empty'로 남는데, 그 지번이 다음 회차 계획에서
+            # 빠지는 유일한 수단이 이 로그다. 이것을 버리면 같은 슬라이스를 매일
+            # 다시 조회하고 수집이 영영 안 끝난다.
+            sqlite3 bldg.sqlite "SELECT COUNT(*) FROM bldg_log" > .log_before \
+              2>/dev/null || echo 0 > .log_before
           else
             echo "이전 진행분 없음. 처음부터 받습니다."
             echo 0 > .rows_before
+            echo 0 > .log_before
           fi
 
       - name: 법정동코드 공식 매핑 내려받기
@@ -174,14 +181,243 @@ jobs:
             echo "buildings 행 수가 ${before} -> ${after}로 줄었습니다. 발행을 거부합니다."
             exit 1
           fi
+          # 아무것도 안 늘었으면 올릴 것이 없다. collect.yml의 스냅샷 발행과 같은
+          # 가드다. 접속이 막혀 0건으로 끝난 날에도 --clobber로 자산을 갈아 끼우면
+          # 자산이 잠깐 없는 창이 이유 없이 한 번 더 열린다.
+          #
+          # 반드시 두 진행분을 다 본다. buildings 행만 보면 빈 응답 지번(bldg_log에
+          # status='empty'로만 남는다)을 통째로 버리게 되고, 그 지번이 계획에서
+          # 빠지지 않아 같은 슬라이스를 매일 다시 조회한다. 잔여가 빈 응답만 남는
+          # 순간부터는 수집이 영영 안 끝나고 경기 착수가 계속 밀린다.
+          logbefore=$(cat .log_before 2>/dev/null || echo 0)
+          logafter=$(sqlite3 bldg.sqlite "SELECT COUNT(*) FROM bldg_log")
+          if [ "$after" -eq "$before" ] && [ "$logafter" -eq "$logbefore" ]; then
+            echo "새로 적재된 동도, 새로 조회한 지번도 없습니다(${before}동). 자산은 그대로 둡니다."
+            exit 0
+          fi
+          echo "조회 지번 ${logbefore} -> ${logafter}"
           echo "행 수 가드 통과: ${before} -> ${after}"
           python -c "import sqlite3;c=sqlite3.connect('bldg.sqlite');c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.close()"
           gzip -kf bldg.sqlite
           ls -lh bldg.sqlite.gz
           gh release upload "$SNAPSHOT_TAG" bldg.sqlite.gz --clobber
 
+      # 대장은 매일 쌓이는데 물건에 붙이는 것은 build_units.py이고, 그건 collect.yml
+      # (주간)에서만 돌았다. 그래서 최대 일주일치가 릴리스에만 있고 화면에는 없었다.
+      # 8/19 빌드 이후 세 회차가 쌓은 31,899동이 안 붙어 있었고, 서초·강남·송파·강동은
+      # 대장을 다 받아 놓고도 화면에서 0%였다. 그 회차에 이어서 붙인다.
+      #
+      # 큰 자산 둘(seoul_rt 1.1GB, bldg)은 이 잡이 이미 복원해 두었다. 여기서 더
+      # 받는 것은 좌표·지하철 8.4MB와 직전 units 30MB뿐이다. 실측으로 아는 것은
+      # collect.yml 32536101286의 물건 패널 발행 스텝 23:20:30~23:22:40, 2분 10초다.
+      # 여기는 거기에 재료 내려받기와 발행 가드가 더 붙으므로 그보다 걸린다.
+      # 실제 스텝 시간은 첫 회차 로그를 보고 이 자리에 적는다.
+      - name: 재조인 필요 여부 판단
+        id: need
+        # bldg.sqlite는 진행분 복원에서도 생긴다. 스냅샷이 없어 수집을 건너뛴 날엔
+        # seoul_rt.sqlite가 없으므로 재조인이 build_units 앞에서 죽는다.
+        # always()는 수집이 부분 실패한 날에도 받은 만큼 붙이려는 것이다. 앞의
+        # 발행이 exit 1로 죽은 날은 잡이 failure가 되어 mats가 암묵 success()로
+        # 걸러 주므로, 여기서 stale=true가 나가도 뒤가 안 돈다.
+        if: always() && steps.rt.outputs.has_rt == 'true' && hashFiles('bldg.sqlite') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # "오늘 늘었나"가 아니라 "units가 대장보다 낡았나"를 본다. 앞의 조건은 대장이
+          # 완주한 뒤 영구히 false가 되어, 마지막 증분이 주간 배치까지 안 붙는다.
+          meta=$(gh release view "$SNAPSHOT_TAG" --json assets \
+                 -q '.assets[] | select(.name=="units.tar.gz" or .name=="bldg.sqlite.gz")
+                     | .name + " " + .createdAt' || true)
+          u=$(echo "$meta" | awk '$1=="units.tar.gz"{print $2}')
+          b=$(echo "$meta" | awk '$1=="bldg.sqlite.gz"{print $2}')
+          echo "units=$u bldg=$b"
+          if [ -z "$u" ] || [ -z "$b" ]; then
+            echo "::warning::릴리스 자산 시각을 읽지 못해 재조인을 건너뜁니다."
+            exit 0
+          fi
+          if [ "$u" \< "$b" ]; then
+            echo "units가 대장보다 낡았습니다. 재조인합니다."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "units가 이미 최신입니다."
+          fi
+
+      - name: 재조인 재료 복원
+        id: mats
+        if: steps.need.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for a in geo.sqlite.gz subway.json schools.json units.tar.gz; do
+            gh release download "$SNAPSHOT_TAG" --pattern "$a" --clobber || echo "$a 없음"
+          done
+          if [ -f geo.sqlite.gz ]; then gunzip -f geo.sqlite.gz; fi
+
+          # 좌표와 역 자료가 없으면 lat·lon부터 통근·학교·지형까지 통째로 빠진 units가
+          # 나온다(subway_join.py의 ready가 둘을 함께 본다). 지금 릴리스는 좌표가
+          # 99.6~100%인데 그것을 0%로 덮으면 지도와 내 주변이 죽고, --clobber라
+          # 되돌릴 것도 안 남는다. 없으면 아예 만들지 않는다.
+          #
+          # schools.json은 여기 넣지 않는다. 그 자산은 지금 릴리스에 아예 없다
+          # (활용신청이 데이터셋마다 따로라 sources.yml의 학교 수집이 매번
+          # continue-on-error로 조용히 실패한다). 필수로 올리면 재조인이 매번
+          # 접혀 이 변경 전체가 무력화된다. 학교는 아래 발행 가드가 index.json의
+          # sch_hit으로 잡는다.
+          for f in geo.sqlite subway.json; do
+            if [ ! -f "$f" ]; then
+              echo "::warning::$f 가 없어 재조인을 건너뜁니다. 좌표·통근·학교·지형이"
+              echo "::warning::통째로 빠진 units로 릴리스를 덮어쓸 수 없습니다."
+              exit 0
+            fi
+          done
+
+          # 실거래 스냅샷은 주간이라 달력이 그것을 앞지르는 달이 있다. 9월 5일이면
+          # 달력은 202607을 확정으로 여는데 그때 스냅샷은 9월 1일 수집분이라 나흘치
+          # 신고가 빠져 있다. 직전 units가 확정으로 삼은 달을 상한으로 넘겨 거기서
+          # 멈춘다. 그러므로 상한을 못 얻으면 재조인 자체를 접는다. 상한 없이 돌면
+          # 얇은 달이 확정 통계로 나가고, 이 앱은 표본 두께를 그 자체로 위험 신호로
+          # 화면에 낸다. geo·subway와 같은 등급의 필수 재료다.
+          if [ ! -f units.tar.gz ]; then
+            echo "::warning::직전 units를 못 받아 확정월 상한을 정할 수 없습니다."
+            echo "::warning::상한 없이 재조인하면 얇은 달이 확정으로 나갑니다. 건너뜁니다."
+            exit 0
+          fi
+          # 아카이브는 `tar -czf ... -C units .`로 만들어져 멤버 이름이 './index.json'
+          # 이다. './' 없이 부르면 "Not found in archive"로 죽는다. 디스크에 풀지
+          # 않는 이유는 build_units가 out_dir을 비우지 않아서다. 옛 파일이 남으면
+          # 이번 회차에 없는 구가 옛 build 표식을 단 채 tar에 실린다.
+          meta=$(tar -xzOf units.tar.gz ./index.json | python -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          print(d['window'][1], d.get('bldg_rows', -1), d.get('sch_hit', -1))") || {
+            echo "::warning::직전 units의 index.json을 못 읽었습니다. 재조인을 건너뜁니다."
+            exit 0
+          }
+          read -r end was sch_was <<< "$meta"
+          # 숫자가 아닌 값이 들어오면 뒤의 [ -ge ] 비교가 stderr 소음을 낸다.
+          # 동작은 안전한 방향(재조인 진행)이지만 로그가 지저분해진다.
+          case "$was" in ''|*[!0-9-]*) was=-1 ;; esac
+          case "$sch_was" in ''|*[!0-9-]*) sch_was=-1 ;; esac
+          case "$end" in
+            [0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+            *) echo "::warning::확정월이 YYYYMM이 아닙니다. 재조인을 건너뜁니다."; exit 0 ;;
+          esac
+
+          # 붙일 것이 새로 생겼는지는 자산 시각이 아니라 내용으로 판단한다. 위
+          # 발행 가드가 bldg_log도 보게 되면서, 빈 응답만 있던 날에도 대장 자산이
+          # 움직인다. 시각으로 보면 그런 날마다 재조인이 돌아 내용이 같은 units를
+          # 다시 굽고, build_id가 바뀌어 캐시를 든 사용자에게 "데이터가 갱신되었습니다"가
+          # 뜬다. 직전 units가 어느 세대 대장으로 구워졌는지는 index.json의
+          # bldg_rows에 있다. 표식이 없는 옛 아카이브는 -1이라 한 번 재조인하고 생긴다.
+          # 이 줄만 실패 시 스텝을 죽인다(다른 실패 경로는 warning + exit 0).
+          # 파일 존재는 need가 hashFiles로 보장했으므로 여기서 죽는 경우는 DB 손상뿐이고,
+          # 그건 조용히 건너뛸 일이 아니라 그날 안에 알아야 할 일이다.
+          now=$(sqlite3 bldg.sqlite "SELECT COUNT(*) FROM buildings")
+          echo "직전 확정월 $end · 직전 units의 대장 ${was}동 · 지금 ${now}동"
+          if [ "$was" -ge 0 ] && [ "$was" -eq "$now" ]; then
+            echo "직전 units가 이미 이 대장으로 구워졌습니다. 재조인할 것이 없습니다."
+            exit 0
+          fi
+          echo "complete_end=$end" >> "$GITHUB_OUTPUT"
+          echo "sch_was=$sch_was" >> "$GITHUB_OUTPUT"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: 물건 패널 재조인·발행
+        id: rejoin
+        if: steps.mats.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CAP: ${{ steps.mats.outputs.complete_end }}
+          SCH_WAS: ${{ steps.mats.outputs.sch_was }}
+        run: |
+          # 없는 파일은 build_units가 os.path.exists로 걸러 내고 안내를 찍는다.
+          python build_units.py --db seoul_rt.sqlite --out units \
+            --bldg bldg.sqlite --geo geo.sqlite --subway subway.json \
+            --schools schools.json ${CAP:+--complete-end "$CAP"}
+
+          # 발행 전 가드. 좌표가 크게 줄었으면 무언가 잘못된 것이라 덮어쓰지 않는다.
+          lat=$(python -c "
+          import json, glob, os
+          n = h = 0
+          for f in glob.glob('units/[0-9]*.json'):
+              g = json.load(open(f))
+              if 'lat' not in g['cols']: continue
+              k = g['cols'].index('lat')
+              for r in g['rows']:
+                  n += 1
+                  h += r[k] is not None
+          print(round(h / n * 100) if n else 0)")
+          echo "새 units 좌표 보유율 ${lat}%"
+          if [ "$lat" -lt 90 ]; then
+            echo "좌표 보유율이 ${lat}%로 낮습니다. 발행을 거부합니다."
+            exit 1
+          fi
+
+          # 대장 결합률 후퇴는 아무도 안 보고 있었다. bldg.sqlite에 행은 있는데
+          # Registry가 스키마 드리프트로 한 동도 못 붙이는 경우가 그대로 통과한다.
+          # 열은 남아 스키마가 안 깨지고 좌표 가드도 안 걸린다.
+          #
+          # 서울(finder-11)끼리 직전과 비교한다. 경기를 섞으면 대장 미착수 지역이
+          # 분모에 들어와 정상인 날에도 걸린다. 대장은 append 전용이고 창은 상한으로
+          # 고정돼 있으니 정상 경로에서는 절대 안 걸린다.
+          ratio() {
+            python -c "
+          import json, sys
+          g = json.load(sys.stdin)
+          c = dict(zip(g['cols'], g['columns'])).get('elvt')
+          print(round(sum(x is not None for x in c) / len(c) * 100) if c else -1)"
+          }
+          now=$(ratio < units/finder-11.json)
+          was=$(tar -xzOf units.tar.gz ./finder-11.json | ratio) || was=-1
+          echo "서울 대장 결합률 직전 ${was}% -> 새 ${now}%"
+          if [ "$was" -ge 0 ] && [ "$now" -lt "$((was - 1))" ]; then
+            echo "대장 결합률이 후퇴했습니다. 발행을 거부합니다."
+            exit 1
+          fi
+
+          # 학교는 finder에 열이 없다. FINDER_COLS(build_units.py)가 sch_*를 안 담고
+          # 구별 상세 파일에만 있어서, finder로 재려 하면 열이 없어 -1이 나오고 가드가
+          # 조용히 꺼진다. 실제로 그렇게 만들었다가 잡혔다. 대신 build_units가
+          # index.json에 남기는 sch_hit(학교 값을 실제로 받은 물건 수)을 본다.
+          # 지금은 0이라 0 -> 0으로 통과하고, 활용신청이 승인돼 schools.json 자산이
+          # 생긴 뒤 내려받기가 일시 실패하면 N -> 0이 되어 그때 잡는다.
+          #
+          # 이 가드가 못 잡는 것: sch_hit은 레벨 루프 밖에서 오르므로(school_join.py)
+          # 초등만 수집되고 중·고·대가 빠진 schools.json이면 수는 그대로인데 세 열만
+          # 사라진다. 막으려면 index.json에 레벨 목록도 남겨 비교해야 한다. 지금은
+          # 자산 자체가 없어 살아 있는 표면이 0이라, 활용신청이 승인될 때 같이 본다.
+          sch_now=$(python -c "import json;print(json.load(open('units/index.json')).get('sch_hit', -1))")
+          echo "서울·경기 학교 결합 직전 ${SCH_WAS}개 -> 새 ${sch_now}개"
+          if [ "$SCH_WAS" -gt 0 ] && [ "$sch_now" -eq 0 ]; then
+            echo "학교 결합이 통째로 사라졌습니다. 발행을 거부합니다."
+            exit 1
+          fi
+
+          tar -czf units.tar.gz -C units .
+          ls -lh units.tar.gz
+          gh release upload "$SNAPSHOT_TAG" units.tar.gz --clobber
+          echo "done=true" >> "$GITHUB_OUTPUT"
+
+      # 릴리스만 갱신하면 화면은 그대로다. Vercel은 코드 푸시가 없으면 릴리스가
+      # 바뀐 것을 모르고, 화면 데이터는 빌드 때 fetch-data.mjs가 받아 굽는다.
+      # 훅을 안 부르면 "릴리스는 매일 신선한데 화면은 여전히 주간"이 된다.
+      - name: Vercel 재배포 훅 호출
+        if: steps.rejoin.outputs.done == 'true'
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "VERCEL_DEPLOY_HOOK 미설정. 새 데이터는 다음 코드 푸시 때 반영됩니다."
+            exit 0
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST -o /dev/null "$DEPLOY_HOOK"
+          echo "Vercel 재배포를 요청했습니다."
+
+      # always()가 필요하다. 뒤에 붙은 재조인 스텝이 발행 가드로 exit 1 하면 잡이
+      # 실패 상태가 되어, 암묵 success()에 걸려 이 진단이 안 찍힌다. 수집이 왜
+      # 실패했는지가 재조인 결과에 가려지면 다음 날 판단이 헤맨다.
       - name: 수집 실패 여부 확인
-        if: steps.collect.outcome == 'failure'
+        if: ${{ !cancelled() && steps.collect.outcome == 'failure' }}
         run: |
           echo "수집 단계가 실패했습니다. 위 로그를 확인하세요."
           echo "받은 만큼은 릴리스에 남아 있으므로 재실행하면 이어받습니다."

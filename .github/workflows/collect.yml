@@ -320,6 +320,13 @@ jobs:
           if git diff --staged --quiet; then
             echo "집계 결과에 변화 없음. 커밋 생략."
           else
+            # 화면의 "마지막 갱신"이 읽는 값. 빌드 시각으로는 못 쓴다. 매일 도는
+            # 재조인이 Vercel 빌드를 부르므로 빌드 시각은 매일 움직이는데, 이 CSV로
+            # 계산되는 지표는 주간 회차에만 바뀐다. git log로 알아내면 Vercel의 얕은
+            # 클론에서 못 읽는 날이 생기므로 파일로 남긴다. 반드시 위 변화 판정
+            # 뒤에 쓴다. 앞에 쓰면 매번 달라져서 "변화 없음" 가드가 영영 안 걸린다.
+            TZ=Asia/Seoul date +%Y-%m-%dT%H:%M:%S%:z > data/collected_at.txt
+            git add data/collected_at.txt
             git commit -m "데이터 갱신 $(TZ=Asia/Seoul date +%Y-%m-%d)"
             # 잡 시작 후 수집에 몇 시간이 걸리므로 그 사이 코드 푸시가 있으면
             # non-fast-forward가 된다. data/만 만지니 rebase 충돌은 사실상 없다.
