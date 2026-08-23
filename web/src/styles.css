@@ -152,7 +152,9 @@ body {
    컨테이너 패딩을 뚫고 나가 상단을 가득 채우고, 다음 카드가 그 위로 떠 오른다. */
 .hero {
   margin: -16px -16px 14px;
-  padding: 14px 20px 16px;
+  /* theme-color가 히어로와 같은 색이라 상태바가 이 판의 연장이 됐다.
+     노치 기기의 설치형에서 상태바가 워드마크를 덮지 않게 안전 영역만큼 내린다. */
+  padding: max(14px, env(safe-area-inset-top)) 20px 16px;
   background: var(--hero-bg);
   border-radius: 0 0 var(--radius) var(--radius);
   color: var(--hero-fg);
@@ -305,9 +307,17 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .ins-archive em { font-style: normal; font-size: var(--fs-small); font-weight: 700; color: var(--text-secondary); }
 .ins-archive span { font-size: var(--fs-sub); color: var(--text-primary); line-height: 1.55; }
 .ins-link {
-  appearance: none; border: 0; background: none; color: var(--series-1); font: inherit;
-  font-size: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0;
+  appearance: none; border: 0; background: none; color: inherit; font: inherit;
+  font-size: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0;
 }
+/* 문장 속 행동. 링크와 같은 잉크 밑줄 문법을 쓰되 button으로 남는다.
+   전에는 히어로용 .about-link를 빌려 써서 라이트 카드 위에서 크림 글자가
+   사실상 안 보였다(대비 약 1.1:1). */
+.inline-act {
+  appearance: none; border: 0; background: none; padding: 0; font: inherit;
+  color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+
 .about-item { margin: 12px 0; }
 .about-item b { display: block; font-size: var(--fs-body); margin-bottom: 2px; }
 .about-item span { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.55; }
@@ -544,8 +554,12 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px; margin: 6px 0 12px;
 }
-/* 홀수 개일 때 마지막 반 폭 셀이 홀로 남지 않게 전폭으로 편다. */
-.cond > label:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* 홀수 개일 때 마지막 반 폭 셀이 홀로 남지 않게 전폭으로 편다.
+   2열 구간에만 건다. 530px대부터는 auto-fit이 3열이 되는데, 9칸이면 3x3
+   완전한 격자를 이 규칙이 도리어 3+3+2+전폭으로 깨뜨린다(CTO 실측). */
+@media (max-width: 529px) {
+  .cond > label:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
 .cond label {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: 0 6px; background: var(--surface-0); border: 1px solid var(--border);
@@ -558,7 +572,7 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
   color: var(--text-primary); width: 100%;
 }
 .cond input:focus-visible, .cond select:focus-visible { outline: none; }
-.cond label:focus-within { border-color: var(--series-1); }
+.cond label:focus-within { border-color: var(--brand); }
 .cond em { font-style: normal; font-size: var(--fs-sub); color: var(--text-muted); }
 /* 단위(억·평)가 붙는 칸은 '1fr auto' 두 열을 쓰고 select 칸은 첫 열만 써서,
    열 간격 6px만큼 오른쪽 끝이 어긋나 있었다(실측 필드 우단 141 대 단위 우단 147).
@@ -995,7 +1009,7 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
   margin: 14px 0 0; font-size: var(--fs-small); line-height: 1.75; color: var(--text-muted);
   border-top: 1px dashed var(--border); padding-top: 9px;
 }
-.law-src a, .note a, .law-body a { color: var(--series-1); text-decoration: underline;
+.law-src a, .note a, .law-body a { color: inherit; text-decoration: underline;
                                    text-underline-offset: 2px; }
 .law-table { font-size: var(--fs-small); }
 .law-table td:not(:first-child), .law-table th:not(:first-child) {
@@ -1039,7 +1053,7 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
 
 .todo .checklist { margin: 0; }
 .todo li { margin-bottom: 7px; line-height: 1.65; color: var(--text-secondary); }
-.todo a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.todo a { color: inherit; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
 /* 경고는 이 자리에서 하나뿐이어야 한다. 클래스를 안 걸고 .todo > p로 잡으면
    위에 새로 놓은 리드 문장까지 빨갛게 물들어 경고의 무게가 희석된다. */
 .todo-warn { margin: 10px 0 0; font-weight: 600; color: var(--critical); font-size: var(--fs-small); }
@@ -1051,10 +1065,10 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
 }
 .nohit > p { margin: 0 0 8px; line-height: 1.65; }
 .nohit > p:last-child { margin-bottom: 0; }
-.nohit a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; }
+.nohit a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
-/* 외부 링크의 파랑(series-1)을 잉크 밑줄로. 색은 데이터의 것이고 ↗가 이미
-   외부행을 말한다. .law-body a 등 다른 파랑 링크는 남아 있다. 후속에 같이 걷는다. */
+/* 링크는 잉크 밑줄이다. 색은 데이터의 것이고, 외부행은 ↗가 이미 말한다.
+   ins-link·law-body·todo·nohit의 파랑도 같은 커밋에서 함께 걷었다. */
 .checklist a { display: block; margin-top: 3px; font-size: var(--fs-small); color: inherit;
                text-decoration: underline; text-underline-offset: 3px; }
 
