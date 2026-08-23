@@ -144,13 +144,14 @@ const DEAL_CAPS = { j: 15, s: 10, w: 12 }
    부르면 오게 한다. */
 const DEAL_PEEK = 4
 
-function DealTable({ kind, label, rows, fmt, cap }) {
+function DealTable({ kind, label, rows, fmt, cap, bare }) {
   const [all, setAll] = useState(false)
   const shown = all ? rows : rows.slice(0, DEAL_PEEK)
   const rest = rows.length - shown.length
   return (
     <div className={`deals deals-${kind}`}>
-      <h4>{label} <small>{rows.length >= cap ? `최근 ${rows.length}건` : `${rows.length}건`}</small></h4>
+      {/* bare: 접힘의 summary가 이미 제목 노릇을 할 때. 제목이 두 번 서면 소음이다. */}
+      {!bare && <h4>{label} <small>{rows.length >= cap ? `최근 ${rows.length}건` : `${rows.length}건`}</small></h4>}
       <table>
         <tbody>
           {shown.map((r, i) => {
@@ -175,7 +176,7 @@ function DealTable({ kind, label, rows, fmt, cap }) {
   )
 }
 
-function Deals({ deals }) {
+function Deals({ deals, med }) {
   if (!deals) return null
   // 행 끝의 'P'는 신고 기한이 아직 안 지난 달의 계약이다. 월 통계에는 안 들어가지만
   // 신고된 개별 계약은 사실이므로, 꼬리표를 달아 최신 정보로 보여 준다.
@@ -192,13 +193,23 @@ function Deals({ deals }) {
   return (
     <>
       <h3 className="facts-h">최근 거래</h3>
-      {groups.map(([k, label, fmt]) => (
+      {/* 판정의 분자는 전세라 전세만 펼친다. 매매·월세는 접되 건수와 중위가
+          summary에 남는다. 접혀 있어도 요약이 보여야 숨김이 아니다. */}
+      {groups.map(([k, label, fmt]) => k === 'j' ? (
         <DealTable key={k} kind={k} label={label} rows={deals[k]} fmt={fmt} cap={DEAL_CAPS[k]} />
+      ) : (
+        <details key={k} className="deal-fold">
+          <summary>
+            {label} {deals[k].length >= DEAL_CAPS[k] ? `최근 ${deals[k].length}건` : `${deals[k].length}건`}
+            {k === 's' && med != null ? ` · 2년 중위 ${eok(med)}` : ''}
+          </summary>
+          <DealTable kind={k} label={label} rows={deals[k]} fmt={fmt} cap={DEAL_CAPS[k]} bare />
+        </details>
       ))}
       {hasProv && (
-        <p className="muted-line">
-          '잠정' 표시는 신고 기한(계약 후 30일)이 아직 안 지난 달의 계약입니다. 그 달에
-          늦게 신고되는 계약이 더 있을 수 있어, 위쪽 통계에는 넣지 않았습니다.
+        <p className="fn">
+          ※ 잠정: 신고 기한(계약 후 30일)이 아직 안 지난 달의 계약입니다. 늦게 신고되는
+          계약이 더 있을 수 있어 위 통계에는 넣지 않았습니다.
         </p>
       )}
     </>
@@ -558,19 +569,20 @@ function Asking({ u, pctOf }) {
  * 임장과 동네에서 연 같은 리포트에는 공유가 아예 없었다. 진입 경로에 따라
  * 기능이 달랐던 것이라 카드 안으로 들인다.
  */
-function ShareRow({ lawd, id }) {
+/**
+ * 공유. 전에는 URL 입력창 + 버튼 한 줄이었는데, 입력창은 정보가 아니라 기능이라
+ * 자리만 차지했다. 버튼 하나로 줄여 비교함·지킴이와 같은 줄에 세운다.
+ */
+function ShareBtn({ lawd, id }) {
   const [done, setDone] = useState(false)
   const url = `${location.origin}/s/${lawd}.${id}`
   return (
-    <div className="share">
-      <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="공유 링크" />
-      <button onClick={() => {
-        navigator.clipboard?.writeText(url).then(() => {
-          setDone(true)
-          setTimeout(() => setDone(false), 1800)
-        })
-      }}>{done ? '복사됨' : '링크 복사'}</button>
-    </div>
+    <button className="cmp-btn" onClick={() => {
+      navigator.clipboard?.writeText(url).then(() => {
+        setDone(true)
+        setTimeout(() => setDone(false), 1800)
+      })
+    }}>{done ? '✓ 링크 복사됨' : '링크 복사'}</button>
   )
 }
 
@@ -762,8 +774,16 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
         {u.build_year ? ` · ${u.build_year}년 준공` : ''}
       </p>
 
+      {/* 이 카드의 결론 숫자는 여기 하나다. verdict()가 num을 줄 때만 크게
+          세우고, 실측 숫자가 없는 판정은 문장만 남는다. 지어낼 숫자가 없으면
+          큰 숫자도 없는 것이 맞다. */}
       <div className={`verdict ${v.tone}`}>
-        <strong>{v.head}</strong>
+        <strong>{(() => {
+          const i = v.num ? v.head.indexOf(v.num) : -1
+          return i < 0 ? v.head : (
+            <>{v.head.slice(0, i)}<em className="v-num">{v.num}</em>{v.head.slice(i + v.num.length)}</>
+          )
+        })()}</strong>
         <span>{v.body}</span>
       </div>
 
@@ -779,57 +799,7 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
         </p>
       )}
 
-      <dl className="metrics">
-        <div>
-          <dt>전세가율</dt>
-          <dd className={`big ${ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}`}>
-            {u.ratio == null ? '-'
-              : ratioBroken(u.ratio) ? '판단 보류'
-              : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
-          </dd>
-          {/* 전세가 없으면 근거 단계는 매겨져 있어도 쓸 데가 없다. "인근 유사 물건
-              기준"만 남으면 무언가를 재 놓고 안 보여 주는 것처럼 읽힌다. */}
-          <small>{u.n_jeonse_24m ? `${st.label}${u.n_comps ? ` · 매매 ${u.n_comps}건` : ''}`
-            : '전세 신고가 없어 낼 수 없습니다'}</small>
-        </div>
-        <div>
-          <dt>중위 전세보증금</dt>
-          <dd>{eok(u.med_jeonse)}</dd>
-          <small>
-            {u.n_jeonse_24m ? `최근 2년 ${u.n_jeonse_24m}건` : '최근 2년 전세 신고 없음'}
-            {rank && ` · ${rank.umd} 비슷한 평형 ${rank.n}건 중 비싼 쪽에서 ${rank.pct}%`}
-          </small>
-        </div>
-        <div>
-          <dt>중위 매매가</dt>
-          <dd>{eok(u.med_sale)}</dd>
-          <small>{u.n_sale_24m ? `최근 2년 ${u.n_sale_24m}건` : '사례 없음'}</small>
-        </div>
-        <div>
-          <dt>갱신 시 보증금</dt>
-          <dd className={u.renew_hike != null && u.renew_hike < -0.05 ? 'serious' : ''}>
-            {signed(u.renew_hike)}
-          </dd>
-          <small>{u.renew_hike == null ? '갱신 신고 없음' : '직전 계약 대비 중위'}</small>
-        </div>
-      </dl>
-
-      <Asking u={u} pctOf={pctOf} />
-
-      <Actions tone={v.tone} u={u} />
-
-      {/* 직전 2년과 견준 추세. 데이터에 있으면서 화면에 없던 값이다. */}
-      {u.ratio_prev != null && u.ratio != null && !ratioBroken(u.ratio) && (
-        <p className="muted-line">
-          직전 2년 전세가율은 {pct0(u.ratio_prev)}였고,{' '}
-          <strong className={u.ratio > u.ratio_prev + 0.03 ? 'serious' : ''}>
-            {u.ratio > u.ratio_prev + 0.03 ? `${Math.round((u.ratio - u.ratio_prev) * 100)}%p 올랐습니다`
-              : u.ratio < u.ratio_prev - 0.03 ? `${Math.round((u.ratio_prev - u.ratio) * 100)}%p 내렸습니다`
-              : '큰 변화 없습니다'}
-          </strong>.
-        </p>
-      )}
-
+      {/* 판정을 무효화하는 정보는 접을 수 없다. 판정 바로 아래 선다. */}
       {ratioBroken(u.ratio) && (
         <p className="warnline">
           <strong className="serious">비교 기준이 정상이 아닙니다.</strong> 계산하면
@@ -838,28 +808,120 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
           지분 거래나 특수관계인 거래가 섞였을 수 있습니다. 등기부등본으로 직접 확인하세요.
         </p>
       )}
-      {!ratioBroken(u.ratio) && !st.exact && u.ratio != null && (
-        <p className="warnline">
-          이 건물의 매매 사례가 없어 <strong>같은 동의 비슷한 물건{u.stage === 'B' ? '·연식' : ''}</strong>과
-          비교한 참고치입니다. 같은 방식으로 계산한 값을 실제 거래가 있는 물건 10,416개에서
-          대조해 보니, <strong>열 중 여덟은 오차 10%p 이내</strong>였지만
-          <strong className="serious"> 마흔 중 하나는 위험한 물건을 안전하다고</strong> 말했습니다.
-          {u.stage === 'B-' && ' 이 물건은 연식을 맞추지 못해 그보다 더 거칠게 잡은 값입니다.'}
-        </p>
-      )}
-      {u.direct_share > 0 && (
+
+      {/* 전세가 없어 계산 접힘이 안 생기는 물건의 직거래 경고. 접힘으로 옮기면서
+          이 갈래에서 통째로 사라졌었다(실측 14,293개, 전체의 4.4%). 판정 본문이
+          "매매 1건 (중위 4.65억)"을 사실로 인용하는데 그 1건이 직거래 100%인
+          물건도 있다. 인용한 중위가가 시세가 아닐 수 있다는 유일한 단서다. */}
+      {!u.n_jeonse_24m && u.direct_share > 0 && (
         <p className="warnline">
           최근 매매 중 <strong>직거래 {pct0(u.direct_share)}</strong>. 특수관계인 간 거래가 섞이면
           시세가 실제보다 낮거나 높게 잡힙니다.
         </p>
       )}
-      {u.n_wolse_24m > 0 && (
-        <p className="muted-line">최근 2년 월세 계약 {u.n_wolse_24m}건 (전세 {u.n_jeonse_24m}건)</p>
+
+      {/* 스탯 스트립. 전세가율은 판정 헤드라인이 이미 34px로 세웠으므로 여기서는
+          빠지고, 판정에 숫자가 없는 갈래(추정치·판단 보류)에서만 첫 칸에 선다.
+          한 화면에 결론 숫자는 하나라는 규율이다. 칸의 출처·부연은 아래
+          "어떻게 계산했나요" 접힘으로 내려갔다. */}
+      <dl className="metrics">
+        {!v.num && u.ratio != null && (
+          <div>
+            <dt>전세가율</dt>
+            <dd className={`big ${ratioBroken(u.ratio) ? 'muted' : ratioTone(u.ratio)}`}>
+              {ratioBroken(u.ratio) ? '판단 보류'
+                : st.exact ? pct0(u.ratio) : `약 ${pct0(u.ratio)}`}
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>중위 전세</dt>
+          <dd>{eok(u.med_jeonse)}</dd>
+        </div>
+        <div>
+          <dt>중위 매매</dt>
+          <dd>{eok(u.med_sale)}</dd>
+        </div>
+        <div>
+          <dt>갱신 시</dt>
+          <dd className={u.renew_hike != null && u.renew_hike < -0.05 ? 'serious' : ''}>
+            {signed(u.renew_hike)}
+          </dd>
+        </div>
+      </dl>
+
+      {/* 어떻게 계산했나요. 근거 단계·표본 수·추세·추정 오차·직거래 경고가 전부
+          여기 산다. 흩어져 있던 정직성 문단들의 한 주소다. 접혀 있어도 요약이
+          보인다는 것이 규율이다. 특히 인근 추정치라는 사실과 직거래 비중은
+          판정을 흔드는 정보라 접힌 상태의 summary에 남는다. */}
+      {u.n_jeonse_24m > 0 && (
+        <details className="calc">
+          <summary>
+            어떻게 계산했나요
+            {/* 단계는 A/B/B-/C 넷이다. C는 이 건물에도 인근에도 견줄 매매가 없어
+                ratio가 null로 빌드된다(실측 7,705개). 거기에 "인근 추정치"라고
+                쓰면 추정한 적 없는 물건에 거짓말을 하는 것이다. */}
+            {u.ratio == null ? (
+              <span> · 전세가율은 못 냈습니다</span>
+            ) : (
+              <span className={st.exact ? undefined : 'serious'}>
+                {' '}· {st.exact ? '이 건물 실거래 기준' : '인근 추정치입니다'}
+              </span>
+            )}
+            {u.direct_share > 0
+              ? <span className="serious"> · 직거래 {pct0(u.direct_share)}</span>
+              : u.n_sale_24m ? ` · 매매 ${u.n_sale_24m}건` : ''}
+          </summary>
+          <div className="calc-body">
+            <p>
+              {u.ratio == null
+                ? '이 건물에도 인근 비슷한 물건에도 견줄 매매가 없어 전세가율을 내지 못했습니다. '
+                : <>전세가율은 보증금을 매매가로 나눈 값입니다. {st.label}
+                    {u.n_comps ? ` · 비교 매매 ${u.n_comps}건` : ''}으로 계산했고, </>}
+              이 건물의 최근 2년 신고는 전세 {u.n_jeonse_24m}건
+              {u.n_sale_24m ? ` · 매매 ${u.n_sale_24m}건` : ' · 매매 없음'}
+              {u.n_wolse_24m ? ` · 월세 ${u.n_wolse_24m}건` : ''}입니다.
+              {u.renew_hike != null && ' 갱신 시 보증금은 직전 계약 대비 중위값입니다.'}
+            </p>
+            {rank && (
+              <p>{rank.umd} 비슷한 평형 {rank.n}건 중 비싼 쪽에서 {rank.pct}%입니다.</p>
+            )}
+            {u.ratio_prev != null && u.ratio != null && !ratioBroken(u.ratio) && (
+              <p>
+                직전 2년 전세가율은 {pct0(u.ratio_prev)}였고,{' '}
+                <strong className={u.ratio > u.ratio_prev + 0.03 ? 'serious' : ''}>
+                  {u.ratio > u.ratio_prev + 0.03 ? `${Math.round((u.ratio - u.ratio_prev) * 100)}%p 올랐습니다`
+                    : u.ratio < u.ratio_prev - 0.03 ? `${Math.round((u.ratio_prev - u.ratio) * 100)}%p 내렸습니다`
+                    : '큰 변화 없습니다'}
+                </strong>.
+              </p>
+            )}
+            {!ratioBroken(u.ratio) && !st.exact && u.ratio != null && (
+              <p className="warnline">
+                이 건물의 매매 사례가 없어 <strong>같은 동의 비슷한 물건{u.stage === 'B' ? '·연식' : ''}</strong>과
+                비교한 참고치입니다. 같은 방식으로 계산한 값을 실제 거래가 있는 물건 10,416개에서
+                대조해 보니, <strong>열 중 여덟은 오차 10%p 이내</strong>였지만
+                <strong className="serious"> 마흔 중 하나는 위험한 물건을 안전하다고</strong> 말했습니다.
+                {u.stage === 'B-' && ' 이 물건은 연식을 맞추지 못해 그보다 더 거칠게 잡은 값입니다.'}
+              </p>
+            )}
+            {u.direct_share > 0 && (
+              <p className="warnline">
+                최근 매매 중 <strong>직거래 {pct0(u.direct_share)}</strong>. 특수관계인 간 거래가 섞이면
+                시세가 실제보다 낮거나 높게 잡힙니다.
+              </p>
+            )}
+          </div>
+        </details>
       )}
+
+      <Asking u={u} pctOf={pctOf} />
+
+      <Actions tone={v.tone} u={u} />
 
       <Siblings u={u} onPick={onSibling} />
       <Wolse deals={u.deals} jeonse={u.med_jeonse} />
-      <Deals deals={u.deals} />
+      <Deals deals={u.deals} med={u.med_sale} />
       <BuildingFacts u={u} />
 
       {/* 둘 다 "눌렀는데 아무 데도 안 가면 안 만든 것만 못하다"를 따른다. 다만
@@ -879,19 +941,19 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
       )}
       {/* 검색어를 그대로 적는다. 이 방식의 값어치는 정확도가 아니라 틀렸을 때
           티가 난다는 것인데, 검색어가 네이버 화면에만 뜨면 누른 뒤에야 안다.
-          여기 박아 두면 이상한 주소를 누르기 전에 알아본다. */}
+          여기 박아 두면 이상한 주소를 누르기 전에 알아본다. 방법 해설이라
+          각주 크기로 내리되 검색어와 한계는 다 남긴다. */}
       {nmap && (
-        <p className="muted-line">
-          네이버 지도에서 이 주소로 검색합니다. <strong>{nq}</strong>. 주소를 못 찾는
-          경우도 있습니다. 거기서 거리뷰를 켜면 골목과 건물 겉모습을 미리 볼 수 있습니다.
-          한 지번에 건물이 여럿이면 옆 건물이 나올 수 있고, 촬영 시점은 저희가 알 수
-          없으며, 안 찍힌 골목도 있습니다.
+        <p className="fn">
+          ※ 네이버 지도에서 <strong>{nq}</strong>로 검색해 거리뷰로 골목과 건물 겉모습을
+          미리 볼 수 있습니다. 주소를 못 찾거나 한 지번에 건물이 여럿이면 옆 건물이 나올
+          수 있고, 촬영 시점은 저희가 알 수 없으며 안 찍힌 골목도 있습니다.
         </p>
       )}
 
       {/* 담아 두기와 감시 걸기. 판정을 읽기 전에 물으면 위험한지 모르는 집을
           먼저 파일링하라는 말이 된다. 전에는 이름 바로 밑에 있었다. */}
-      {(compare || guard) && lawd && (
+      {lawd && (compare || guard || u.id) && (
         <div className="save-row">
           {compare && (
             <button className="cmp-btn" aria-pressed={compare.has(u.id)}
@@ -900,10 +962,9 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
             </button>
           )}
           {guard && <GuardAdd u={u} lawd={lawd} guard={guard} />}
+          {u.id && <ShareBtn lawd={lawd} id={u.id} />}
         </div>
       )}
-
-      {lawd && u.id && <ShareRow lawd={lawd} id={u.id} />}
 
       <PkgOffer u={u} />
     </div>

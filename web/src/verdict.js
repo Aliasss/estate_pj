@@ -19,6 +19,11 @@ export const ratioBroken = (r) => r != null && r >= RATIO_BROKEN
 
 /**
  * 이 건물의 판정. 화면과 공유 카드가 같은 문장을 써야 하므로 여기 둔다.
+ *
+ * num은 화면이 크게 세울 숫자다. head 안에 그대로 들어 있는 부분 문자열이어야
+ * 한다(화면이 indexOf로 쪼갠다). 실측 숫자가 없는 판정에는 num을 두지 않는다.
+ * 지어낼 숫자가 없으면 큰 숫자도 없는 것이 정직한 위계다. 공유 카드(api/s.js)는
+ * num을 안 쓰고 head 전문을 그대로 쓴다.
  */
 export function verdict(u) {
   const villa = u.ht === 'R' || u.ht === 'O'
@@ -60,8 +65,11 @@ export function verdict(u) {
   // 실거래로 확인된 깡통. 증거가 가장 두꺼운 위험이라 다른 무엇보다 먼저 온다.
   // 여기서 초록을 켜면 이 앱이 존재하는 이유와 정확히 반대의 일을 하는 것이다.
   if (solid && r >= 1.0) {
-    return { tone: 'critical',
-      head: `보증금이 이 건물 매매가보다 ${Math.round((r - 1) * 100)}% 높습니다`,
+    const over = `${Math.round((r - 1) * 100)}%`
+    // 1.000~1.005 구간은 over가 "0%"다(실측 156물건). 문장은 참이지만 0%를
+    // 카드에서 제일 큰 글자로 세우면 위험이 없다는 그림이 된다. 문장만 남긴다.
+    return { tone: 'critical', ...(over === '0%' ? {} : { num: over }),
+      head: `보증금이 이 건물 매매가보다 ${over} 높습니다`,
       body: `최근 2년 이 건물 매매 ${u.n_sale_24m}건으로 확인된 값입니다. 추정이 아닙니다. `
         + '집이 경매로 넘어가면 낙찰가는 보통 시세보다 낮게 잡히므로, 이 상태로는 '
         + '보증금 전액을 돌려받기 어렵습니다.' }
@@ -69,7 +77,7 @@ export function verdict(u) {
   // 헤드에 결론까지 넣는다. good 분기가 같은 템플릿("보증금이 이 건물 매매가의
   // N%입니다")을 쓰므로, 이 문장만으로는 색 없이 두 판정이 구분되지 않는다.
   if (solid && r >= 0.9) {
-    return { tone: 'serious',
+    return { tone: 'serious', num: pct0(r),
       head: `보증금이 매매가의 ${pct0(r)}로 여유가 거의 없습니다`,
       body: `최근 2년 매매 ${u.n_sale_24m}건으로 확인된 값입니다. 집값이 조금만 내려도 `
         + '보증금이 매매가를 넘어섭니다. 여유가 거의 없는 계약입니다.' }
@@ -89,7 +97,7 @@ export function verdict(u) {
   if (!u.n_sale_24m) {
     // 추정치라도 100%를 넘으면 회색으로 둘 수 없다. B단계 오차는 열에 여덟이 10%p 안쪽이다.
     if (r >= 1.0) {
-      return { tone: 'serious', head: `추정 전세가율이 ${pct0(r)}입니다`,
+      return { tone: 'serious', num: pct0(r), head: `추정 전세가율이 ${pct0(r)}입니다`,
         body: '이 건물 매매가 없어 인근 비슷한 물건으로 잡은 추정치입니다만, 추정 오차를 '
           + '감안해도 보증금이 집값에 육박하거나 넘는 구간입니다. 등기부와 보증보험 가입 '
           + '가능 여부를 확인하기 전에는 계약하지 마세요.' }
@@ -154,7 +162,7 @@ export function verdict(u) {
 
   // 매매는 있는데 비율이 인근 기준으로 잡힌 드문 조합. 100%를 넘으면 초록일 수 없다.
   if (r >= 1.0) {
-    return { tone: 'serious', head: `추정 전세가율이 ${pct0(r)}입니다`,
+    return { tone: 'serious', num: pct0(r), head: `추정 전세가율이 ${pct0(r)}입니다`,
       body: '보증금이 집값에 육박하거나 넘는 구간입니다. 등기부와 보증보험 가입 가능 '
         + '여부를 확인하기 전에는 계약하지 마세요.' }
   }
@@ -164,7 +172,7 @@ export function verdict(u) {
   // r은 여기서 절대 null이 아니다. 매매 3건 이상이면 빌더가 med_sale을 채우고,
   // 깨진 값은 바로 위에서 빠진다(실측: 전세 있고 매매 3건 이상인 27,500행 중
   // ratio가 null인 행 0건). 그래서 폴백 문장을 두지 않는다.
-  return { tone: 'good',
+  return { tone: 'good', num: pct0(r),
     head: `보증금이 이 건물 매매가의 ${pct0(r)}입니다`,
     body: `최근 2년 이 건물 매매 ${u.n_sale_24m}건으로 확인된 값입니다. `
       + (isR ? '전세 신고가 있는 빌라 중 3%만 여기 해당하는 드문 경우입니다.'
