@@ -371,8 +371,8 @@ function BuildingFacts({ u }) {
       {/* collect_subway.py가 "무엇을 반영하지 못했는지 함께 밝힌다"고 약속했다.
           이 문단이 그 약속을 이행한다. 지울 때는 그쪽 docstring도 함께 볼 것. */}
       {commute && (
-        <p className="muted-line">
-          통근 시간은 역과 역 사이를 각 노선의 평균 속도(정차 시간 포함)로 간다고
+        <p className="fn">
+          ※ 통근 시간은 역과 역 사이를 각 노선의 평균 속도(정차 시간 포함)로 간다고
           보고 계산한 값입니다. 급행과 배차 간격은 반영하지 못해서, 급행이 서는 먼
           구간은 실제보다 길게, 배차가 뜸한 노선은 짧게 나옵니다.
         </p>
@@ -603,10 +603,12 @@ function Actions({ tone, u }) {
   const urgent = tone === 'critical' || tone === 'serious'
   return (
     <div className="todo">
-      <b>{urgent ? '계약 전에 반드시' : '계약 전에 확인'}</b>
+      {/* 질문형 헤더는 겁먹은 사용자가 들고 오는 질문 그대로다. 다만 urgent에서
+          질문형은 한가하게 읽히므로 위급 문구를 유지한다. */}
+      <b>{urgent ? '계약 전에 반드시' : '계약 전에 무엇을 확인해야 하나요'}</b>
       <p className="todo-lead">
-        위 숫자는 <strong>실거래 신고 기록</strong>일 뿐입니다. 보증금을 실제로 돌려받을 수
-        있는지는 아래를 직접 확인해야 알 수 있고, 여기서는 볼 수 없습니다.
+        위 숫자는 <strong>실거래 신고 기록</strong>일 뿐이라, 보증금을 실제로 돌려받을 수
+        있는지는 아래를 직접 확인해야 압니다.
       </p>
       {/* 일곱 항목을 한 벌로 합쳤더니 이 블록만 1,082px로 카드의 29%가 됐다.
           항목을 줄이면 다시 "짧은 판만 본 사람이 못 보는" 문제로 돌아가므로,
@@ -769,9 +771,13 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
     <div className="card unit-detail">
       <button className="close" onClick={onClose} aria-label="닫기">✕</button>
       <h2>{u.name || '(이름 없음)'}</h2>
-      <p className="sub">
-        {u.umd} {u.jibun} · 전용 {u.area}m² ({(u.area / 3.305785).toFixed(1)}평)
-        {u.build_year ? ` · ${u.build_year}년 준공` : ''}
+      {/* 카드의 헤드라인은 건물 이름이 아니라 판정이다. 이름과 주소는 문맥이라
+          판정보다 조용해야 한다. 면적은 항상 전용이라 값은 참이지만,
+          "전용" 라벨을 넣으면 390px에서도 두 줄로 감긴다(실측 40px).
+          한 줄이 우선이라 라벨 없이 둔다. */}
+      <p className="sub sub-tight">
+        {u.umd} {u.jibun} · {u.area}m²({(u.area / 3.305785).toFixed(1)}평)
+        {u.build_year ? ` · ${u.build_year}년` : ''}
       </p>
 
       {/* 이 카드의 결론 숫자는 여기 하나다. verdict()가 num을 줄 때만 크게

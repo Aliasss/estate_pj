@@ -1,6 +1,8 @@
 /* 색은 역할로만 참조한다. 라이트/다크 값이 한 곳에서 바뀌도록.
    necessities 팔레트: 크림 바탕 + 잉크. 브랜드는 무채색(잉크)이고,
-   색은 데이터(시리즈)와 판정(위험도)에만 쓴다. 로고와 같은 규율이다. */
+   색은 데이터(시리즈)와 판정(위험도)에만 쓴다. 로고와 같은 규율이다.
+   단 하나의 예외: 히어로 판은 잉크와 같은 hue 30도의 브라운을 쓴다.
+   판정과 차트가 오르지 않는 자리라 판정색과 만나지 않는다. */
 :root {
   color-scheme: light;
   --surface-0: #f7f2e4;
@@ -28,9 +30,12 @@
   --on-brand: #f7f2e4;
   --on-brand-dim: rgb(247 242 228 / 0.62);
   /* 히어로는 라이트/다크 공통으로 잉크판. 로고 반전형과 같은 화면이다 */
-  --hero-bg: #191613;
+  /* 브랜드 판만 유채. 커피브라운은 잉크와 같은 hue 30도라 잉크 계열의 연장이다.
+     크림 글자 6.50:1. 판정과 차트가 오르지 않는 자리라 판정색과 만나지 않는다. */
+  --hero-bg: #71502f;
   --hero-fg: #f7f2e4;
-  --hero-fg-dim: rgb(247 242 228 / 0.62);
+  --hero-fg-dim: rgb(247 242 228 / 0.80); /* 브라운 위 0.62는 3.59:1 미달, 0.80이 4.85:1 */
+  --hero-line: rgb(247 242 228 / 0.55); /* 히어로 위 테두리. 브라운 위 0.42는 2.50:1 미달, 0.55부터 3:1 */
   --card-border: transparent;
   --shadow-card: 0 6px 24px rgb(84 66 24 / 0.08), 0 1px 3px rgb(84 66 24 / 0.06);
   --shadow-float: 0 14px 34px rgb(60 47 16 / 0.18);
@@ -87,9 +92,10 @@
     --brand-ink: #f7f2e4;
     --on-brand: #191613;
     --on-brand-dim: rgb(25 22 19 / 0.62);
-    --hero-bg: #110f0c;
+    --hero-bg: #3f2c1b; /* 바탕과 1.36:1로 현 절제 유지, 크림 11.83:1, 딤 0.62 그대로 5.58:1 */
     --hero-fg: #f7f2e4;
     --hero-fg-dim: rgb(247 242 228 / 0.62);
+    --hero-line: rgb(247 242 228 / 0.42); /* 다크 브라운 위 3.40:1 */
     --card-border: #3a352a;
     --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
     --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
@@ -117,9 +123,10 @@
   --brand-ink: #f7f2e4;
   --on-brand: #191613;
   --on-brand-dim: rgb(25 22 19 / 0.62);
-  --hero-bg: #110f0c;
+  --hero-bg: #3f2c1b; /* 바탕과 1.36:1로 현 절제 유지, 크림 11.83:1, 딤 0.62 그대로 5.58:1 */
   --hero-fg: #f7f2e4;
   --hero-fg-dim: rgb(247 242 228 / 0.62);
+  --hero-line: rgb(247 242 228 / 0.42); /* 다크 브라운 위 3.40:1 */
   --card-border: #3a352a;
   --shadow-card: 0 6px 20px rgb(0 0 0 / 0.35);
   --shadow-float: 0 14px 34px rgb(0 0 0 / 0.55);
@@ -258,7 +265,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 
 /* --- 인사이트 / 소개 --- */
 .about-link {
-  appearance: none; border: 1px solid rgb(247 242 228 / 0.42);  /* 0.35면 다크에서 2.96:1로 규격 미달 */ background: transparent;
+  appearance: none; border: 1px solid var(--hero-line);  /* 히어로 배경별 3:1을 토큰이 지킨다 */ background: transparent;
   color: var(--hero-fg-dim); font: inherit; font-size: var(--fs-small); padding: 4px 10px;
   border-radius: 999px; cursor: pointer; margin-top: 12px; display: inline-block;
 }
@@ -340,7 +347,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* 보증금이 행의 앵커다. 모든 행에 있는 실측값이라 이 자리가 맞다. */
 .u-sig em { display: block; font-style: normal; font-size: var(--fs-num); font-weight: 700; font-variant-numeric: tabular-nums; }
 .u-sig small { display: block; font-size: var(--fs-small); font-weight: 600; color: var(--text-muted); }
-/* 행 코멘트. 신호가 있는 행에만 나온다(실측 발화율 서울 5.6% · 경기 5.8%,
+/* 행 코멘트. 신호가 있는 행에만 나온다(실측 발화율 서울 5.9% · 경기 6.1%,
    분모는 전 행). 형용사 없이 사실과 출처만 말한다. rowcomment.js가 원천이다. */
 .u-note { grid-column: 1 / -1; font-size: var(--fs-small); color: var(--text-secondary); margin-top: 2px; }
 
@@ -443,6 +450,9 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .deal-fold[open] summary::after { content: '－'; }
 .deal-fold .deals { margin-top: 4px; }
 
+/* 리포트 카드의 주소 줄. 판정이 헤드라인이라 문맥은 13px로 조용히 선다. */
+.card .sub.sub-tight { font-size: var(--fs-small); margin-top: 2px; }
+
 /* ※ 각주. 값에 대한 방법 해설은 본문에 서지 못한다. 데이터(13px)보다 작아야 한다. */
 .fn { font-size: var(--fs-tiny); color: var(--text-muted); line-height: 1.55; margin: 8px 0 0; }
 .fn strong { color: var(--text-secondary); font-weight: 600; }
@@ -472,7 +482,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 
 /* 지도와 거리뷰. 둘 다 "가기 전에 본다"는 같은 일이라 한 줄에 세운다.
    좁은 화면에서는 접혀 위아래가 되는데, 그때도 gap이 간격을 잡아 준다. */
-.go-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 가기 구역(지도·네이버). 머리글 없는 섹션이라 상단선이 경계를 선다. */
+.go-row {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
 /* 한글은 기본으로 글자 단위로 끊긴다. keep-all이라야 "보 / 기"가 안 생긴다. */
 .go-row .more { flex: 1 1 140px; width: auto; word-break: keep-all; }
 /* 링크에만 테두리가 있어서 나란히 서면 버튼이 1px 낮았다. 자리만 잡아 준다. */
@@ -540,9 +554,12 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .gu-picker > summary:hover, .gu-picker > summary:focus-visible { color: var(--text-primary); outline: none; }
 .gu-picker[open] > summary { margin-bottom: 8px; }
 
+/* 섹션 머리. 선 위 12px + 선 아래 12px = 24px 리듬이 카드 전체의 박자다.
+   .todo·.asking처럼 자체 테두리 카드인 블록에는 선을 더하지 않는다. 이중
+   액자가 된다. */
 .facts-h {
   font-size: var(--fs-small); color: var(--text-muted); font-weight: 500;
-  margin: 16px 0 6px; padding-top: 12px; border-top: 1px solid var(--border);
+  margin: 12px 0 6px; padding-top: 12px; border-top: 1px solid var(--border);
 }
 .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 14px;
          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
@@ -954,7 +971,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .todo ol { margin: 0; padding-left: 20px; }
 /* 판정 아래로 올라온 확인 목록. 이 앱이 답하지 못하는 부분이라 문장을 먼저 낸다. */
 .todo-lead { margin: 0 0 10px; font-size: var(--fs-sub); color: var(--text-secondary); line-height: 1.65; }
-.checklist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
+.checklist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
 .checklist li { display: grid; gap: 2px; padding-left: 14px; position: relative; }
 .checklist li::before {
   content: ''; position: absolute; left: 0; top: 8px;
@@ -966,7 +983,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
    한눈에 서야 해서, 접히는 것은 설명뿐이다. */
 .checklist summary {
   font-size: var(--fs-sub); font-weight: 650; color: var(--text-primary);
-  cursor: pointer; list-style: none; padding: 3px 0; min-height: 30px;
+  cursor: pointer; list-style: none; padding: 2px 0; min-height: 30px;
   display: flex; align-items: center; gap: 6px;
 }
 .checklist summary::-webkit-details-marker { display: none; }
@@ -1051,7 +1068,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 }
 .deal-more:hover, .deal-more:focus-visible { color: var(--text-primary); }
 
-.save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+/* 갈무리 구역(비교함·지킴이·공유). 같은 상단선 문법이다. */
+.save-row {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
 .save-row .cmp-btn { margin: 0; }
 
 .cmp-btn {
