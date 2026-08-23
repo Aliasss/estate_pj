@@ -112,6 +112,115 @@ def parse_coords(row: dict) -> tuple[float, float] | None:
     return round(lat, 5), round(lon, 5)
 
 
+# 대학 API가 좌표를 안 주므로 주소를 좌표로 바꾼다. JUSO 2단계(검색 -> 좌표)와
+# 좌표 역변환은 geocode.py의 것을 그대로 쓴다. 같은 승인 키, 같은 규율이다.
+# 인천은 김포·부천·시흥 접경, 충북은 이천 장호원 건너 감곡면(극동대·강동대)이
+# 반경 2km 안에 실재해서 넣는다(CTO 실측). "경상"은 둘째 글자에서 갈려 안 걸린다.
+UNIV_SIDO = ("서울", "경기", "인천", "충북", "충청북도")
+# 죽은 키·막힌 망 앞에서 러너 시간을 태우지 않는다. geocode.py와 같은 규율.
+UNIV_MAX_CONSECUTIVE_FAILURES = 15
+
+
+def geocode_univs(urows: list[dict]) -> list[list[float]] | None:
+    import geocode as geo
+
+    coord_key = os.environ.get("JUSO_CONFM_KEY", "").strip()
+    search_key = os.environ.get("JUSO_SEARCH_KEY", "").strip() or coord_key
+    if not coord_key:
+        print("대학: JUSO 키가 없어 지오코딩을 건너뜁니다 (미수집)", file=sys.stderr)
+        return None
+
+    # 같은 캠퍼스의 대학원·분리 행이 주소를 공유한다. 주소로 중복을 걷지 않으면
+    # 한 캠퍼스가 여러 점이 되어 "대학 N곳"이 부풀려진다. 지번이 검색에 안 잡히는
+    # 외곽 캠퍼스(산 지번·리 단위)가 계통적으로 빠지지 않게 도로명을 2차로 둔다.
+    addrs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for row in urows:
+        sido = str(row.get("ctpvNm", "")).strip()
+        if not sido.startswith(UNIV_SIDO):
+            continue
+        jibun = str(row.get("lctnLotnoAddr") or "").strip()
+        road = str(row.get("lctnRoadNmAddr") or "").strip()
+        addr = jibun or road
+        if not addr or addr in seen:
+            continue
+        seen.add(addr)
+        addrs.append((addr, road if road and road != addr else ""))
+    if not addrs:
+        print("대학: 수도권 주소가 한 건도 없습니다 (미수집)", file=sys.stderr)
+        return None
+
+    session = requests.Session()
+    throttle = geo.Throttle(5.0)
+
+    def lookup(keyword: str) -> list[float] | None:
+        """좌표 한 건. 주소 없음은 None, 호출 실패는 예외 — 둘은 다르게 센다."""
+        last: Exception | None = None
+        for attempt in range(4):
+            try:
+                throttle.wait()
+                found = geo._juso_get(session, geo.SEARCH_ENDPOINT, {
+                    "confmKey": search_key, "keyword": keyword,
+                    "currentPage": 1, "countPerPage": 1, "resultType": "json",
+                }, 15)
+                rows = found.get("juso") or []
+                if not rows:
+                    return None                  # 주소 없음. 재시도할 일이 아니다.
+                j = rows[0]
+                throttle.wait()
+                res = geo._juso_get(session, geo.COORD_ENDPOINT, {
+                    "confmKey": coord_key, "admCd": j["admCd"], "rnMgtSn": j["rnMgtSn"],
+                    "udrtYn": j["udrtYn"], "buldMnnm": j["buldMnnm"],
+                    "buldSlno": j["buldSlno"], "resultType": "json",
+                }, 15)
+                crows = res.get("juso") or []
+                if not crows or not crows[0].get("entX"):
+                    return None
+                lon, lat = geo._tm_inverse(float(crows[0]["entX"]), float(crows[0]["entY"]))
+                return [round(lat, 5), round(lon, 5)]
+            except Exception as exc:
+                last = exc
+                if attempt < 3:
+                    if "E0007" in str(exc):      # 속도제한은 길게 물러난다
+                        time.sleep(2.0 * (attempt + 1))
+                    else:
+                        time.sleep(1)
+        raise RuntimeError(f"4회 실패: {describe(last)}")
+
+    pts: list[list[float]] = []
+    nohit = fail = streak = 0
+    for addr, road in addrs:
+        try:
+            got = lookup(addr)
+            if got is None and road:
+                got = lookup(road)               # 지번이 안 잡히면 도로명으로 한 번 더
+            streak = 0
+        except Exception:
+            fail += 1
+            streak += 1
+            if streak >= UNIV_MAX_CONSECUTIVE_FAILURES:
+                # 개별 주소가 아니라 키나 망이 죽은 것이다. 남은 주소에 시간을
+                # 태우면 같은 job의 본 지오코딩 예산을 잠식한다.
+                print(f"대학: 연속 {streak}회 호출 실패 — 접속 문제로 보고 접습니다 (미수집)",
+                      file=sys.stderr)
+                return None
+            continue
+        if got is None:
+            nohit += 1
+        else:
+            pts.append(got)
+
+    print(f"대학 지오코딩: 수도권 고유 주소 {len(addrs)}건 중 "
+          f"좌표 {len(pts)} · 주소 없음 {nohit} · 실패 {fail}")
+    # 성공률이 낮으면 자료가 아니라 사고다. 반쪽짜리를 실으면 "대학 없음"이
+    # 거짓이 되는 물건이 생긴다. 미수집으로 남기는 쪽이 정직하다.
+    if len(pts) < len(addrs) * 0.7 or len(pts) < 50:
+        print(f"대학: 지오코딩 성공 {len(pts)}/{len(addrs)}건이라 싣지 않습니다 (미수집)",
+              file=sys.stderr)
+        return None
+    return pts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="학교 위치 수집")
     parser.add_argument("--out", default="schools.json")
@@ -158,6 +267,11 @@ def main() -> int:
     # 실패를 삼키되, 그 경우 "u"를 None으로 저장한다. 빈 목록으로 저장하면
     # 조인이 모든 물건에 대학 0을 세고 화면이 신촌 앞에서도 "대학 없음"을
     # 단정한다. 미수집과 0은 다르다.
+    #
+    # 8/23 실측: 이 API는 좌표 필드가 아예 없고 주소만 준다(1,995행 전부).
+    # 그래서 대학만 주소를 JUSO로 지오코딩한다. 조인 반경이 2km라 서울·경기
+    # 물건과 만날 수 있는 대학만 있으면 되고, 접경(인천)까지 넣어 경계의
+    # 김포·부천·시흥 물건이 인천 대학을 놓치지 않게 한다.
     try:
         urows = fetch_all(key, UNIV, "대학")
         u_no = 0
@@ -169,7 +283,9 @@ def main() -> int:
                 u_no += 1
         if u_no:
             print(f"대학 좌표 없음/이상 {u_no}건 제외")
-        if len(coords["u"]) < 200:
+        if not coords["u"] and urows:
+            coords["u"] = geocode_univs(urows)
+        elif len(coords["u"]) < 200:
             # 전국 대학·전문대는 캠퍼스까지 4백 곳 안팎이다. 그 절반도 안 되면
             # 좌표 필드 미매칭이거나 절단이다. 키 이름만 찍는다 — 값은 안 찍는다.
             print(f"대학: 좌표 확보 {len(coords['u'])}건뿐 (수신 {len(urows)}건) — "
