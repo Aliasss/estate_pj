@@ -394,7 +394,7 @@ export default function Finder({ guNames, region = '11' }) {
           <select value={deal} onChange={(e) => setDeal(e.target.value)}>
             {DEAL_KINDS.filter(([v]) => v !== 'w' || hasNw).map(([v, label]) => (
               <option key={v || 'all'} value={v}>
-                {v === '' ? '전체 (전세·매매·월세)' : `${label} 신고 있음`}
+                {v === '' ? '전체' : `${label} 신고 있음`}
               </option>
             ))}
           </select>

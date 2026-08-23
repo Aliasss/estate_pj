@@ -425,6 +425,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* "어떻게 계산했나요" 접힘. 접혀 있어도 summary가 근거의 요약을 말한다.
    경고 어절(인근 추정치·직거래)은 판정을 흔드는 정보라 접힌 상태에도 보인다. */
 .calc { margin: 12px 0 0; }
+/* 공유 링크가 죽었을 때의 부재 상태. 맨몸 한 줄은 지나치기 쉽다. */
+.notfound {
+  margin: 10px 0; padding: 10px 12px; font-size: var(--fs-sub);
+  background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--r-md);
+}
 .calc summary {
   cursor: pointer; list-style: none; font-size: var(--fs-small);
   color: var(--text-secondary); padding: 9px 12px; min-height: 38px;
@@ -432,7 +437,15 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
 }
 .calc summary::-webkit-details-marker { display: none; }
-.calc summary::after { content: '＋'; margin-left: auto; color: var(--text-muted); padding-left: 8px; }
+/* 마커는 절대 위치로 세로 중앙에 박는다. flex 흐름에 두면 summary가 두 줄일 때
+   마커가 마지막 줄로 굴러떨어져 deal-fold와 위치가 어긋난다(320px 실측). */
+.calc summary { position: relative; padding-right: 32px; }
+.calc summary::after {
+  content: '＋'; position: absolute; right: 12px; top: 50%;
+  transform: translateY(-50%); color: var(--text-muted);
+}
+/* 메타 조각(· 매매 3건)은 어절째 접힌다. 둘째 줄이 가운뎃점으로 시작하면 깨져 보인다. */
+.calc summary > span { white-space: nowrap; }
 .calc[open] summary::after { content: '－'; }
 .calc-body { padding: 10px 12px 0; }
 .calc-body p { font-size: var(--fs-small); color: var(--text-secondary); line-height: 1.6; margin: 0 0 10px; }
@@ -452,6 +465,11 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 
 /* 리포트 카드의 주소 줄. 판정이 헤드라인이라 문맥은 13px로 조용히 선다. */
 .card .sub.sub-tight { font-size: var(--fs-small); margin-top: 2px; }
+
+/* 한국어 어절은 중간에서 부러지지 않는다. 넘칠 때만 부러진다(320px 규격). */
+button, .asking b, .cond label > span, .u-meta, .checklist b {
+  word-break: keep-all; overflow-wrap: anywhere;
+}
 
 /* ※ 각주. 값에 대한 방법 해설은 본문에 서지 못한다. 데이터(13px)보다 작아야 한다. */
 .fn { font-size: var(--fs-tiny); color: var(--text-muted); line-height: 1.55; margin: 8px 0 0; }
@@ -526,6 +544,8 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px; margin: 6px 0 12px;
 }
+/* 홀수 개일 때 마지막 반 폭 셀이 홀로 남지 않게 전폭으로 편다. */
+.cond > label:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .cond label {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: 0 6px; background: var(--surface-0); border: 1px solid var(--border);
@@ -543,14 +563,26 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 /* 단위(억·평)가 붙는 칸은 '1fr auto' 두 열을 쓰고 select 칸은 첫 열만 써서,
    열 간격 6px만큼 오른쪽 끝이 어긋나 있었다(실측 필드 우단 141 대 단위 우단 147).
    select는 두 열을 다 쓰게 해 안쪽 오른쪽 끝을 맞춘다. */
-.cond select { appearance: none; grid-column: 1 / -1; }
+.cond select {
+  appearance: none; grid-column: 1 / -1; padding-right: 22px;
+  /* appearance:none만 하면 셀렉트라는 단서가 없다. 정렬 셀렉트와 같은 셰브런. */
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23887f6e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+}
 
 .gu-picker { margin: 0 0 10px; }
 .gu-picker > summary {
-  font-size: var(--fs-sub); color: var(--text-secondary); padding: 8px 10px; min-height: 36px;
+  font-size: var(--fs-sub); color: var(--text-secondary); padding: 8px 32px 8px 10px; min-height: 36px;
   background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--r-md);
-  cursor: pointer; list-style-position: inside;
+  cursor: pointer; list-style: none; position: relative;
 }
+.gu-picker > summary::-webkit-details-marker { display: none; }
+/* 유일하게 남아 있던 브라우저 기본 ▶ 마커. 리포트 접힘의 ＋와 같은 언어로. */
+.gu-picker > summary::after {
+  content: '＋'; position: absolute; right: 10px; top: 50%;
+  transform: translateY(-50%); color: var(--text-muted);
+}
+.gu-picker[open] > summary::after { content: '－'; }
 .gu-picker > summary:hover, .gu-picker > summary:focus-visible { color: var(--text-primary); outline: none; }
 .gu-picker[open] > summary { margin-bottom: 8px; }
 
@@ -704,6 +736,14 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .pkg-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .pkg-price { font-weight: 700; font-size: var(--fs-num); font-variant-numeric: tabular-nums; }
 .pkg-price small { font-weight: 400; color: var(--text-muted); font-size: var(--fs-tiny); margin-left: 4px; }
+/* 유일한 유료 CTA가 화면에서 가장 작은 버튼이었다(실측 34px, 보조 알약).
+   저장 줄 44px보다 한 단 위인 48px 전폭 브랜드 채움으로 세운다. 잉크 채움은
+   "지도로 보기"가 이미 쓰는 무채색이라 색 규율 안이다. */
+.pkg .cmp-btn {
+  width: 100%; justify-content: center; min-height: 48px; margin: 4px 0 0;
+  font-size: var(--fs-sub); font-weight: 600; border-radius: var(--r-md);
+  background: var(--brand); border-color: var(--brand); color: var(--on-brand);
+}
 .pkg-detail { margin-top: 12px; }
 /* 실제로 내밀 문장의 예시. 인용이라 들여쓰고 색을 낮춘다. */
 .pkg-quote {
@@ -823,7 +863,7 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
   display: grid; place-items: center; font-size: var(--fs-body); line-height: 1;
   background: var(--surface-0); border: 1px solid var(--border); color: var(--text-muted);
 }
-.law-sec.open .law-caret { background: var(--series-1); border-color: var(--series-1); color: var(--surface-0); }
+.law-sec.open .law-caret { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .law-lead { margin: 5px 0 0; font-size: var(--fs-sub); line-height: 1.6; color: var(--text-muted); }
 
 /* --- 용어 사전 --- */
@@ -1013,8 +1053,10 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .nohit > p:last-child { margin-bottom: 0; }
 .nohit a { color: var(--series-1); text-decoration: underline; text-underline-offset: 2px; }
 
-.checklist a { display: block; margin-top: 3px; font-size: var(--fs-small); color: var(--series-1);
-               text-decoration: underline; text-underline-offset: 2px; }
+/* 외부 링크의 파랑(series-1)을 잉크 밑줄로. 색은 데이터의 것이고 ↗가 이미
+   외부행을 말한다. .law-body a 등 다른 파랑 링크는 남아 있다. 후속에 같이 걷는다. */
+.checklist a { display: block; margin-top: 3px; font-size: var(--fs-small); color: inherit;
+               text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── 하단 탭바. 엄지가 닿는 곳에 두고, 화면 위 탭 줄을 없앴다 ── */
 .app { padding-bottom: 104px; }
@@ -1068,12 +1110,17 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 }
 .deal-more:hover, .deal-more:focus-visible { color: var(--text-primary); }
 
-/* 갈무리 구역(비교함·지킴이·공유). 같은 상단선 문법이다. */
+/* 갈무리 구역(비교함·지킴이·공유). 같은 상단선 문법이다.
+   행동 버튼은 세로로 쌓아 전폭으로 편다. 좌측에 뭉친 알약 세 개는
+   장식처럼 읽히고 엄지 표적도 32px로 좁았다. 44px가 표적 규격이다. */
 .save-row {
-  display: flex; flex-wrap: wrap; gap: 8px;
+  display: flex; flex-direction: column; gap: 8px;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
 }
-.save-row .cmp-btn { margin: 0; }
+.save-row .cmp-btn {
+  margin: 0; width: 100%; justify-content: center; min-height: 44px;
+  border-radius: var(--r-md); font-size: var(--fs-sub);
+}
 
 .cmp-btn {
   display: inline-flex; align-items: center; gap: 4px; margin: 0 0 4px;

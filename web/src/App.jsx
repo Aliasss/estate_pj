@@ -288,7 +288,7 @@ export default function App() {
       </header>
 
       {tab === 'verify' && (
-        <Verify guNames={view.guNames} region={region} onNearby={() => setTab('nearby')} />
+        <Verify guNames={view.guNames} region={region} onRegion={setRegion} onNearby={() => setTab('nearby')} />
       )}
 
       {/* 동네. 인사이트는 같은 대상(동네)을 통계로 보는 갈래라 여기 산다. */}

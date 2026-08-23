@@ -25,7 +25,7 @@ const eok = (m) => (m == null ? '-' : m >= 10000 ? `${(m / 10000).toFixed(2)}억
  */
 
 
-export default function Verify({ guNames, region = '11', onNearby }) {
+export default function Verify({ guNames, region = '11', onNearby, onRegion }) {
   const fin = useFinder(region)
   const { byRow, byId } = useUnitLoader()
   const [q, setQ] = useState('')
@@ -83,15 +83,21 @@ export default function Verify({ guNames, region = '11', onNearby }) {
 
   // 공유 링크로 들어온 경우. 검색 없이 바로 그 물건을 편다.
   useEffect(() => {
-    if (fin.status !== 'ready') return
     const raw = new URLSearchParams(location.search).get('u')
     if (!raw) return
     const [lawd, id] = raw.split('.')
     if (!lawd || !id) return
+    // 공유 링크의 지역이 헤더 토글과 다르면 토글이 따라온다. 리포트와 헤더가
+    // 서로 다른 지역을 말하면, 이어서 하는 검색이 소리 없이 빈손이 된다.
+    // ready를 기다리지 않고 먼저 돌린다. 경기 링크인데 서울 finder부터 다
+    // 받고 버리는 일이 없게.
+    const reg = lawd.slice(0, 2)
+    if (onRegion && REGIONS[reg] && reg !== region) { onRegion(reg); return }
+    if (fin.status !== 'ready') return
     byId(lawd, id)
       .then((u) => setOpen(u ? { lawd, u } : { error: '그 물건을 찾지 못했습니다' }))
       .catch((e) => setOpen({ error: e.message }))
-  }, [fin.status, byId])
+  }, [fin.status, byId, region, onRegion])
 
   // 뒤로가기·앞으로가기가 리포트를 닫고 연다. pushState만 하고 popstate를 안 들으면
   // 모바일에서 리포트를 벗어나는 기본 동작이 무시되고, 한 번 더 누르면 앱을 나가 버린다.
@@ -220,7 +226,7 @@ export default function Verify({ guNames, region = '11', onNearby }) {
 
       {fin.status !== 'ready' && <p className="muted-line">불러오는 중…</p>}
 
-      {open?.error && <p className="muted-line critical">{open.error}</p>}
+      {open?.error && <p className="notfound">{open.error}</p>}
 
       {open?.u && (
         <>

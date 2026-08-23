@@ -453,7 +453,7 @@ function GuardAdd({ u, lawd, guard }) {
   if (!openForm) {
     return (
       <button className="cmp-btn" onClick={() => setOpenForm(true)}>
-        + 보증금 지킴이 등록
+        보증금 지킴이 등록
       </button>
     )
   }
@@ -876,7 +876,7 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
             )}
             {u.direct_share > 0
               ? <span className="serious"> · 직거래 {pct0(u.direct_share)}</span>
-              : u.n_sale_24m ? ` · 매매 ${u.n_sale_24m}건` : ''}
+              : u.n_sale_24m ? <span> · 매매 {u.n_sale_24m}건</span> : ''}
           </summary>
           <div className="calc-body">
             <p>
@@ -964,7 +964,7 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
           {compare && (
             <button className="cmp-btn" aria-pressed={compare.has(u.id)}
                     onClick={() => compare.toggle(lawd, u.id, u.name || u.jibun)}>
-              {compare.has(u.id) ? '✓ 비교함에 담김' : '+ 비교함에 담기'}
+              {compare.has(u.id) ? '✓ 비교함에 담김' : '비교함에 담기'}
             </button>
           )}
           {guard && <GuardAdd u={u} lawd={lawd} guard={guard} />}
