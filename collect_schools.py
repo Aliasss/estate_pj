@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 
 import requests
 
@@ -107,10 +108,16 @@ def main() -> int:
     parser.add_argument("--out", default="schools.json")
     args = parser.parse_args()
 
-    key = os.environ.get("MOLIT_SERVICE_KEY")
+    key = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
     if not key:
         print("MOLIT_SERVICE_KEY가 없습니다", file=sys.stderr)
         return 2
+    # 시크릿에는 포털의 인코딩 키가 들어 있다. requests가 params를 다시
+    # 인코딩하므로 그대로 주면 이중 인코딩이 되어 게이트웨이가 403을 준다.
+    # 8/23 실측: 같은 실행에서 정찰(unquote 함)은 resultCode 00, 이 수집기
+    # (안 함)는 HTTP 403이었다. collect_bldg·probe와 같은 규칙으로 푼다.
+    if "%" in key:
+        key = urllib.parse.unquote(key)
 
     coords: dict[str, list[list[float]]] = {"e": [], "m": [], "h": [], "u": []}
 
