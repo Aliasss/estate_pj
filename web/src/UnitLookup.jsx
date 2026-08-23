@@ -844,7 +844,7 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
         </div>
         <div>
           <dt>갱신 시</dt>
-          <dd className={u.renew_hike != null && u.renew_hike < -0.05 ? 'serious' : ''}>
+          <dd className={u.renew_hike != null && u.renew_hike <= -0.05 ? 'serious' : ''}>
             {signed(u.renew_hike)}
           </dd>
         </div>

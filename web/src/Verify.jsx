@@ -4,6 +4,7 @@ import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
 import { NoJeonseSig, UnitCard, questionsFor, ratioBroken, ratioTone } from './UnitLookup.jsx'
 import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
+import { rowComment } from './rowcomment.js'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -284,6 +285,11 @@ export default function Verify({ guNames, region = '11', onNearby }) {
                       </>
                     )}
                   </span>
+                  {(() => {
+                    const c = rowComment({ stage: d.stages[col.stage[i]], ht: col.ht[i], ns: col.ns[i],
+                      nj: col.nj[i], ratio: col.ratio[i], by: col.apr[i] ?? col.by[i], hike: col.hike[i] })
+                    return c && <span className="u-note">{c}</span>
+                  })()}
                 </button>
               </li>
             ))}

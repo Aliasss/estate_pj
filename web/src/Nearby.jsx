@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView, { MapLegend } from './MapView.jsx'
 import { meters, sigLabel } from './Finder.jsx'
-import { NoJeonseSig, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
+import { NoJeonseSig, RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 import { DEAL_KINDS, REGIONS, hasDeal, htName, useCompare, useFinder, useGuard, useSubway, useUnitLoader } from './units.js'
+import { rowComment } from './rowcomment.js'
 
 /**
  * 임장 중 내 주변. 확인 탭 검색창 아래의 진입 버튼으로 들어온다.
@@ -405,10 +406,22 @@ export default function Nearby({ guNames, region = '11', onRegion }) {
                 {col.jeonse[i] == null ? <NoJeonseSig ns={col.ns[i]} nw={col.nw[i]} sale={col.sale[i]} /> : (
                   <>
                     <em>{eok(col.jeonse[i])}</em>
-                    <small>{col.ratio[i] != null ? `전세가율 ${pct0(col.ratio[i])}` : '판정 보류'}</small>
+                    {/* 깨진 값(1.5 이상)을 거르지 않으면 "전세가율 167%" 밑에
+                        "판단을 보류했습니다" 코멘트가 서서 한 행이 자기모순이 된다.
+                        Finder와 같은 게이트, 같은 말을 쓴다. */}
+                    <small className={col.ratio[i] >= RATIO_BROKEN ? 'muted' : ratioTone(col.ratio[i])}>
+                      {col.ratio[i] == null ? '전세가율 비교 불가'
+                        : col.ratio[i] >= RATIO_BROKEN ? '전세가율 판단 보류'
+                        : `전세가율 ${d.stages[col.stage[i]] === 'A' ? '' : '약 '}${pct0(col.ratio[i])}`}
+                    </small>
                   </>
                 )}
               </span>
+              {(() => {
+                const c = rowComment({ stage: d.stages[col.stage[i]], ht: col.ht[i], ns: col.ns[i],
+                  nj: col.nj[i], ratio: col.ratio[i], by: col.apr[i] ?? col.by[i], hike: col.hike[i] })
+                return c && <span className="u-note">{c}</span>
+              })()}
             </button>
             {inline && on && open.loading && <p className="muted-line">불러오는 중…</p>}
             {inline && on && open.error && <p className="warnline">{open.error}</p>}

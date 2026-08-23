@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { NoJeonseSig, RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
 import { DEAL_KINDS, hasDeal, htName, meters, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
+import { rowComment } from './rowcomment.js'
 
 /**
  * 조건 검색. 선택한 지역(서울·경기) 전체에서 내 조건에 맞는 집을 추린다.
@@ -515,14 +516,20 @@ export default function Finder({ guNames, region = '11' }) {
         </select>
       </div>
 
-      <p className="muted-line">
-        조건에 맞는 물건이 <strong>{hits.length.toLocaleString()}개</strong> 있습니다.
-        {sort === 'ratio' && ' 전세가율이 높은 물건부터 옵니다. 순위나 추천이 아니라 한 가지 값의 순서이고, 이 건물 매매 사례가 없으면 인근 추정치라 "약"이 붙습니다.'}
-        {/* 전세 없는 건물이 실제로 실려 있을 때만 말한다. 아직 전세만 담긴
-            데이터가 배포된 동안에는 아무것도 아닌 것을 설명하게 된다. */}
-        {sort === 'ratio' && deal !== 'j' && dealCount.j < d.n
-          && ' 전세 신고가 없거나 비교 기준이 깨진 건물은 잴 수 없으므로 맨 뒤에 옵니다'}
+      {/* 결과 수가 이 화면의 결론이다. 필터 결과라는 실측이므로 금지선 밖이고,
+          한 화면에 큰 숫자는 이것 하나다. */}
+      <p className="hit-line">
+        <em className="hit-num">{hits.length.toLocaleString()}개</em>가 조건에 맞습니다.
       </p>
+      {sort === 'ratio' && (
+        <p className="muted-line">
+          전세가율이 높은 물건부터 옵니다. 순위나 추천이 아니라 한 가지 값의 순서이고, 이 건물 매매 사례가 없으면 인근 추정치라 "약"이 붙습니다.
+          {/* 전세 없는 건물이 실제로 실려 있을 때만 말한다. 아직 전세만 담긴
+              데이터가 배포된 동안에는 아무것도 아닌 것을 설명하게 된다. */}
+          {deal !== 'j' && dealCount.j < d.n
+            && ' 전세 신고가 없거나 비교 기준이 깨진 건물은 잴 수 없으므로 맨 뒤에 옵니다'}
+        </p>
+      )}
 
       {/* 좌표 0%에서 지도 탭은 "물건 핀 0개"만 보여 준다. 만든 것만 못한 화면이라
           좌표가 붙기 시작하면 자동으로 나타나게 한다. MapView 코드는 그대로 산다. */}
@@ -586,6 +593,11 @@ export default function Finder({ guNames, region = '11' }) {
                   </>
                 )}
               </span>
+              {(() => {
+                const c = rowComment({ stage: d.stages[col.stage[i]], ht: col.ht[i], ns: col.ns[i],
+                  nj: col.nj[i], ratio: col.ratio[i], by: col.apr[i] ?? col.by[i], hike: col.hike[i] })
+                return c && <span className="u-note">{c}</span>
+              })()}
             </button>
             {open?.key === key && (
               open.u ? (
