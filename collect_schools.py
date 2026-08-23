@@ -55,7 +55,11 @@ def first_key(row: dict, cands: tuple[str, ...]) -> str | None:
 
 
 def fetch_all(key: str, url: str, what: str) -> list[dict]:
-    """표준데이터 공통 봉투 {response:{header,body:{items,totalCount}}}를 끝까지 넘긴다."""
+    """표준데이터 봉투를 끝까지 넘긴다.
+
+    8/23 실측(정찰 응답 원문): 이 API는 {header, body}가 최상위다.
+    {response:{...}}로 감싸는 다른 data.go.kr API를 가정했다가 resultCode가
+    None으로 읽혀 죽었다. 두 형태를 다 받는다."""
     rows: list[dict] = []
     page = 1
     while True:
@@ -64,7 +68,8 @@ def fetch_all(key: str, url: str, what: str) -> list[dict]:
         }, timeout=30)
         res.raise_for_status()
         try:
-            body = res.json().get("response", {})
+            j = res.json()
+            body = j.get("response", j)
         except ValueError:
             # 활용신청 전이면 XML 오류문이 온다. 본문에 키가 되비칠 수 있어 가린다.
             raise RuntimeError(f"{what}: JSON이 아님 — {scrub(res.text)[:200]}")
@@ -74,6 +79,10 @@ def fetch_all(key: str, url: str, what: str) -> list[dict]:
             raise RuntimeError(f"{what}: [{code}] {scrub(msg)[:160]}")
         payload = body.get("body", {})
         batch = payload.get("items") or []
+        if isinstance(batch, dict):
+            # 8/23 실측: 이 API는 items가 {"item": [...]} 꼴이다. 그대로 감싸면
+            # items dict 하나가 행 하나가 되어 버린다.
+            batch = batch.get("item", batch)
         if isinstance(batch, dict):            # 1건이면 dict로 오는 API가 있다
             batch = [batch]
         rows.extend(batch)
