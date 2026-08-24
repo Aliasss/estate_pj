@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInsights } from './Insight.jsx'
 import { fdTrack } from './fakedoor.js'
-import { PKG_REPORT_ITEMS, PKG_GUARD_ITEMS } from './UnitLookup.jsx'
+import { RPT_ITEMS, RPT_ITEM_BLDG } from './UnitLookup.jsx'
 
 /**
  * 서비스 소개. 기존 앱들이 간과하는 것, 우리가 다른 이유, 핵심 기능, 그리고
@@ -53,7 +53,7 @@ const REFUSALS = [
  *  준비 중임을 밝히고, 관심(출시 알림 신청)만 익명으로 센다. */
 function PkgPlan() {
   const [wait, setWait] = useState(() => {
-    try { return !!localStorage.getItem('nec-pkg-wait') } catch { return false }
+    try { return !!localStorage.getItem('nec-rpt-wait') } catch { return false }
   })
   const boxRef = useRef(null)
   useEffect(() => {
@@ -73,28 +73,25 @@ function PkgPlan() {
   }, [])
   const onWait = () => {
     fdTrack('about_notify')
-    try { localStorage.setItem('nec-pkg-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
+    try { localStorage.setItem('nec-rpt-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
     setWait(true)
   }
   return (
     <section className="card" ref={boxRef}>
-      <h2>준비하고 있는 것 · 계약 패키지</h2>
+      <h2>준비하고 있는 것 · 이 집 사실 리포트</h2>
       <p className="sub">
-        계약하는 날 한 번 결제하면, 중개사와 집주인에게 내밀 수 있는 협상 근거
-        문서를 바로 받고 계약 후 2년 동안 감시가 이어지는 유료 상품을 준비하고
-        있습니다. 아직 출시 전이며, 지금은 관심을 익명 숫자로만 세어 출시를
+        매수를 검토하는 분께, 그 건물의 실거래와 공적 장부의 사실만 모은 한 부의
+        문서를 준비하고 있습니다. 오를지 내릴지는 저희가 알 수 없어 적지
+        않습니다. 아직 출시 전이며, 지금은 관심을 익명 숫자로만 세어 출시를
         결정하는 단계입니다
       </p>
       <div className="about-item">
-        <b>협상 근거 문서</b>
-        <span>{PKG_REPORT_ITEMS.join(', ')}. 감정이 아니라 실거래로 말하게
-        해 드리는 것이 이 문서의 쓰임입니다.</span>
+        <b>리포트에 담기는 것</b>
+        <span>{[...RPT_ITEMS, RPT_ITEM_BLDG].join(', ')} 등. 물건에 따라
+        담기는 항목이 다릅니다. 전망이나 추천은 한 줄도 없습니다. 반박할 수
+        있는 사실만 드리는 것이 이 문서의 쓰임입니다.</span>
       </div>
-      <div className="about-item">
-        <b>2년 감시</b>
-        <span>{PKG_GUARD_ITEMS.join(', ')}.</span>
-      </div>
-      <p className="sub">예상 가격은 19,900원, 한 번 결제입니다. 지금 보시는
+      <p className="sub">예상 가격은 14,900원, 한 번 결제입니다. 지금 보시는
         판정과 근거는 출시와 무관하게 계속 무료입니다</p>
       {wait
         ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>

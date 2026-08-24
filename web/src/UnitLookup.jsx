@@ -466,7 +466,7 @@ function GuardAdd({ u, lawd, guard }) {
       </label>
       <p>보증금과 만기일을 등록하면, 데이터가 갱신될 때마다 이 건물의 새 위험
          신호와 만기 일정을 계약 전 확인 탭에서 알려드립니다. 두 값 모두 이
-         기기에만 저장됩니다.</p>
+         기기에만 저장되며, 등록이 일어났다는 익명 숫자만 집계됩니다.</p>
       <div className="guard-form">
         <span className="asking-in">
           <input inputMode="decimal" placeholder="보증금" value={dep} aria-label="보증금 (억)"
@@ -479,8 +479,13 @@ function GuardAdd({ u, lawd, guard }) {
         </span>
         <button className="cmp-btn" disabled={!ok}
                 onClick={() => {
-                  if (guard.add(lawd, u, amt, exp)) setOpenForm(false)
-                  else setFull(true)
+                  if (guard.add(lawd, u, amt, exp)) {
+                    // 등록이 일어났다는 사실만 센다. unit_id를 실으면 "어느
+                    // 건물에 계약했나"가 기기 밖으로 나가 폼의 "이 기기에만
+                    // 저장됩니다" 약속과 충돌한다(CTO 리뷰). cid도 없다.
+                    fdTrack('guard_reg', null, null)
+                    setOpenForm(false)
+                  } else setFull(true)
                 }}>
           등록
         </button>
@@ -638,52 +643,35 @@ function Actions({ tone, u }) {
 
 /** 계약 패키지 가짜 문. 실제 결제는 없다 — 관심을 익명으로 세어 유료화를
  *  결정한다(수익 모델 v2 검증). 누르면 준비 중임을 바로 정직하게 밝힌다. */
-const PKG_PRICE = 19900
+const RPT_PRICE = 14900
 
-/** 리포트·감시에 담기는 것. 카드의 상세와 소개 탭이 같은 내용을 말해야 한다.
- *  읽고 마는 자료가 아니라 계약 자리에서 내밀 수 있는 문서로 쓴다. 세입자가
- *  감정이 아니라 실거래로 말하게 하는 것이 이 상품의 쓰임이다. */
-export const PKG_REPORT_ITEMS = [
-  '이 물건에서 요구할 수 있는 실거래 근거',
-  '계약 자리에서 물어볼 질문',
+/** 사실 리포트에 담기는 것. 카드의 상세와 소개 탭이 같은 내용을 말해야 한다.
+ *  전망이나 추천은 한 줄도 없다. 파는 것은 "이 특정 거래에서 손해 보지
+ *  않는가"를 실거래와 대장의 사실로 확인해 주는 한 부의 문서다. 항목은
+ *  물건마다 실제로 낼 수 있는 것만 문구에 올린다 — 없는 데이터를 목록에
+ *  적으면 그 줄이 거짓말이 된다. */
+export const RPT_ITEMS = [
+  '최근 2년 실거래 전체 이력과 매매 가격대',
+  '보고 온 호가를 이 건물 실거래와 견주는 검증',
   '등기부등본에서 확인할 목록',
-  '계약서에 넣어 달라고 할 특약 문구',
 ]
-export const PKG_GUARD_ITEMS = [
-  '실거래 전량을 만기까지 상시 감시',
-  '내 보증금보다 낮은 신규 전세 즉시 경보',
-  '갱신요구권 통보 기한 등 만기 일정 알림',
-]
+export const RPT_ITEM_BLDG = '건축물대장 원문 사실 (위반건축물 표기, 구조, 승강기, 주차)'
+// 지형과 역은 파이프라인이 따로라 독립적으로 빠진다(경사만 있고 역이 먼 물건,
+// 그 반대). 한 항목으로 묶으면 절반이 거짓인 줄이 생겨서 게이트를 따로 건다.
+export const RPT_ITEM_TERRAIN = '언덕 여부와 주변 경사'
+export const RPT_ITEM_STN = '역까지 도보, 지하철로 닿는 업무지구 통근 시간'
 
-/**
- * 협상 문서에 들어갈 한 문장. 예시를 지어내지 않고 이 물건의 실제 값으로 만든다.
- * 물건 카드 안에서 남의 숫자를 보여 주면 자기 물건 값으로 읽힌다.
- *
- * 요구할 수 있는 것이 물건마다 다르다. 시세를 확인할 수 없는 집에 보증금 조정을
- * 말하는 건 근거가 없고, 안전한 집이라도 권리 설정 특약은 누구에게나 필요하다.
- */
-function pkgQuote(u) {
-  if (!u.n_sale_24m) {
-    return '이 건물은 최근 2년 매매 신고가 없어 시세를 확인할 수 없습니다. '
-      + '보증보험 가입이 불가하면 계약을 해제하고 계약금을 반환한다는 특약을 넣어 주시기 바랍니다.'
-  }
-  const r = ratioBroken(u.ratio) ? null : u.ratio
-  if (u.stage === 'A' && u.n_sale_24m >= 3 && r != null && r >= 0.8) {
-    return `이 건물 최근 2년 실거래 ${u.n_sale_24m}건 기준 전세가율이 ${pct0(r)}입니다. `
-      + '보증금 조정이나 보증보험 가입 가능 조건을 계약서에 넣어 주시기 바랍니다.'
-  }
-  return '잔금일 다음 날까지 근저당 등 권리를 설정하지 않는다는 특약을 넣어 주시기 바랍니다. '
-    + '위반 시 계약 해제와 손해배상 조건도 함께 요청합니다.'
-}
-
-// 출시 전 반드시 할 것: 유상으로 개별 물건에 맞춘 문서에 계약 조항을 담으면
-// 성격이 달라진다. 조항은 표준 예문으로만 유지하고, 문서에 법·제도 카드와 같은
-// "법률 자문이 아닙니다 / 대한법률구조공단 132" 고지를 넣고, 법률 검토를 한 번 받는다.
-function PkgOffer({ u }) {
+// 출시 전 반드시 할 것: 문서에 계약 조항이나 법 절차 안내를 담으면 성격이
+// 달라진다. 사실(실거래·대장)만 담고, "법률 자문이 아닙니다 / 대한법률구조공단
+// 132" 고지를 넣고, 출시 전 법률 검토를 한 번 받는다.
+// 위반건축물 표기는 현 수집 파이프라인에 없는 필드다. 출시 시 건당 대장
+// 원문(표제부)을 열람해 채우는 절차가 상품 원가에 들어간다 — 채우지 못하면
+// 이 항목을 문구에서 빼야 한다.
+function FactReportOffer({ u }) {
   // idle(제안만) -> detail(자세히 펼침) -> applied(준비 중 공개)
   const [stage, setStage] = useState('idle')
   const [wait, setWait] = useState(() => {
-    try { return !!localStorage.getItem('nec-pkg-wait') } catch { return false }
+    try { return !!localStorage.getItem('nec-rpt-wait') } catch { return false }
   })
   // view는 "카드가 열림"이 아니라 "제안이 실제로 화면에 보임"을 센다.
   // 카드가 길어서 여기까지 스크롤하지 않은 사람을 노출로 치면 클릭률이 왜곡된다.
@@ -691,12 +679,12 @@ function PkgOffer({ u }) {
   useEffect(() => {
     const el = boxRef.current
     if (!el || typeof IntersectionObserver === 'undefined') {
-      fdTrack('view', u.id, PKG_PRICE)
+      fdTrack('view', u.id, RPT_PRICE)
       return
     }
     const io = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) {
-        fdTrack('view', u.id, PKG_PRICE)
+        fdTrack('view', u.id, RPT_PRICE)
         io.disconnect()
       }
     }, { threshold: 0.5 })
@@ -704,23 +692,31 @@ function PkgOffer({ u }) {
     return () => io.disconnect()
   }, [u.id])
   const onWait = () => {
-    fdTrack('notify', u.id, PKG_PRICE)
-    try { localStorage.setItem('nec-pkg-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
+    fdTrack('notify', u.id, RPT_PRICE)
+    try { localStorage.setItem('nec-rpt-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
     setWait(true)
   }
+  // 항목은 이 물건에서 실제로 낼 수 있는 것만 문구에 올린다. 대장이 없는
+  // 물건에 "건축물대장 원문"을 적으면 그 줄이 거짓말이 된다.
+  const items = [
+    ...RPT_ITEMS,
+    ...(hasBldgData(u) ? [RPT_ITEM_BLDG] : []),
+    ...(u.slope != null ? [RPT_ITEM_TERRAIN] : []),
+    ...(u.walk != null ? [RPT_ITEM_STN] : []),
+  ]
   return (
     <div className="pkg" ref={boxRef}>
-      <b>계약 패키지 · 협상 근거와 2년 감시</b>
+      <b>매수를 검토 중이신가요 · 이 집 사실 리포트</b>
       <p>
-        보증금을 조정하거나 특약을 요구하려면 근거가 필요합니다. 이 건물의
-        실거래로 만든 협상 근거를 한 부의 문서로 드립니다. 중개사와 집주인에게
-        그대로 보여 주실 수 있고, 계약 후 2년 동안은 감시가 이어집니다.
+        이 건물의 실거래와 공적 장부의 사실만 모아 한 부의 문서로 드립니다.
+        오를지 내릴지는 저희가 알 수 없어 적지 않습니다. 부동산에서 들으신
+        호가가 이 건물 실거래와 얼마나 다른지도 여기서 확인하실 수 있습니다.
       </p>
       <div className="pkg-row">
-        <span className="pkg-price">{PKG_PRICE.toLocaleString()}원 <small>한 번 결제</small></span>
+        <span className="pkg-price">{RPT_PRICE.toLocaleString()}원 <small>한 번 결제</small></span>
         {stage === 'idle' && (
-          <button className="cmp-btn" onClick={() => { fdTrack('click', u.id, PKG_PRICE); setStage('detail') }}>
-            패키지 신청하기
+          <button className="cmp-btn" onClick={() => { fdTrack('click', u.id, RPT_PRICE); setStage('detail') }}>
+            리포트 신청하기
           </button>
         )}
       </div>
@@ -728,17 +724,10 @@ function PkgOffer({ u }) {
         <div className="pkg-detail">
           <b>리포트에 담기는 것</b>
           <ul className="pkg-list">
-            {PKG_REPORT_ITEMS.map((t) => <li key={t}>{t}</li>)}
-          </ul>
-          <p className="pkg-quote">
-            이 물건이라면 이렇게 씁니다. &ldquo;{pkgQuote(u)}&rdquo;
-          </p>
-          <b>2년 감시가 하는 일</b>
-          <ul className="pkg-list">
-            {PKG_GUARD_ITEMS.map((t) => <li key={t}>{t}</li>)}
+            {items.map((t) => <li key={t}>{t}</li>)}
           </ul>
           {stage === 'detail' && (
-            <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, PKG_PRICE); setStage('applied') }}>
+            <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, RPT_PRICE); setStage('applied') }}>
               신청하기
             </button>
           )}
@@ -750,8 +739,8 @@ function PkgOffer({ u }) {
           <b>아직 준비 중인 기능입니다</b>
           <p>
             지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
-            관심은 익명으로 집계되어 출시를 결정하는 근거가 됩니다. 판정 근거는
-            지금도 이 화면에서 전부 무료로 보실 수 있습니다.
+            관심은 익명으로 집계되어 출시를 결정하는 근거가 됩니다. 판정과
+            실거래 근거는 지금도 이 화면에서 전부 무료로 보실 수 있습니다.
           </p>
           {wait
             ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>
@@ -972,7 +961,10 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
         </div>
       )}
 
-      <PkgOffer u={u} />
+      {/* v3 가짜 문은 매매 신고가 있는 물건에만 선다. 매매 밴드가 성립해야
+          리포트 항목이 참이고, 이 자리의 클릭률이 곧 "트래픽 중 매수 의도
+          비율"의 첫 계기판이다(docs/수익모델-검토-2026-08.md). */}
+      {u.n_sale_24m > 0 && <FactReportOffer u={u} />}
     </div>
   )
 }
