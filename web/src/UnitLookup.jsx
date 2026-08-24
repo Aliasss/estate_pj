@@ -3,7 +3,7 @@ import { CHECKLIST, RATIO_BROKEN, eok, latestRate, pct0, ratioBroken, useRates, 
 // 판정과 금액 표기는 units.js에 산다. 서버 함수(공유 카드)도 같은 것을 써야 해서
 // JSX 밖으로 옮겼다. 두 벌이 되면 화면과 공유 카드가 다른 말을 하게 된다.
 export { RATIO_BROKEN, eok, pct0, ratioBroken }
-import { fdTrack } from './fakedoor.js'
+import { GUARD2_VARIANT, fdTrack } from './fakedoor.js'
 import { naverSearchUrl, placeQuery } from './navermap.js'
 
 const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -800,9 +800,14 @@ function FactReportOffer({ u }) {
             {items.map((t) => <li key={t}>{t}</li>)}
           </ul>
           {stage === 'detail' && (
-            <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, RPT_PRICE); setStage('applied') }}>
-              신청하기
-            </button>
+            <>
+              {/* cid 고지는 apply가 발화하는 이 화면에 있어야 한다. 누른 뒤에
+                  보여주는 고지는 고지가 아니다(CTO 리뷰). */}
+              <p className="muted-line">신청을 누르시면 기기 단위의 익명 번호와 함께 집계됩니다.</p>
+              <button className="cmp-btn" onClick={() => { fdTrack('apply', u.id, RPT_PRICE); setStage('applied') }}>
+                신청하기
+              </button>
+            </>
           )}
         </div>
       )}
@@ -814,6 +819,100 @@ function FactReportOffer({ u }) {
             지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
             관심은 익명으로 집계되어 출시를 결정하는 근거가 됩니다. 판정과
             실거래 근거는 지금도 이 화면에서 전부 무료로 보실 수 있습니다.
+          </p>
+          {wait
+            ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>
+            : <button className="more" onClick={onWait}>출시되면 알려주세요</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 임대차 2년권 가짜 문(v4). 지킴이에 등록된 물건의 카드에만 선다 — 계약을
+ *  마친 임차인이 이 상품의 대상이라서다. 실제 결제는 없다.
+ *  이 문의 이벤트에는 unit_id를 싣지 않는다(fakedoor.js의 GUARD2_VARIANT 주석
+ *  참조). 그래서 세션당 view 1회 집계도 물건이 아니라 문 단위인데, 지킴이
+ *  등록 상한이 4개라 실질 차이는 없다.
+ *  파는 것은 전달의 보장성뿐이다. 신호의 내용은 무료 지킴이와 같아야 하고,
+ *  무료를 깎아서 유료를 세우는 문구는 한 줄도 넣지 않는다. */
+const G2_PRICE = 9900
+function Guard2yrOffer() {
+  // idle(제안만) -> detail(자세히 펼침) -> applied(준비 중 공개)
+  const [stage, setStage] = useState('idle')
+  const [wait, setWait] = useState(() => {
+    try { return !!localStorage.getItem('nec-g2-wait') } catch { return false }
+  })
+  // view는 "제안이 실제로 화면에 보임"만 센다. FactReportOffer와 같은 규칙.
+  const boxRef = useRef(null)
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      fdTrack('view', null, G2_PRICE, GUARD2_VARIANT)
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        fdTrack('view', null, G2_PRICE, GUARD2_VARIANT)
+        io.disconnect()
+      }
+    }, { threshold: 0.5 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  const onWait = () => {
+    fdTrack('notify', null, G2_PRICE, GUARD2_VARIANT)
+    try { localStorage.setItem('nec-g2-wait', '1') } catch { /* 표시용 플래그일 뿐 */ }
+    setWait(true)
+  }
+  return (
+    <div className="pkg" ref={boxRef}>
+      <b>지킴이에 등록하신 분께 · 임대차 2년권</b>
+      <p>
+        무료 지킴이는 앱을 여실 때 이 기기가 확인합니다. 2년권은 데이터가
+        갱신될 때마다 서버가 등록 건물을 다시 계산해, 앱을 열지 않아도
+        알림으로 먼저 챙겨 보내드립니다. 알림의 내용은 무료 지킴이와 같고,
+        서버가 먼저 보낸다는 점만 다릅니다.
+      </p>
+      <div className="pkg-row">
+        <span className="pkg-price">{G2_PRICE.toLocaleString()}원 <small>계약 만기까지, 한 번 결제</small></span>
+        {stage === 'idle' && (
+          <button className="cmp-btn" onClick={() => { fdTrack('click', null, G2_PRICE, GUARD2_VARIANT); setStage('detail') }}>
+            2년권 신청하기
+          </button>
+        )}
+      </div>
+      {stage !== 'idle' && (
+        <div className="pkg-detail">
+          <b>2년권이 하는 일</b>
+          <ul className="pkg-list">
+            <li>데이터가 갱신될 때마다 서버가 등록 건물을 다시 계산합니다</li>
+            <li>새 위험 신호와 만기 일정을 갱신 즉시 알림으로 보냅니다</li>
+            <li>앱을 열지 않아도 받으실 수 있습니다. 아이폰은 홈 화면에 설치하고
+              알림을 허용하시면 됩니다</li>
+            <li>서버에는 익명 푸시 토큰과 건물, 보증금 기준선, 만기일만 갑니다.
+              무료 지킴이는 지금처럼 이 값들을 기기 밖으로 보내지 않습니다</li>
+          </ul>
+          {stage === 'detail' && (
+            <>
+              {/* cid 고지는 apply가 발화하는 이 화면에 있어야 한다. 누른 뒤에
+                  보여주는 고지는 고지가 아니다(CTO 리뷰). */}
+              <p className="muted-line">신청을 누르시면 기기 단위의 익명 번호와 함께 집계됩니다.</p>
+              <button className="cmp-btn" onClick={() => { fdTrack('apply', null, G2_PRICE, GUARD2_VARIANT); setStage('applied') }}>
+                신청하기
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {stage === 'applied' && (
+        <div className="pkg-note">
+          {/* 기기 번호(cid)는 이 화면의 이벤트에만 실린다. 이 고지가 그 근거다. */}
+          <b>아직 준비 중인 기능입니다</b>
+          <p>
+            지금은 수요를 확인하는 단계라 결제가 열려 있지 않습니다. 눌러 주신
+            관심은 익명으로 집계되어 출시를 결정하는 근거가 됩니다. 무료
+            지킴이는 지금도 등록만으로 작동하고 있습니다.
           </p>
           {wait
             ? <p className="muted-line">출시되면 이 기기의 앱 화면에서 알려드리겠습니다.</p>
@@ -1037,8 +1136,17 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
 
       {/* v3 가짜 문은 매매 신고가 있는 물건에만 선다. 매매 밴드가 성립해야
           리포트 항목이 참이고, 이 자리의 클릭률이 곧 "트래픽 중 매수 의도
-          비율"의 첫 계기판이다(docs/수익모델-검토-2026-08.md). */}
-      {u.n_sale_24m > 0 && <FactReportOffer u={u} />}
+          비율"의 첫 계기판이다(docs/수익모델-검토-2026-08.md).
+          지킴이에 등록된 카드에서는 억제한다. 등록한 사람은 이 집의 매수
+          검토자가 아니라고 스스로 밝힌 사람이고, 무엇보다 v3b 이벤트(unit_id
+          있음)와 v4 이벤트(없음)가 같은 스크롤 프레임에 인접 타임스탬프로
+          꽂히면 "어느 건물에 계약이 있나"가 상관으로 복원된다(CTO 리뷰). */}
+      {u.n_sale_24m > 0 && !guard?.has(u.id) && <FactReportOffer u={u} />}
+
+      {/* v4 가짜 문은 지킴이에 등록된 물건에만 선다. 등록이 계약의 신호라
+          "계약 직후~입주"라는 2년권의 결제 시점과 겹치고, 매매 기록이 없어
+          v3가 서지 못하는 물건(서울 65%·경기 52%)도 이 문은 커버한다. */}
+      {guard?.has(u.id) && <Guard2yrOffer />}
     </div>
   )
 }
