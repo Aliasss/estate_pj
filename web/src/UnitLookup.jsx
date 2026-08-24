@@ -512,8 +512,11 @@ function Asking({ u, pctOf }) {
   if (amt > 0) {
     lines = []
     if (max != null) {
+      // 목록이 상한(전세 15건)에 잘린 물건에서 "최근 2년 어느 계약보다"는
+      // 검증 안 된 주장이다. 상한 밖의 더 높은 계약이 있었는지 모른다.
+      const scope = rows.length >= DEAL_CAPS.j ? `실린 최근 ${rows.length}건의` : '최근 2년'
       if (amt > max) {
-        lines.push(<span key="m">이 건물 최근 2년 어느 전세 계약보다 높습니다
+        lines.push(<span key="m">이 건물 {scope} 어느 전세 계약보다 높습니다
           (최고 {eok(max)} 대비 <strong className="critical">+{Math.round((amt / max - 1) * 100)}%</strong>).
           내릴 근거가 충분합니다.</span>)
       } else if (u.med_jeonse && amt > u.med_jeonse) {
@@ -557,6 +560,75 @@ function Asking({ u, pctOf }) {
         : lines
           ? <p className="muted-line">이 건물에는 견줄 전세·매매 실거래가 없습니다. 같은 동 비슷한 평형과 견주시려면 동네 탭에서 조건으로 찾아 보세요.</p>
           : <p className="muted-line">매물에서 본 보증금을 넣으면 이 건물의 실제 계약과 견줘 드립니다.</p>}
+    </div>
+  )
+}
+
+/**
+ * 보고 온 매매 호가 검증. 보증금 검증과 같은 문법의 매수판이다. 호가는
+ * 사용자가 부동산에서 들은 값을 직접 넣는다 — 매물 크롤링 없이 성립한다.
+ * 전망은 말하지 않는다. 실거래와의 거리라는 사실만 말한다. 견줄 매매가
+ * 없는 물건에서는 아예 서지 않는다 — 입력만 받고 아무 말도 못 하는 폼은
+ * 없느니만 못하다.
+ */
+function AskingSale({ u }) {
+  const [raw, setRaw] = useState('')
+  const amt = raw === '' || isNaN(Number(raw)) ? null : Math.round(Number(raw) * 10000)
+  const rows = u.deals?.s ?? []
+  if (!rows.length && !u.med_sale) return null
+  const amounts = rows.map((r) => r[1])
+  const max = amounts.length ? Math.max(...amounts) : null
+  // 목록이 상한(매매 10건)에 잘린 물건에서 "어느 계약보다"는 검증 안 된 주장이다.
+  const scope = rows.length >= DEAL_CAPS.s ? `실린 최근 ${rows.length}건의` : '최근 2년'
+
+  let lines = null
+  if (amt > 0) {
+    lines = []
+    if (max != null) {
+      if (amt > max) {
+        lines.push(<span key="m">이 건물 {scope} 어느 매매 계약보다 높습니다
+          (최고 {eok(max)} 대비 <strong className="critical">+{Math.round((amt / max - 1) * 100)}%</strong>).
+          실거래가 협상의 근거가 됩니다.</span>)
+      } else if (u.med_sale && amt > u.med_sale) {
+        lines.push(<span key="m">이 건물 매매 중위 {eok(u.med_sale)}보다 높고,{' '}
+          {scope} 최고 {eok(max)} 아래입니다.</span>)
+      } else if (u.med_sale) {
+        lines.push(<span key="m">이 건물 매매 중위 {eok(u.med_sale)} 이하입니다.
+          실거래 대비 무리한 호가가 아닙니다.</span>)
+      } else {
+        lines.push(<span key="m">{scope} 최고 {eok(max)} 아래입니다.</span>)
+      }
+      const latest = rows[0]
+      lines.push(<span key="l"> 가장 최근 매매는 {String(latest[0]).slice(2, 4)}.{String(latest[0]).slice(4, 6)}의 {eok(latest[1])}입니다.</span>)
+    } else if (u.med_sale) {
+      // 현 빌드에서는 도달 불가다(med_sale이 있으면 deals.s가 비지 않는다,
+      // build_units.py:366). 데이터 모양이 바뀌는 날의 안전망으로만 둔다.
+      lines.push(<span key="m">이 건물 매매 중위는 {eok(u.med_sale)}입니다.</span>)
+    }
+    // 표본이 얇으면 그 사실이 판단의 일부다. 세 건으로 만든 중위는 세 건짜리다.
+    // 확정 0건(잠정 계약만 실린 물건)도 얇음이다. 게이트로 잠정만으로도
+    // critical이 나갈 수 있는데, 그때 경고가 빠지면 한 건짜리 근거가 조용해진다.
+    if ((u.n_sale_24m ?? 0) < 3) {
+      lines.push(<span key="n"> {u.n_sale_24m
+        ? `최근 2년 매매가 ${u.n_sale_24m}건뿐이라 표본이 얇습니다.`
+        : ' 확정 집계에 든 매매가 아직 없어 잠정 계약만으로 견줬습니다.'}</span>)
+    }
+  }
+
+  return (
+    <div className="asking">
+      <label>
+        <b>보고 온 호가 검증</b>
+        <span className="asking-in">
+          <input type="number" inputMode="decimal" step="0.1" min="0" placeholder="예: 3.5"
+                 value={raw} onChange={(e) => setRaw(e.target.value)}
+                 aria-label="보고 온 매매 호가(억)" />
+          <em>억</em>
+        </span>
+      </label>
+      {lines?.length
+        ? <p>{lines}</p>
+        : <p className="muted-line">부동산에서 들으신 매매 호가를 넣으면 이 건물의 실제 계약과 견줘 드립니다.</p>}
     </div>
   )
 }
@@ -652,7 +724,7 @@ const RPT_PRICE = 14900
  *  적으면 그 줄이 거짓말이 된다. */
 export const RPT_ITEMS = [
   '최근 2년 실거래 전체 이력과 매매 가격대',
-  '보고 온 호가를 이 건물 실거래와 견주는 검증',
+  '보고 온 호가와 실거래의 차이를 날짜와 함께 지면에 남긴 기록',
   '등기부등본에서 확인할 목록',
 ]
 export const RPT_ITEM_BLDG = '건축물대장 원문 사실 (위반건축물 표기, 구조, 승강기, 주차)'
@@ -709,8 +781,9 @@ function FactReportOffer({ u }) {
       <b>매수를 검토 중이신가요 · 이 집 사실 리포트</b>
       <p>
         이 건물의 실거래와 공적 장부의 사실만 모아 한 부의 문서로 드립니다.
-        오를지 내릴지는 저희가 알 수 없어 적지 않습니다. 부동산에서 들으신
-        호가가 이 건물 실거래와 얼마나 다른지도 여기서 확인하실 수 있습니다.
+        오를지 내릴지는 저희가 알 수 없어 적지 않습니다. 호가 검증은 위에서
+        무료로 하실 수 있고, 리포트는 그 결과를 날짜와 함께 문서로 남겨
+        협상 자리에서 내밀 수 있게 해 드립니다.
       </p>
       <div className="pkg-row">
         <span className="pkg-price">{RPT_PRICE.toLocaleString()}원 <small>한 번 결제</small></span>
@@ -911,6 +984,7 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
       )}
 
       <Asking u={u} pctOf={pctOf} />
+      <AskingSale u={u} />
 
       <Actions tone={v.tone} u={u} />
 

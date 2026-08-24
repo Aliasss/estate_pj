@@ -50,7 +50,10 @@ const CARRIES_CID = new Set(['apply', 'notify', 'about_notify']) // 고지 화�
 // 14,900원으로. v2까지의 실측(8일, apply 기기 3대)은 문구가 아니라 상품이
 // 문제라는 판단의 근거다. 이 variant의 클릭률은 상품 매력과 동시에
 // "트래픽 중 매수 의도 비율"을 처음 재는 계기판이기도 하다.
-const VARIANT = 'v3-fact-report'
+// v3b: 호가 검증이 무료 기능으로 화면에 서면서, 리포트 항목을 "검증 자체"에서
+// "검증 결과의 날짜 박힌 기록"으로 재정의했다(2026-08-24). 같은 클릭의 뜻이
+// 달라졌으므로 통을 가른다.
+const VARIANT = 'v3b-fact-report'
 // 세션당 1회만 세는 이벤트. click도 포함한다 — 카드를 닫았다 열 때마다 세면
 // cid 없는 click은 서버에서 걸러낼 수도 없어 view 대비 비율이 부풀어 오른다.
 const ONCE = new Set(['view', 'about_view', 'click'])
