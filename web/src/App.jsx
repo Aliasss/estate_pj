@@ -11,6 +11,7 @@ import Verify from './Verify.jsx'
 import Insight from './Insight.jsx'
 import About from './About.jsx'
 import Wordmark from './Wordmark.jsx'
+import ReportDoc from './ReportDoc.jsx'
 import { REGIONS, ratioBroken, usePop, useRates, ym as ymKo } from './units.js'
 
 const PYEONG = 3.305785
@@ -243,6 +244,14 @@ export default function App() {
     }).reverse()
     return { rows, d1Label: '전반기' }
   }, [volumes, volGran, data])
+
+  // 사실 리포트 문서 화면. UI 어디에서도 링크하지 않는다. 결제 전의 유료
+  // 상품 본체라, 링크를 걸면 가짜 문이 재는 지불 의사가 오염된다. 검토용.
+  // err 검사보다 먼저 둔다. 문서는 tier1을 안 쓰므로 그 로드 실패에 죽으면 안 된다.
+  const rptRaw = new URLSearchParams(location.search).get('rpt')
+  if (rptRaw) {
+    return <ReportDoc raw={rptRaw} ask={new URLSearchParams(location.search).get('ask')} />
+  }
 
   if (err) return <main className="app"><p>데이터를 불러오지 못했습니다: {err}</p></main>
   if (!data || !view) return <main className="app"><p style={{ color: 'var(--text-muted)' }}>불러오는 중…</p></main>

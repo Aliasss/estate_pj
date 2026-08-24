@@ -160,7 +160,8 @@ export function useUnitLoader() {
     const g = await load(lawd)
     const i = g.cols.indexOf('id')
     const row = g.rows.find((r) => r[i] === id)
-    return row ? withSiblings(g, toObject(g, row)) : null
+    // _build는 세대 표식(확정월-수집시각). 리포트 문서가 데이터 기준일을 밝히는 데 쓴다.
+    return row ? { ...withSiblings(g, toObject(g, row)), _build: g.build } : null
   }, [load])
 
   return { byRow, byId }

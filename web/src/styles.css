@@ -1326,3 +1326,59 @@ button, .asking b, .cond label > span, .u-meta, .checklist b {
 .nearby-entry svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--text-muted); }
 .nearby-entry b { color: var(--text-primary); font-weight: 650; }
 .nearby-entry:hover { border-color: var(--text-muted); }
+
+
+/* ── 이 집 사실 리포트 문서 (?rpt=). 화면과 지면(A4) 겸용. 판매 전 검토용. ── */
+.report {
+  max-width: 680px; margin: 0 auto; padding: 28px 20px 60px;
+  background: var(--surface-0); color: var(--text-primary); min-height: 100vh;
+  position: relative; line-height: 1.6;
+}
+.rpt-watermark {
+  position: absolute; top: 10px; right: 16px;
+  font-size: var(--fs-small); font-weight: 700; color: var(--warning);
+  border: 1px solid var(--warning); border-radius: var(--r-sm); padding: 3px 8px;
+}
+.rpt-brand { margin: 0; font-size: var(--fs-small); color: var(--text-muted); }
+.rpt-head h1 { margin: 4px 0 2px; font-size: 24px; }
+.rpt-addr { margin: 0; font-size: var(--fs-sub); color: var(--text-secondary); }
+.rpt-meta { margin: 8px 0 0; font-size: var(--fs-tiny); color: var(--text-muted); }
+.report section { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
+.report h2 { margin: 0 0 8px; font-size: var(--fs-num); }
+.rpt-deals h3 { margin: 10px 0 4px; font-size: var(--fs-sub); }
+.rpt-deals h3 small { font-weight: 400; color: var(--text-muted); }
+.rpt-deals table, .rpt-kv { border-collapse: collapse; width: 100%; font-size: var(--fs-small); }
+.rpt-deals td, .rpt-kv th, .rpt-kv td {
+  padding: 4px 8px 4px 0; border-bottom: 1px dashed var(--border); text-align: left;
+  font-variant-numeric: tabular-nums; vertical-align: top;
+}
+.rpt-kv th { width: 42%; font-weight: 600; color: var(--text-secondary); }
+.rpt-kv td small { color: var(--text-muted); margin-left: 6px; }
+.rpt-amt { font-weight: 600; }
+.rpt-fn { margin: 8px 0 0; font-size: var(--fs-tiny); color: var(--text-muted); line-height: 1.55; }
+.rpt-check { margin: 0; padding-left: 18px; font-size: var(--fs-small); display: grid; gap: 7px; }
+.rpt-check b { display: block; }
+.rpt-check small { color: var(--text-muted); }
+.rpt-foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); }
+.rpt-foot p { font-size: var(--fs-tiny); color: var(--text-muted); line-height: 1.6; margin: 0 0 8px; }
+.rpt-print { margin-top: 18px; }
+
+@media print {
+  /* 지면에서는 화면 장식을 걷는다. 워터마크는 판매 전이라 지면에도 남긴다.
+     팔레트는 라이트로 못박는다. 다크 인쇄가 브라우저 휴리스틱에 걸리면
+     흰 종이에 크림 글자가 나온다. :root[data-theme='dark']를 이기려면
+     특이도 (0,2,0)이 필요해 두 선택자를 나란히 둔다(파일 끝이라 순서로도 이긴다). */
+  :root, :root[data-theme='dark'] {
+    color-scheme: light;
+    --surface-0: #fff; --border: #e7dfcc; --warning: #8a610b;
+    --text-primary: #191613; --text-secondary: #4c463a; --text-muted: #70675a;
+  }
+  body { background: #fff; }
+  .report { max-width: none; padding: 0; min-height: 0; box-shadow: none; }
+  /* absolute는 1페이지에만 찍힌다. fixed는 인쇄에서 매 페이지에 반복된다.
+     2페이지부터 워터마크 없는 지면이 나가면 판매 전 규율이 뚫린다. */
+  .rpt-watermark { position: fixed; top: 0; right: 0; }
+  .rpt-print { display: none; }
+  .report section { break-inside: avoid; }
+  .rpt-deals table { break-inside: auto; }
+}

@@ -136,7 +136,7 @@ const floorText = (f) => (f == null ? '-' : f <= 0 ? '반지하' : `${f}층`)
 // 전송량 때문에 종류별 최근 몇 건만 싣는다. build_units.py의 DEAL_CAPS와 같은 값.
 // 상한에 닿은 목록은 "6건"이 아니라 "최근 6건"으로 말해야 한다. 거래가 잦은
 // 건물에서 "6건"은 전부처럼 읽혀서, 실제로 있는 계약이 없는 것처럼 보인다.
-const DEAL_CAPS = { j: 15, s: 10, w: 12 }
+export const DEAL_CAPS = { j: 15, s: 10, w: 12 }
 
 /* 그룹마다 처음 몇 건만 펴 둔다. 전세 15 · 매매 10 · 월세 12건까지 실려서
    다 펴면 표만 1,313px이고 카드 3,800px의 3분의 1이다. 그렇다고 통째로 감추면
@@ -305,7 +305,7 @@ function Wolse({ deals, jeonse }) {
  * 못 가는 역(그래프가 끊긴 구간)은 그 목적지만 빠진다. 억지로 숫자를 만드느니
  * 말하지 않는 편이 낫다.
  */
-function commuteText(stations, u) {
+export function commuteText(stations, u) {
   const table = stations?.commute
   if (!table || u.stn == null || u.walk == null) return null
   const parts = []
@@ -665,7 +665,7 @@ function ShareBtn({ lawd, id }) {
 
 /** 대장에서 오는 열 전체로 판정한다. 일부만 보면 "층수는 보이는데 대장은
  *  수집 전"이라는 자기모순 화면이 나온다. BuildingFacts와 같은 목록을 쓴다. */
-const hasBldgData = (u) =>
+export const hasBldgData = (u) =>
   [u.apr, u.strct, u.hhld, u.flr, u.elvt, u.park, u.n_dong].some((x) => x != null)
 
 /**
