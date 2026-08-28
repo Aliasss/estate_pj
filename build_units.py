@@ -437,8 +437,12 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
         index.append({"lawd_cd": lawd, "n_units": len(rows), "bytes": size})
 
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
+        # bldg_at / bldg_remaining은 화면이 대장 갱신일과 지연을 말하는 근거다.
+        # bldg_rows와 달리 재조인 판단에는 안 쓴다(bldg_join.state 주석 참고).
         json.dump({"window": [recent_start, complete_end], "gu": index,
-                   "bldg_rows": registry.n, "sch_hit": schools.hit}, fh, ensure_ascii=False)
+                   "bldg_rows": registry.n, "sch_hit": schools.hit,
+                   "bldg_at": registry.at, "bldg_remaining": registry.remaining},
+                  fh, ensure_ascii=False)
 
     prefixes = sorted({lawd[:2] for lawd in by_gu})
     for pref in prefixes:

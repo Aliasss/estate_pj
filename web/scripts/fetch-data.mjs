@@ -213,6 +213,10 @@ async function buildInsights(tier1) {
   const fin11 = await readJson(path.join(outDir, 'units', 'finder-11.json'))
     ?? await readJson(path.join(outDir, 'units', 'finder.json'))
   const fin41 = await readJson(path.join(outDir, 'units', 'finder-41.json'))
+  // 대장 갱신일과 잔여. build_units.py가 index.json에 남긴다. 옛 아카이브에는
+  // 없어서 undefined로 온다. 그때 화면은 아무 말도 하지 않는다.
+  const uidx = await readJson(path.join(outDir, 'units', 'index.json'))
+  out.bldg = { at: uidx?.bldg_at ?? null, remaining: uidx?.bldg_remaining ?? null }
   if (fin11) {
     const n = (fin11.n ?? 0) + (fin41?.n ?? 0)
     // 두 산출물의 확정월이 갈리면 화면마다 다른 달을 말하게 된다. 빌드에서 알린다.
@@ -234,7 +238,12 @@ async function buildInsights(tier1) {
     }
     out.freshness.push({
       key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 밤 수집 · 끝나는 대로 반영',
-      asof: null, note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
+      // asof는 비운다. 대장은 월 단위 자료가 아니라 누적 수집이고, 그 시점은
+      // out.bldg 한 곳에만 둔다. 여기에도 얹으면 화면이 날짜와 지연 판정을
+      // 서로 다른 출처에서 읽게 되어, 둘이 어긋나는 날 "기준일은 없는데
+      // 12일째"처럼 자기모순을 낸다(QA).
+      asof: null,
+      note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
     })
     // 좌표 커버리지: lat 열이 붙은 비율. 지형(표고·경사)은 좌표 있는 지번에 함께 결합된다.
     let geo = 0

@@ -4,6 +4,7 @@ import { CHECKLIST, RATIO_BROKEN, eok, latestRate, pct0, ratioBroken, useRates, 
 // JSX 밖으로 옮겼다. 두 벌이 되면 화면과 공유 카드가 다른 말을 하게 된다.
 export { RATIO_BROKEN, eok, pct0, ratioBroken }
 import { GUARD2_VARIANT, fdTrack } from './fakedoor.js'
+import { useInsights } from './Insight.jsx'
 import { naverSearchUrl, placeQuery } from './navermap.js'
 
 const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
@@ -924,6 +925,9 @@ function Guard2yrOffer() {
 }
 
 export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
+  // 대장 잔여. 0이면 수집이 끝났다는 뜻이라 안 붙은 물건은 영영 안 붙는다.
+  // useInsights는 모듈 프라미스라 카드마다 새로 받지 않는다.
+  const bldgDone = useInsights().data?.bldg?.remaining === 0
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   const nq = placeQuery(lawd, guNames?.[lawd], u.umd, u.jibun)
@@ -955,14 +959,23 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
       </div>
 
       {/* 건축물대장이 없으면 준공·세대수·구조·승강기·주차가 통째로 빈다. 경기는
-          아직 0%라 그쪽 이용자에게는 늘 비어 있다. 전에는 그 사실이 카드
+          아직 절반이라 그쪽 이용자에게는 자주 비어 있다. 전에는 그 사실이 카드
           3,733px 아래에 14px 회색으로만 있어서, 화면이 조용한 것을 "그런 건물"로
-          읽게 만들었다. 판정 바로 옆에서 밝힌다. */}
+          읽게 만들었다. 판정 바로 옆에서 밝힌다.
+
+          "아직 수집 전"은 곧 온다는 약속이다. 수집이 끝나면 거짓이 된다. 안 붙은
+          물건은 조회했는데 응답이 비었거나 지번이 대장 형식으로 안 풀린 것이라,
+          그때부터는 기다려도 영영 안 채워진다. 잔여가 0인지를 보고 말을 바꾼다.
+          잔여를 모르면(옛 산출물) 약속하지 않는 쪽 문장을 쓴다. */}
       {!hasBldgData(u) && (
         <p className="muted-line">
-          이 건물은 <strong>건축물대장이 아직 수집 전</strong>이라 준공·세대수·구조·승강기·주차를
-          보여 드리지 못합니다. 위 판정은 실거래만으로 낸 것이고, 건물 자체의 문제는
-          여기서 알 수 없습니다. 정부24에서 무료로 발급받아 확인하실 수 있습니다.
+          이 건물은 {bldgDone
+            ? <><strong>건축물대장이 붙지 않았습니다</strong>. 대장 수집은 끝났으므로
+              기다려도 채워지지 않습니다. </>
+            : <><strong>건축물대장이 아직 붙지 않아</strong> </>}
+          준공·세대수·구조·승강기·주차를 보여 드리지 못합니다. 위 판정은 실거래만으로
+          낸 것이고, 건물 자체의 문제는 여기서 알 수 없습니다. 정부24에서 무료로
+          발급받아 확인하실 수 있습니다.
         </p>
       )}
 

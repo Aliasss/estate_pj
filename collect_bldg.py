@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS buildings (
 );
 CREATE INDEX IF NOT EXISTS idx_bldg_addr ON buildings (lawd_cd, umd_nm, bun, ji);
 
+CREATE TABLE IF NOT EXISTS bldg_meta (
+    k TEXT PRIMARY KEY,
+    v TEXT
+);
+
 CREATE TABLE IF NOT EXISTS bldg_log (
     lawd_cd    TEXT NOT NULL,
     bjdong_cd  TEXT NOT NULL,
@@ -503,8 +508,60 @@ def main() -> int:
     plan = [t for t in targets(args.rt_db, lawd_filter, load_bjdong_map(args.bjdong_map))
             if t[:5] not in done]
     print(f"조회 대상 {len(plan):,}건 (완료 {len(done):,}건)")
+    # 잔여를 남긴다. 화면이 "대장이 며칠 멈췄다"를 말할 때 이 값이 0이면 멈춘
+    # 것이 아니라 다 받은 것이다. 둘을 못 가르면 완주하는 날부터 없는 장애를
+    # 매일 알리게 된다.
+    #
+    # 여기서 쓰는 것은 회차가 죽었을 때 남는 보수적인 바닥값이다. 진짜 값은
+    # 루프가 끝난 뒤 write_remaining()이 다시 센다. 시작값만 남기면 안 되는
+    # 이유가 있다. 마지막 수집 회차는 잔여 N으로 시작해 N건을 다 받고 끝나므로
+    # N을 남긴다. 0은 그 다음 회차가 써야 하는데, 그 회차는 계획이 비어 한 행도
+    # 안 늘리고, buildings.yml의 발행 가드가 "새로 적재된 동도 새로 조회한
+    # 지번도 없으면 자산을 그대로 둔다"이므로 그 0은 러너와 함께 사라진다.
+    # 영원히. 게다가 실거래가 매주 새 지번을 얹어 잔여가 다시 생기므로, 화면은
+    # 주 나흘씩 "며칠째 새로 받은 것이 없습니다"를 거짓으로 말하게 된다(CTO).
+    # 끝에 다시 세면 마지막 수집 회차가 0을 쓰면서 동시에 행을 늘려 가드를
+    # 통과한다.
+    plan_all = plan                       # --max-calls로 자르기 전. 끝에 다시 셀 때 쓴다.
+    # 구를 골라 도는 회차는 이 값을 안 건드린다. 잔여는 전국 기준 한 칸인데
+    # --lawd 11110 회차가 그 구를 다 받고 0을 쓰면, 경기 7만 지번이 남은 채로
+    # 화면이 "다 받았다"로 읽어 지연을 영영 안 말한다. 다음 밤 회차가 다시
+    # 덮어 저절로 낫지만, 그 사이가 조용한 거짓이라 애초에 안 쓴다.
+    scoped = bool(lawd_filter)
+    def stamp(left: int) -> None:
+        if scoped:
+            return
+        conn.executemany(
+            "INSERT OR REPLACE INTO bldg_meta (k, v) VALUES (?,?)",
+            [("remaining", str(left)),
+             # ran_at은 지금 아무도 안 읽는다. 진단용으로만 남긴다. 화면이 쓰는 시각은
+             # 이것이 아니라 bldg_log.fetched_at이다(bldg_join.state 주석 참고).
+             ("ran_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))])
+
+    # 잔여를 셀 때는 --retry-errors와 무관하게 늘 error를 미완료로 본다.
+    # 그 플래그를 주면 done_query에서 이 조건이 빠지는데, 그대로 쓰면 한 동도
+    # 못 받고 에러만 남긴 회차가 "다 받았다"로 0을 쓴다. 그러면 bldgLate가
+    # 영영 침묵한다. 화면이 쓰는 시각(state의 at)도 error를 빼고 재므로 둘의
+    # 기준을 맞춘다.
+    left_query = ("SELECT lawd_cd, bjdong_cd, plat_gb, bun, ji FROM bldg_log "
+                  "WHERE status <> 'error'")
+
+    def write_remaining() -> None:
+        """이번 회차가 끝난 뒤의 진짜 잔여를 센다.
+
+        산술로 빼지 않고 질의를 다시 돌린다. 다음 회차가 계획을 세우는 방식과
+        글자 그대로 같아야, 화면이 말하는 "다 받았다"와 수집기가 보는 "다
+        받았다"가 안 어긋난다.
+        """
+        after = {tuple(r) for r in conn.execute(left_query)}
+        stamp(sum(1 for t in plan_all if t[:5] not in after))
+        conn.commit()
+
+    stamp(len(plan))
+    conn.commit()
     if not plan:
         print("모두 수집 완료된 상태입니다.")
+        conn.close()
         return 0
     if args.max_calls and len(plan) > args.max_calls:
         # 미리 잘라 두면 루프 안에서 중단 조건을 볼 필요가 없다
@@ -527,13 +584,14 @@ def main() -> int:
         print(f"사전 확인에서 치명적 오류: {scrub(exc)}", file=sys.stderr)
         conn.close()
         return 1
-    # 건당 속도(per)의 기준. 사전 확인 뒤에 잡는다. 재시도로 최대 46분을 쓸 수
-    # 있는데 그게 초반 호출에 분산되면, 실행 중에 "느린 것인지 재시도로 헛도는
+    # 건당 속도(per)의 기준. 사전 확인 뒤에 잡는다. 사전 확인이 최대 약 3분을
+    # 쓰는데 그게 초반 호출에 분산되면, 실행 중에 "느린 것인지 재시도로 헛도는
     # 것인지"를 보려고 쓰는 지표가 통째로 못 쓰게 된다.
     started = time.monotonic()
     if blocked:
         print(f"사전 확인 실패 — 지금은 접속이 안 됩니다:\n  {blocked}", file=sys.stderr)
-        print("한도를 넘기면 한동안 차단됩니다(실측 38분 이상). 시간을 두고 재실행하세요.",
+        print("차단은 IP 단위입니다(2026-08-25 정찰로 확정). 같은 잡에서 기다려도 "
+              "안 풀리므로, 시간을 두는 것이 아니라 새 잡으로 다시 거세요.",
               file=sys.stderr)
         conn.close()
         return 1
@@ -598,6 +656,7 @@ def main() -> int:
         print("\n중단됨. 재실행하면 이어서 받습니다.")
     finally:
         conn.commit()
+        write_remaining()
 
     total = conn.execute("SELECT COUNT(*) FROM buildings").fetchone()[0]
     print(f"\n완료. 이번 실행 {calls:,}회 호출, {inserted:,}동 적재 "

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LineChart } from './charts.jsx'
 // 갱신 시점 계산은 units.js에 산다. 확인 탭도 같은 값을 써야 두 화면이
 // 다른 날짜를 말하지 않는다.
-import { collectLate, kstDay, nextCollect, parseIso } from './units.js'
+import { bldgAt, bldgLate, collectLate, kstDay, nextCollect, parseIso } from './units.js'
 
 const nextLabel = () => new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long',
@@ -72,6 +72,10 @@ export default function Insight({ onGoFind }) {
   const rt = data.freshness?.find((f) => f.key === 'rt')
   // 예정일이 지나도록 갱신이 없으면 그 사실을 적는다. 없으면 null이라 문장이 빠진다.
   const late = collectLate(data.generatedAt)
+  // 건축물대장은 별개 파이프라인이라 따로 잰다. 실거래가 멀쩡한 날에도 대장만
+  // 며칠 멈출 수 있고, 8/27과 8/28이 실제로 그랬다.
+  const bAt = bldgAt(data.bldg?.at)
+  const bLate = bldgLate(data.bldg?.at, data.bldg?.remaining)
   const ws = cards.wolseShare
   // 헤드라인 수치는 확정월 기준이다. 잠정월 값으로 1년 증감을 말하면
   // "잠정 구간은 증감률을 내지 않는다"는 우리 약속을 첫 카드가 어긴다.
@@ -108,6 +112,18 @@ export default function Insight({ onGoFind }) {
                 다음 예정은 {nextLabel()}이지만 이번 지연이 풀려야 채워집니다</span>
             : <>다음 수집은 <b>{nextLabel()}</b>입니다</>}
         </p>
+        {/* 건물 정보는 실거래와 주기도 파이프라인도 다르다. 한 문장에 섞지 않고
+            줄을 나눠 주어를 붙여 적는다. 대장이 없는 산출물에서는 통째로 빠진다. */}
+        {bAt && (
+          <p className="ins-when">
+            건축물대장은 매일 밤 이어받도록 예약되어 있습니다. 마지막으로 받은
+            것은 <b>{kstDay(bAt)}</b>
+            {bLate
+              ? <span className="warning">이고, 그 뒤로 {bLate.days}일째 새로 받은
+                  것이 없습니다. 건물 정보는 그날까지 받은 것만 보입니다</span>
+              : '입니다'}
+          </p>
+        )}
       </section>
 
       {cards.kkangtong && (

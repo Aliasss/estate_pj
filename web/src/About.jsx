@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInsights } from './Insight.jsx'
+import { bldgAt, bldgLate, collectLate, kstDay } from './units.js'
 import { fdTrack } from './fakedoor.js'
 import { RPT_ITEMS, RPT_ITEM_BLDG } from './UnitLookup.jsx'
 
@@ -102,6 +103,10 @@ function PkgPlan() {
 
 export default function About({ onBack }) {
   const { data, err } = useInsights()
+  // 시의성 표에 지연을 적기 위한 두 값. 파이프라인이 둘이라 각자 잰다.
+  const rtLate = collectLate(data?.generatedAt)
+  const bldgStale = bldgLate(data?.bldg?.at, data?.bldg?.remaining)
+  const bldgDay = bldgAt(data?.bldg?.at)
 
   return (
     <>
@@ -166,6 +171,9 @@ export default function About({ onBack }) {
           모두 공공데이터이며, 수집·검증·배포가 자동으로 이뤄집니다. 아래 시점은
           데이터가 갱신될 때마다 함께 갱신됩니다
         </p>
+        {/* 표는 "어디까지"만 말하고 늦었다는 말은 안 했다. 확인 탭과 동네
+            인사이트가 지연을 밝히는데 이 표만 침묵하면, 자료 시점을 보러 온
+            사람이 정작 못 본다. 두 파이프라인을 각자 잰다. */}
         {data?.freshness?.length ? (
           <div className="scroll-x">
             <table className="data fresh-table">
@@ -173,13 +181,28 @@ export default function About({ onBack }) {
                 <tr><th>데이터</th><th>어디까지</th><th>갱신 주기</th></tr>
               </thead>
               <tbody>
-                {data.freshness.map((f) => (
-                  <tr key={f.key}>
-                    <td>{f.name}</td>
-                    <td>{f.asof}{f.asof && ' '}<small className="delta">{f.note}</small></td>
-                    <td>{f.cycle}</td>
-                  </tr>
-                ))}
+                {data.freshness.map((f) => {
+                  // 대장은 월 단위 asof가 없다. 매일 이어받는 누적 수집이라
+                  // "어디까지"에 해당하는 값이 수집한 날짜다. 날짜가 없으면
+                  // 붙임표가 아니라 공백이다. 이 표의 다른 asof 없는 행(지형·
+                  // 지하철)이 공백이라, 한 표 안에 빈 값 표기가 둘이 되면 안 된다.
+                  const at = f.key === 'bldg' ? (bldgDay ? kstDay(bldgDay) : '') : f.asof
+                  const stale = f.key === 'rt' ? rtLate : f.key === 'bldg' ? bldgStale : null
+                  return (
+                    <tr key={f.key}>
+                      <td>{f.name}</td>
+                      <td>
+                        {at}{at && ' '}<small className="delta">{f.note}</small>
+                        {stale && (
+                          <small className="delta warning">
+                            {stale.days}일째 새로 받은 것이 없습니다
+                          </small>
+                        )}
+                      </td>
+                      <td>{f.cycle}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

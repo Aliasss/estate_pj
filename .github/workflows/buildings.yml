@@ -340,14 +340,16 @@ jobs:
           meta=$(tar -xzOf units.tar.gz ./index.json | python -c "
           import json, sys
           d = json.load(sys.stdin)
-          print(d['window'][1], d.get('bldg_rows', -1), d.get('sch_hit', -1))") || {
+          print(d['window'][1], d.get('bldg_rows', -1), d.get('sch_hit', -1),
+                d.get('bldg_remaining', -1))") || {
             echo "::warning::직전 units의 index.json을 못 읽었습니다. 재조인을 건너뜁니다."
             exit 0
           }
-          read -r end was sch_was <<< "$meta"
+          read -r end was sch_was rem_was <<< "$meta"
           # 숫자가 아닌 값이 들어오면 뒤의 [ -ge ] 비교가 stderr 소음을 낸다.
           # 동작은 안전한 방향(재조인 진행)이지만 로그가 지저분해진다.
           case "$was" in ''|*[!0-9-]*) was=-1 ;; esac
+          case "$rem_was" in ''|*[!0-9-]*) rem_was=-1 ;; esac
           case "$sch_was" in ''|*[!0-9-]*) sch_was=-1 ;; esac
           case "$end" in
             [0-9][0-9][0-9][0-9][0-9][0-9]) ;;
@@ -364,8 +366,16 @@ jobs:
           # 파일 존재는 need가 hashFiles로 보장했으므로 여기서 죽는 경우는 DB 손상뿐이고,
           # 그건 조용히 건너뛸 일이 아니라 그날 안에 알아야 할 일이다.
           now=$(sqlite3 bldg.sqlite "SELECT COUNT(*) FROM buildings")
-          echo "직전 확정월 $end · 직전 units의 대장 ${was}동 · 지금 ${now}동"
-          if [ "$was" -ge 0 ] && [ "$was" -eq "$now" ]; then
+          # 잔여도 같이 본다. 마지막 남은 지번이 전부 빈 응답이면 buildings 행은
+          # 한 줄도 안 늘고 잔여만 0이 되는데, 행 수만 보면 재조인이 접혀 그 0이
+          # index.json에 못 실린다. 그러면 화면이 다 받은 자료를 두고 며칠째
+          # 안 받았다고 거짓말한다(QA). 표식 없는 옛 아카이브는 -1이라 한 번
+          # 재조인하고 생긴다.
+          rem_now=$(sqlite3 bldg.sqlite \
+            "SELECT COALESCE((SELECT v FROM bldg_meta WHERE k='remaining'), -1)" 2>/dev/null || echo -1)
+          case "$rem_now" in ''|*[!0-9-]*) rem_now=-1 ;; esac
+          echo "직전 확정월 $end · 직전 units의 대장 ${was}동/잔여 ${rem_was} · 지금 ${now}동/잔여 ${rem_now}"
+          if [ "$was" -ge 0 ] && [ "$was" -eq "$now" ] && [ "$rem_was" -eq "$rem_now" ]; then
             echo "직전 units가 이미 이 대장으로 구워졌습니다. 재조인할 것이 없습니다."
             exit 0
           fi

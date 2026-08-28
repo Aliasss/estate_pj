@@ -60,6 +60,48 @@ def load(db_path: str) -> dict[tuple, list[dict]]:
     return idx
 
 
+def state(db_path: str) -> tuple[str | None, int | None]:
+    """(마지막으로 수집기가 기록을 남긴 시각, 그 회차 시작 시점의 잔여 대상).
+
+    화면이 "대장이 며칠 멈췄다"를 말하려면 둘 다 필요하다. 시각만 보면, 다 받아서
+    수집기가 즉시 종료하는 날부터 시각이 안 움직여 없는 장애를 영구히 알린다.
+
+    시각은 buildings가 아니라 bldg_log에서 잰다. 빈 응답만 있던 회차는 buildings
+    행을 한 줄도 안 늘리지만 수집기는 정상으로 돈 것이라, buildings로 재면 그날을
+    "안 돌았다"로 읽는다.
+
+    다만 error 행은 뺀다. preflight를 통과한 뒤 IP가 막혀 연속 15회 실패로
+    중단한 회차는 한 동도 못 받고 에러만 남기는데, bldg_log 행이 늘었으므로
+    buildings.yml의 발행 가드를 통과해 자산에 실린다. 그 시각을 집으면 일주일
+    내내 한 동도 못 받은 상태에서 화면이 "마지막 수집 8월 25일"이라고 말한다.
+    empty는 남긴다. 그건 정말 받은 것이고, 다음 회차 계획에서 그 지번을 빼는
+    유일한 수단이기도 하다.
+
+    잔여는 bldg_meta에 있고, 그 표는 이 변경 이후 첫 수집 회차에 생긴다. 없으면
+    None을 낸다. 화면은 None이면 지연 판정을 하지 않고 날짜만 적는다. 근거가
+    없을 때 조용한 쪽으로 무너뜨린다.
+
+    한 가지 더. 이 값이 브라우저까지 가는 통로는 units/index.json 하나뿐이고,
+    그 파일은 재조인이 실제로 돌 때만 다시 구워진다. 그래서 화면이 말하는 것은
+    엄밀히 "마지막 수집"이 아니라 "화면에 반영된 마지막 회차"다. 수집은 됐는데
+    재조인만 며칠 접히면 화면은 실제보다 오래됐다고 말한다. 틀리는 방향이
+    사용자 쪽으로 안전하다. 눈에 보이는 건물 정보는 정말 그날까지 것이다.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        at = conn.execute(
+            "SELECT MAX(fetched_at) FROM bldg_log WHERE status <> 'error'").fetchone()[0]
+    except sqlite3.OperationalError:
+        at = None
+    try:
+        row = conn.execute("SELECT v FROM bldg_meta WHERE k = 'remaining'").fetchone()
+        left = int(row[0]) if row and row[0] is not None else None
+    except (sqlite3.OperationalError, ValueError):
+        left = None
+    conn.close()
+    return at, left
+
+
 def pick(cands: list[dict], name: str | None) -> dict | None:
     """한 지번의 표제부들을 단지 하나로 합친다.
 
@@ -159,6 +201,8 @@ class Registry:
         # 매일 도는 재조인이 "붙일 것이 새로 생겼나"를 자산 시각이 아니라 이 수로
         # 판단한다. 시각으로 보면 빈 응답만 있던 날에도 자산이 움직여 매일 헛돈다.
         self.n = sum(len(v) for v in self.idx.values())
+        # 화면이 대장 갱신일과 지연을 말할 때 쓰는 두 값. 대장이 없으면 둘 다 없다.
+        self.at, self.remaining = state(db_path) if db_path else (None, None)
 
     def lookup(self, lawd: str, umd: str, jibun: str | None, name: str | None) -> dict:
         parsed = parse_jibun(jibun)
