@@ -28,7 +28,7 @@ finder-11.json (서울 204,991) / finder-41.json (경기 121,882)  열 단위
 {lawd}.json (시군구별 상세, 지연 로딩)
         ↓  GitHub Actions
              collect.yml    주간 월 21:00 UTC (+ dispatch), timeout 350분
-             buildings.yml  매일 13:00 UTC, timeout 330분
+             buildings.yml  매일 13:07 UTC 예약(실제 시작은 20~43분 뒤), timeout 330분
              sources.yml    dispatch 전용
              concurrency: data-latest, cancel-in-progress: false
         ↓  릴리스 에셋 + 리포지토리 CSV -> Vercel 빌드 시 fetch
