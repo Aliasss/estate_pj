@@ -430,6 +430,14 @@ table.vol-table th, table.vol-table td { padding: 5px 4px; }
 .serious { color: var(--warning); }
 .warning { color: var(--warning); }
 .good { color: var(--good); }
+/* 지연 고지가 본문색에 묻혀 있었다(실측: 두 문장이 rgb(112,103,90)으로 같았다).
+   이기고 있던 것은 .card .sub(0,2,0)이고 .warning은 (0,1,0)이라 특이도로 진 것이다.
+   .sub.warning도 (0,2,0)이라 순서로만 이기는데, .card .sub 계열이 뒤에 하나만 더
+   생기면 조용히 되돌아간다. (0,3,0)으로 못박는다. */
+.card .sub.warning { color: var(--warning); }
+/* 인사이트의 지연 문장도 같은 누수가 있다. .ins-when b(0,1,1)가 경고 span 안의
+   날짜를 평상색으로 덮어, 문장에서 가장 중요한 토큰만 경고색을 잃는다. */
+.ins-when .warning b { color: inherit; }
 .muted { color: var(--text-muted); }
 
 /* "어떻게 계산했나요" 접힘. 접혀 있어도 summary가 근거의 요약을 말한다.

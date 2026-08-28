@@ -50,6 +50,18 @@ export default defineConfig({
               expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 45 },
             },
           },
+          {
+            // 자료 갱신 시점과 지연 고지가 여기서 나온다. 캐시가 없으면 오프라인
+            // 사용자에게서 그 고지가 통째로 사라지는데, 가장 낡은 자료를 보고
+            // 있을 사람에게서 없어지는 것이라 방향이 반대다. 캐시된 옛 날짜는
+            // 지연 일수를 더 크게 만들 뿐이라 거짓 안심을 만들지 않는다.
+            urlPattern: /\/data\/insights\.json$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'insights',
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
         ],
       },
     }),

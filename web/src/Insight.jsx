@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
 import { LineChart } from './charts.jsx'
+// 갱신 시점 계산은 units.js에 산다. 확인 탭도 같은 값을 써야 두 화면이
+// 다른 날짜를 말하지 않는다.
+import { collectLate, kstDay, nextCollect, parseIso } from './units.js'
+
+const nextLabel = () => new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long',
+}).format(nextCollect())
 
 /**
  * 인사이트. 우리 데이터로만 답할 수 있는 질문들을 골라, 고정된 방법론으로
@@ -13,15 +20,27 @@ const pctPt = (v) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
 const signed = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`)
 const ymKo = (m) => (m ? `${m.slice(0, 4)}년 ${+m.slice(5, 7)}월` : '')
 
+/* 세 화면(확인·동네 인사이트·소개)이 각자 받으면 같은 6.5KB를 세 번 받는다.
+   모듈 수준 프라미스로 묶어 한 번만 받고 나눠 쓴다. */
+let _insightsPromise = null
 export function useInsights() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/insights.json`)
-      .then((r) => (r.ok && (r.headers.get('content-type') || '').includes('json')
-        ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e) => setErr(e.message))
+    let alive = true
+    if (!_insightsPromise) {
+      _insightsPromise = fetch(`${import.meta.env.BASE_URL}data/insights.json`)
+        .then((r) => (r.ok && (r.headers.get('content-type') || '').includes('json')
+          ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    }
+    _insightsPromise
+      .then((d) => { if (alive) setData(d) })
+      .catch((e) => {
+        // 다음 화면이 다시 시도할 수 있게 실패한 프라미스는 버린다.
+        _insightsPromise = null
+        if (alive) setErr(e.message)
+      })
+    return () => { alive = false }
   }, [])
   return { data, err }
 }
@@ -30,19 +49,6 @@ function Method({ children }) {
   return <p className="method">{children}</p>
 }
 
-/* 갱신 시점 안내. 수집 워크플로는 월요일 21:00 UTC(화요일 06:00 KST)에 돈다.
-   다음 갱신은 빌드 때 박아 두지 않고 화면에서 계산한다. 박아 두면 그 시각이
-   지난 뒤로는 지나간 날짜를 "다음"이라고 말하게 된다. */
-const kst = (d, opts) =>
-  new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', ...opts }).format(d)
-
-function nextCollect(now = new Date()) {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 21, 0, 0))
-  let add = (1 - d.getUTCDay() + 7) % 7          // 다음 월요일까지
-  if (add === 0 && now.getTime() >= d.getTime()) add = 7   // 오늘 것이 이미 지났다
-  d.setUTCDate(d.getUTCDate() + add)
-  return d
-}
 
 export default function Insight({ onGoFind }) {
   const { data, err } = useInsights()
@@ -64,6 +70,8 @@ export default function Insight({ onGoFind }) {
   // 확정월 기준으로 계산하므로 확정월(solid)을 앞에 말하고, 잠정월은 잠정이라
   // 밝힌다. 최신월만 내세우면 다른 화면의 "6월까지"와 어긋난다.
   const rt = data.freshness?.find((f) => f.key === 'rt')
+  // 예정일이 지나도록 갱신이 없으면 그 사실을 적는다. 없으면 null이라 문장이 빠진다.
+  const late = collectLate(data.generatedAt)
   const ws = cards.wolseShare
   // 헤드라인 수치는 확정월 기준이다. 잠정월 값으로 1년 증감을 말하면
   // "잠정 구간은 증감률을 내지 않는다"는 우리 약속을 첫 카드가 어긴다.
@@ -89,10 +97,16 @@ export default function Insight({ onGoFind }) {
           {rt?.solid && (rt.asof && rt.asof !== rt.solid
             ? <>자료는 <b>{ymKo(rt.solid)}분까지</b> 확정됐고, {ymKo(rt.asof)}분은 아직 잠정입니다. </>
             : <>자료는 <b>{ymKo(rt.solid)}분까지</b> 확정됐습니다. </>)}
-          {data.generatedAt && (
-            <>마지막 갱신 <b>{kst(new Date(data.generatedAt), { month: 'long', day: 'numeric' })}</b>, </>
+          {parseIso(data.generatedAt) && (
+            <>마지막 실거래 수집 <b>{kstDay(parseIso(data.generatedAt))}</b>, </>
           )}
-          다음 갱신은 <b>{kst(nextCollect(), { month: 'long', day: 'numeric', weekday: 'long' })}</b>입니다
+          {/* 멈춰 있는 동안에는 다음 날짜를 약속하지 않는다. 차단이 풀리려면
+              사람이 다시 실행해야 하므로, 예정일이 저절로 오지 않는다. */}
+          {late
+            ? <span className="warning"><b>{kstDay(late.due)}</b>에 받았어야 할 실거래
+                자료를 아직 받지 못했습니다. 마지막 수집 이후 {late.days}일째입니다.
+                다음 예정은 {nextLabel()}이지만 이번 지연이 풀려야 채워집니다</span>
+            : <>다음 수집은 <b>{nextLabel()}</b>입니다</>}
         </p>
       </section>
 

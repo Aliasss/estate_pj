@@ -3,8 +3,9 @@ import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } f
 import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
 import { NoJeonseSig, UnitCard, questionsFor, ratioBroken, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, guardCalendar, guardSignals, htName, search, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
+import { REGIONS, guardCalendar, guardSignals, htName, search, collectLate, kstDay, parseIso, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 import { rowComment } from './rowcomment.js'
+import { useInsights } from './Insight.jsx'
 
 /**
  * 계약 전 확인. 이 앱의 본체.
@@ -32,6 +33,10 @@ export default function Verify({ guNames, region = '11', onNearby, onRegion }) {
   const [open, setOpen] = useState(null)     // {lawd, u} | {error}
   const compare = useCompare()
   const guard = useGuard()
+  // 자료 갱신 시점. 6.5KB짜리 파일이고 동네 인사이트와 같은 값을 써야
+  // 두 화면이 다른 날짜를 말하지 않는다.
+  const ins = useInsights()
+  const insLate = collectLate(ins.data?.generatedAt)
   const [showCmp, setShowCmp] = useState(false)
   // 리포트 안의 위치 지도. 물건이 바뀌면 접는다 — 이전 물건 지도가 새 리포트에 남으면 오독한다.
   const [showMap, setShowMap] = useState(false)
@@ -187,11 +192,29 @@ export default function Verify({ guNames, region = '11', onNearby, onRegion }) {
       <p className="sub">
         보고 온 집의 주소나 건물명을 넣으세요. 국토교통부 실거래가로 그 건물을 확인해 드립니다
         {fin.status === 'ready' && ` · ${ym(fin.d.window[0])}~${ym(fin.d.window[1])} 신고분`}
+        {/* 판정을 보는 화면에도 자료를 언제 받아왔는지 적는다. 기간 창만 적으면
+            "그 기간 자료가 지금 것"으로 읽히는데, 수집이 밀린 주에는 거짓이 된다.
+            늦었으면 늦었다고 같이 말한다. 날짜는 동네 인사이트와 같은 값을 쓴다. */}
+        {/* 주어를 붙인다. 건축물대장은 매일 도는 별개 파이프라인이라, 그냥
+            "갱신"이라 쓰면 건물 정보까지 이 날짜 것으로 읽힌다. */}
+        {parseIso(ins.data?.generatedAt) && (
+          <> · 실거래 {kstDay(parseIso(ins.data.generatedAt))} 수집</>
+        )}
       </p>
 
       <input className="search" type="search" value={q} autoComplete="off"
              placeholder="예: 화곡동 871-8 · 엔에스월드타워"
              onChange={(e) => setQ(e.target.value)} aria-label="주소 또는 건물명" />
+
+      {/* 경고는 검색창 아래에 둔다. 위에 두면 6.5KB짜리 JSON이 늦게 도착할 때
+          이 화면의 주 조작 대상인 검색창이 두 줄 아래로 튄다. */}
+      {insLate && (
+        <p className="sub warning">
+          <b>{kstDay(insLate.due)}</b>에 받았어야 할 실거래 자료를 아직 받지
+          못했습니다. 이 화면은 {kstDay(insLate.got)}에 받아 온 자료로
+          계산한 것입니다
+        </p>
+      )}
 
       {/* 임장 진입. 탭바 여섯 칸을 셋으로 줄이면서 이 자리로 왔다. 주소를 아는
           사람은 위에 치고, 이미 그 골목에 서 있는 사람은 여기로 들어간다.

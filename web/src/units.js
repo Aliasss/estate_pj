@@ -737,3 +737,77 @@ export const CHECKLIST = [
   ['동네 치안 정보', '이 앱은 치안을 판정하지 않습니다. 범죄주의구간과 안전시설 위치는 국가가 운영하는 지도에서 직접 보실 수 있습니다',
    'https://www.safemap.go.kr', '행정안전부 생활안전지도'],
 ]
+
+/* ── 자료 갱신 시점 ──────────────────────────────────────────────────────
+ *
+ * 화면 셋(확인·동네 인사이트·소개)이 같은 날짜를 말해야 하므로 계산을 여기 둔다.
+ * 화면 모듈에 두면 청크를 쪼개는 날 확인 탭이 인사이트 화면을 통째로 끌고 온다.
+ *
+ * 실거래 수집은 주간 크론이다(월 21:00 UTC = 화 06:00 KST). 대장 재조인은 매일
+ * 도는 별개 파이프라인이라 여기서 재는 것은 실거래 쪽 하나뿐이다. 화면 문구도
+ * 반드시 "실거래"라고 주어를 붙여 말한다. 둘을 "갱신" 한 단어로 뭉치면 건물
+ * 정보까지 그 날짜 것으로 읽힌다.
+ */
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+/* 유예. 예정 시각에 시작해 집계와 커밋까지 끝나야 이 날짜가 움직인다. 유예가
+   짧으면 매주 화요일 아침마다 거짓 경고가 떴다 사라진다.
+   실측(collect.yml 실행 기록, 잡 시작에서 종료까지): 성공 회차 최장 4시간 6분
+   (#25), 직전 성공 회차 4시간 0분(#45). 크론 큐 지연은 26~42분 관측. 여기에
+   대장 회차와 concurrency 그룹을 공유해 뒤에 줄을 서는 경로까지 감안해 24시간을
+   준다. 늦게 알아차리는 비용은 없다. 다음 시도는 이레 뒤다. */
+const LATE_GRACE_MS = 24 * 60 * 60 * 1000
+
+export function parseIso(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/* 날짜만 적는다. 시각까지 적으면 수집이 끝나는 때와 어긋난다. */
+export const kstDay = (d) => (d ? new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: 'long', day: 'numeric',
+}).format(d) : '-')
+
+export function nextCollect(now = new Date()) {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 21, 0, 0))
+  let add = (1 - d.getUTCDay() + 7) % 7          // 다음 월요일까지
+  if (add === 0 && now.getTime() >= d.getTime()) add = 7   // 오늘 것이 이미 지났다
+  d.setUTCDate(d.getUTCDate() + add)
+  return d
+}
+
+/**
+ * 예정일이 지났는데 실거래 자료가 그대로면 {days, due, got}, 아니면 null.
+ *
+ * 화면은 오래 "마지막 갱신"과 "다음 갱신"만 말했다. 둘 다 참이지만 예정일이
+ * 지나도록 갱신이 없으면 사용자가 두 날짜를 직접 빼 봐야 그 사실을 안다. 실제로
+ * 8월 셋째 주 크론이 국토부 IP 차단으로 연속 실패해 자료가 이레 동안 멈춰
+ * 있었고 화면은 한 줄도 말하지 않았다. 늦은 것은 늦었다고 말한다.
+ *
+ * 유예는 직전 회차를 받았을 때만 준다. "지금 도는 중일 수 있다"는 뜻인데, 한
+ * 회차를 이미 통째로 건너뛴 뒤에는 참이 아니기 때문이다. 무조건 주면 새 예정
+ * 시각이 지나는 순간 경고가 사라져, 이미 2주 멈춘 자료를 두고 화요일 아침
+ * 내내 화면이 다시 침묵한다(CTO 리뷰). 하필 사람이 앱을 여는 시간대다.
+ *
+ * 값의 출처는 data/collected_at.txt다. 정확히는 "집계 CSV가 바뀐 시각"이라,
+ * 수집은 성공했는데 집계 결과가 그대로인 회차에는 안 움직인다. 그때는 헛
+ * 경고가 뜨지만 방향이 안전한 쪽이라 그대로 둔다.
+ *
+ * days는 마지막 수집 이후 일수다. 예정일로부터가 아니다. 문구도 그 뜻으로
+ * 적어야 한다. 놓친 예정일은 due로 따로 준다.
+ */
+export function collectLate(generatedAt, now = new Date()) {
+  const got = parseIso(generatedAt)
+  if (!got) return null
+  // 직전 예정 시각. nextCollect는 늘 미래를 내므로 한 주를 뺀다.
+  const due = new Date(nextCollect(now).getTime() - WEEK_MS)
+  if (got.getTime() >= due.getTime()) return null       // 그 회차는 받았다
+  const grace = got.getTime() >= due.getTime() - WEEK_MS ? LATE_GRACE_MS : 0
+  if (now.getTime() - due.getTime() < grace) return null
+  // 절대 24시간이 아니라 KST 달력일 차로 센다. 화면이 두 날짜를 함께 찍으므로
+  // 사용자가 직접 빼는 값과 어긋나면 안 된다(8월 18일 밤 수집 + 8월 28일 아침
+  // = 9.4일이라 floor는 9일, 사람이 빼면 10일).
+  const kstDayNo = (t) => Math.floor((t + 9 * 3600e3) / 864e5)
+  return { days: kstDayNo(now.getTime()) - kstDayNo(got.getTime()), due, got }
+}
