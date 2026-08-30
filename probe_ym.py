@@ -50,8 +50,14 @@ def main() -> int:
         line = [f"{src.label} ({key_name})"]
         for ym, tag in ((prev, "전월"), (cur, "당월")):
             try:
-                rows = fetch_month(session, key, src, LAWD, ym)
-                line.append(f"{tag} 정상 {len(rows):,}건")
+                # 한 건만 받는다. 묻는 것은 "게이트웨이가 이 달을 받아 주는가"이지
+                # 몇 건이 있는가가 아니다. 처음엔 기본값으로 불렀다가 10분
+                # 타임아웃에 잘렸다. fetch_month는 그 달의 전 페이지를 다 받아서,
+                # 6소스 x 2달이 12회 전체 수집이 됐다.
+                rows = fetch_month(session, key, src, LAWD, ym,
+                                   rows_per_page=1, max_pages=1,
+                                   max_retries=1, timeout=20)
+                line.append(f"{tag} 정상(표본 {len(rows)}건)")
             except Exception as exc:
                 detail = describe(exc)
                 line.append(f"{tag} 실패: {detail}")
