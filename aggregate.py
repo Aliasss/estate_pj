@@ -21,10 +21,29 @@ import argparse
 import csv
 import os
 import sqlite3
+from datetime import date
 
 PYEONG = 3.305785
 
 # 해제 거래를 뺀 분석용 뷰. 이후 모든 집계가 이 뷰를 본다.
+#
+# 수집기가 이번에 겨눈 달({month_cut})도 뺀다. 2026-08-30에 수집 창을 당월까지
+# 넓혔는데(collect.default_window), 진행 중인 달을 월 집계에 넣으면 차트 끝이
+# 절벽으로 그려진다. 잠정 표시를 해도 "거래가 급감했다"로 오독되고, 이 앱은
+# 표본 두께를 그 자체로 위험 신호로 쓰기 때문에 자기모순이 된다.
+#
+# 끝난 달과 진행 중인 달은 성격이 다르다. 7월은 끝났고 신고가 차오르는 중이라
+# 잠정으로 그린다. 8월은 아직 계약이 일어나는 중이라 집계할 대상 자체가 없다.
+# 그 선을 여기서 긋는다. 개별 거래는 build_units가 transactions를 직접 읽어
+# 'P' 꼬리표를 달고 최근 거래 목록에 싣는다. 이 뷰와 무관하다.
+#
+# 상한은 시계가 아니라 fetch_log에서 뽑는다(month_cut 계산부 참고). 처음에는
+# date.today()를 썼는데 CTO 리뷰가 반증했다. 크론이 월 21:00 UTC이고 회차가
+# 최장 4시간이라(8/25 실측 4시간 0분) aggregate가 UTC 자정을 넘겨 도는 날이
+# 있다. 그런 날 collect는 21시 UTC의 달을 겨누고 aggregate는 다음 날 UTC의
+# 달을 자르므로, 방금 받은 당월이 패널에 새어 든다. 2026-08-31이 바로 그
+# 월요일이었다. 게다가 fetch-data.mjs의 "확정월 갈림" 경고는 이 어긋남을
+# 못 잡아서 조용히 틀린다.
 BASE_VIEW = f"""
 DROP VIEW IF EXISTS deals;
 CREATE VIEW deals AS
@@ -45,7 +64,8 @@ SELECT
         THEN (CASE WHEN deal_type = '매매' THEN deal_amount ELSE deposit END) / (exclu_use_ar / {PYEONG})
     END AS price_per_pyeong
 FROM transactions
-WHERE cdeal_type IS NULL OR cdeal_type <> 'O';
+WHERE (cdeal_type IS NULL OR cdeal_type <> 'O')
+  AND deal_ymd < '{{month_cut}}';
 """
 
 # SQLite에는 median 집계함수가 없어서 윈도우 함수로 중앙값 두 개(짝수 개일 때)를 평균낸다.
@@ -164,6 +184,36 @@ def export_csv(conn: sqlite3.Connection, table: str, path: str) -> int:
     return count
 
 
+def pick_month_cut(conn: sqlite3.Connection) -> str:
+    """월 집계에서 제외할 첫 달. 이 달과 그 이후는 안 넣는다.
+
+    시계를 안 쓴다. 수집기가 이번 회차에 겨눈 창의 끝을 fetch_log에서 읽는다.
+    같은 잡 안에서 collect와 aggregate가 각각 date.today()를 부르면, 잡이 UTC
+    자정을 넘는 날 서로 다른 달을 보고 방금 받은 당월이 패널에 새어 든다.
+    데이터에서 뽑으면 몇 시에 돌든 같은 답이 나온다.
+
+    status='ok'만 본다. 오류만 남은 달을 상한으로 삼으면 실제로 받은 달까지
+    잘라 낸다. fetch_log가 없거나 비면(스냅숏만 받아 따로 돌리는 경우)
+    transactions의 최신 달로 물러선다. 그것도 없으면 시계를 쓰되 그 사실을
+    로그에 남긴다. 어느 쪽이든 틀리는 방향은 "한 달 덜 연다"는 안전한 쪽이다.
+    """
+    for sql, why in (
+        ("SELECT MAX(deal_ymd) FROM fetch_log WHERE status = 'ok'", "fetch_log"),
+        ("SELECT MAX(deal_ymd) FROM transactions", "transactions"),
+    ):
+        try:
+            got = conn.execute(sql).fetchone()[0]
+        except sqlite3.OperationalError:
+            continue
+        if got:
+            if why != "fetch_log":
+                print(f"  주의: fetch_log를 못 읽어 {why}의 최신 달을 상한으로 씁니다.")
+            return str(got)[:6]
+    fallback = date.today().strftime("%Y%m")
+    print(f"  주의: 수집 이력이 없어 시계({fallback})를 상한으로 씁니다.")
+    return fallback
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="실거래가 원본 -> 집계 패널")
     parser.add_argument("--db", default="seoul_rt.sqlite")
@@ -177,8 +227,11 @@ def main() -> int:
         return 1
     print(f"원본 {total:,}건")
 
+    month_cut = pick_month_cut(conn)
+    print(f"집계 상한: {month_cut} 직전까지 (수집기가 겨눈 달 제외)")
+
     for name, sql in [
-        ("deals(view)", BASE_VIEW),
+        ("deals(view)", BASE_VIEW.format(month_cut=month_cut)),
         ("monthly_panel", PANEL_SQL),
         ("jeonse_ratio", RATIO_SQL),
         ("monthly_coverage", COVERAGE_SQL),

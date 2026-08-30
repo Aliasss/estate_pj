@@ -1,0 +1,26 @@
+# 당월 조회 정찰 (일회성, todo #32).
+#
+# 릴리스 자산을 안 만지므로 data-latest concurrency 그룹에 넣지 않는다.
+# 6번만 두드리므로 쿼터에도 영향이 없다.
+# 결론이 나면 이 워크플로와 probe_ym.py는 지워도 된다.
+
+name: 당월 조회 정찰
+
+on:
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: '1'
+  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python probe_ym.py

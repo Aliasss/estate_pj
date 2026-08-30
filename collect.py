@@ -337,10 +337,30 @@ def month_range(start: str, end: str) -> list[str]:
     return months
 
 
-def default_window(months: int = 60) -> tuple[str, str]:
-    """전월을 끝으로 하는 N개월 창. 당월은 신고 기한(30일) 때문에 제외한다."""
+def default_window(months: int = 61) -> tuple[str, str]:
+    """당월을 끝으로 하는 N개월 창.
+
+    오래 전월까지만 받았다. 이유는 "당월은 신고 기한(30일) 때문에 불완전하다"
+    였는데, 그건 월 집계에 넣지 말아야 할 이유이지 받지 말아야 할 이유가
+    아니었다. 신고된 개별 계약은 그 자체로 사실이고, 계약을 앞둔 사람에게
+    가장 시의성 있는 것이 바로 이번 달 계약이다.
+
+    받아 놓으면 build_units가 알아서 가른다. complete_end를 넘는 달은 월
+    집계에서 빠지고 최근 거래 목록에만 'P'(잠정) 꼬리표로 실린다. 그 경로가
+    이미 있는데 당월만 수집을 안 해서 놀고 있었다.
+
+    실측으로 확인한 손실(2026-08-30): 크론이 월요일이라 8/31 회차의 창이
+    202607에서 끝나고, 8월 거래가 화면에 처음 나타나는 것은 9/7 회차 뒤인
+    9/8이었다. 8월 내내 8월 거래가 0건이었다는 뜻이다.
+
+    창을 60에서 61로 늘렸다. 이미 받은 달이 사라지는 것을 막으려는 것은
+    아니다. 수집기는 행을 지우지 않고 집계 뷰에도 하한이 없어서, 창 밖으로
+    밀려난 달은 다시 안 받을 뿐 DB에 그대로 남는다(CTO 지적). 61이 이득인
+    것은 백지에서 백필할 때다. 60으로 두면 끝을 한 달 미룬 만큼 시작도 밀려
+    59개월치만 받게 된다.
+    """
     today = date.today()
-    end = (today.replace(day=1) - timedelta(days=1)).strftime("%Y%m")
+    end = today.strftime("%Y%m")
     cursor = datetime.strptime(end, "%Y%m")
     for _ in range(months - 1):
         cursor = (cursor.replace(day=1) - timedelta(days=1)).replace(day=1)
