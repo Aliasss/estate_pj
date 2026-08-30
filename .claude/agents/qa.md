@@ -29,7 +29,7 @@ finder-11.json (서울 204,991) / finder-41.json (경기 121,882)  열 단위
         ↓  GitHub Actions
              collect.yml    주간 월 21:00 UTC (+ dispatch), timeout 350분
              buildings.yml  매일 13:07 UTC 예약(실제 시작은 20~43분 뒤), timeout 330분
-             sources.yml    dispatch 전용
+             sources.yml    주간 수 04:17 UTC (+ dispatch), timeout 350분
              concurrency: data-latest, cancel-in-progress: false
         ↓  릴리스 에셋 + 리포지토리 CSV -> Vercel 빌드 시 fetch
 Vite 7 + React 19 + Leaflet + vite-plugin-pwa
