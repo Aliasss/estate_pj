@@ -8,10 +8,12 @@ error가 되고, collect.py의 20% 오류율 가드가 회차 전체를 실패�
 집계·units·CSV 커밋·Vercel 훅이 통째로 안 돈다. 주간 실거래 갱신을 통째로
 잃는다는 뜻이라, 병합 전에 6번만 두드려 확인한다(CTO 리뷰 지적).
 
-읽는 법: 소스마다 당월과 전월을 나란히 찍는다. 당월이 전부 "정상"이면 넓혀도
-된다. 당월만 오류 코드를 내는 소스가 있으면 그 소스를 당월에서 빼거나 창을
-되돌려야 한다. 건수가 0인 것은 오류가 아니다. 그 달에 아직 신고가 없다는
-뜻이고, 수집기는 빈 응답을 정상으로 처리한다.
+읽는 법: 소스마다 전월(대조군)과 당월을 나란히 찍고, 종료 코드로 셋을 가른다.
+0이면 둘 다 정상이라 넓혀도 된다. 1이면 전월은 되는데 당월만 막힌 것이라 창을
+되돌려야 한다. 2면 전월까지 실패해 이 러너가 국토부에 아예 못 닿은 것이고,
+당월에 대해서는 아무것도 말할 수 없다. 그때는 새 잡으로 다시 건다(차단은 IP
+단위). 건수가 0인 것은 오류가 아니다. 그 달에 아직 신고가 없다는 뜻이고,
+수집기는 빈 응답을 정상으로 처리한다.
 
 결론이 나면 이 파일과 워크플로는 지워도 된다.
 
@@ -45,7 +47,7 @@ def main() -> int:
     print(f"러너 기준 오늘 {today} · 당월 {cur} · 전월 {prev} (비교군)\n")
 
     session = requests.Session()
-    bad = []
+    bad, control_bad = [], []
     for key_name, src in SOURCES.items():
         line = [f"{src.label} ({key_name})"]
         for ym, tag in ((prev, "전월"), (cur, "당월")):
@@ -61,18 +63,28 @@ def main() -> int:
             except Exception as exc:
                 detail = describe(exc)
                 line.append(f"{tag} 실패: {detail}")
-                if tag == "당월":
-                    bad.append((key_name, detail))
+                (bad if tag == "당월" else control_bad).append((key_name, detail))
         print("  " + " | ".join(line))
 
     print()
+    # 대조군을 판정에 실제로 쓴다. 처음에는 전월을 찍기만 하고 당월 실패만
+    # 세어서, 러너가 통째로 막힌 회차에도 "당월이 문제"라고 결론지었다.
+    # 2026-08-30 1회차가 정확히 그랬다. 전월도 전 소스 403이었는데 스크립트는
+    # 당월 탓을 했다. 대조군이 같이 죽으면 이 회차는 아무것도 못 말한다.
+    if control_bad:
+        print(f"대조군인 전월({prev})도 소스 {len(control_bad)}개에서 실패했습니다. "
+              f"이 러너가 국토부에 닿지 못한 것이라 당월에 대해서는 아무것도 "
+              f"말할 수 없습니다. 차단은 IP 단위라 새 잡으로 다시 거세요.")
+        for k, d in control_bad:
+            print(f"  {k}: {d}")
+        return 2
     if bad:
-        print(f"당월 조회에 실패한 소스 {len(bad)}개. 창을 넓히면 이 소스들이 "
-              f"계획의 1/3을 error로 만들어 20% 가드에 걸립니다.")
+        print(f"전월은 되는데 당월만 소스 {len(bad)}개에서 실패했습니다. 창을 "
+              f"넓히면 이 소스들이 계획의 1/3을 error로 만들어 20% 가드에 걸립니다.")
         for k, d in bad:
             print(f"  {k}: {d}")
         return 1
-    print("당월 조회가 전 소스 정상입니다. 창을 당월까지 넓혀도 됩니다.")
+    print("전월과 당월 모두 전 소스 정상입니다. 창을 당월까지 넓혀도 됩니다.")
     return 0
 
 
