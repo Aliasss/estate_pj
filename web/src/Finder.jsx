@@ -630,7 +630,7 @@ export default function Finder({ guNames, region = '11' }) {
 
       <p className="warnline">
         <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
-        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 매일 이어받는 중이라 전체를
+        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 나눠 이어받는 중이라 전체를
         채우는 데 시간이 걸립니다.
         {commute && walkCoverage > 0 && (
           <>

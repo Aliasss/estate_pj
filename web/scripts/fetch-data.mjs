@@ -237,7 +237,7 @@ async function buildInsights(tier1) {
       if (col.elvt) elvt += col.elvt.filter((v) => v != null).length
     }
     out.freshness.push({
-      key: 'bldg', name: '건축HUB 건축물대장', cycle: '매일 밤 수집 · 끝나는 대로 반영',
+      key: 'bldg', name: '건축HUB 건축물대장', cycle: '이어받는 누적 수집 · 받는 대로 반영',
       // asof는 비운다. 대장은 월 단위 자료가 아니라 누적 수집이고, 그 시점은
       // out.bldg 한 곳에만 둔다. 여기에도 얹으면 화면이 날짜와 지연 판정을
       // 서로 다른 출처에서 읽게 되어, 둘이 어긋나는 날 "기준일은 없는데
