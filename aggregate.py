@@ -2,8 +2,9 @@
 """수집한 실거래가 원본을 월 × 자치구 × 유형 집계 패널로 변환한다.
 
 만들어지는 테이블
-  monthly_panel  60개월 × 25구 × 2유형(아파트/연립다세대) × 2거래유형(매매/전월세) = 최대 6,000행
-  jeonse_ratio   60개월 × 25구 × 2유형 = 최대 3,000행. 전세가율(전세보증금 / 매매가) 패널
+  monthly_panel  61개월 × 74시군구 × 3유형(아파트/연립다세대/오피스텔) × 2거래유형(매매/전월세)
+                 = 최대 27,084행
+  jeonse_ratio   61개월 × 74시군구 × 3유형 = 최대 13,542행. 전세가율(전세보증금 / 매매가) 패널
 
 집계 규칙
 - 해제(cdeal_type = 'O')된 거래는 제외한다. 별도로 n_cancelled에 건수만 남긴다.
@@ -21,7 +22,7 @@ import argparse
 import csv
 import os
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 
 PYEONG = 3.305785
 
@@ -187,31 +188,75 @@ def export_csv(conn: sqlite3.Connection, table: str, path: str) -> int:
 def pick_month_cut(conn: sqlite3.Connection) -> str:
     """월 집계에서 제외할 첫 달. 이 달과 그 이후는 안 넣는다.
 
-    시계를 안 쓴다. 수집기가 이번 회차에 겨눈 창의 끝을 fetch_log에서 읽는다.
-    같은 잡 안에서 collect와 aggregate가 각각 date.today()를 부르면, 잡이 UTC
-    자정을 넘는 날 서로 다른 달을 보고 방금 받은 당월이 패널에 새어 든다.
-    데이터에서 뽑으면 몇 시에 돌든 같은 답이 나온다.
+    수집기가 마지막 회차에 겨눈 창의 끝을 fetch_log에서 읽는다. 같은 잡 안에서
+    collect와 aggregate가 각각 date.today()를 부르면, 잡이 UTC 자정을 넘는 날
+    서로 다른 달을 보고 방금 받은 당월이 패널에 새어 든다. 데이터에서 뽑으면
+    몇 시에 돌든 같은 답이 나온다.
 
-    status='ok'만 본다. 오류만 남은 달을 상한으로 삼으면 실제로 받은 달까지
-    잘라 낸다. fetch_log가 없거나 비면(스냅숏만 받아 따로 돌리는 경우)
-    transactions의 최신 달로 물러선다. 그것도 없으면 시계를 쓰되 그 사실을
-    로그에 남긴다. 어느 쪽이든 틀리는 방향은 "한 달 덜 연다"는 안전한 쪽이다.
+    상태는 안 가린다. 여기서 묻는 것은 "그 달을 받았는가"가 아니라 "수집기가
+    어디까지 겨눴는가"다. 8/30 초안이 status='ok'만 봤고 근거로 "오류만 남은
+    달을 상한으로 삼으면 실제로 받은 달까지 잘라 낸다"고 적었는데 방향이
+    거꾸로였다. 필터가 deal_ymd < month_cut이므로 상한이 높을수록 더 많이
+    들어온다. 오류만 남은 당월을 상한으로 삼는 것이 바로 지난달을 지키는 길이고,
+    status='ok'는 상한을 지난달로 끌어내려 멀쩡히 받아 둔 그 달을 지운다.
+
+    다만 그 지움이 주간 회차에서 바로 일어나지는 않는다. 당월이 전부 실패하면
+    444/1,332구간이라 collect.py의 20% 가드가 먼저 exit 1을 내고, collect.yml의
+    집계 스텝이 통째로 스킵된다. 실제로 닿는 경로는 둘이다. skip_collect로
+    스냅숏만 복원해 집계만 다시 도는 회차, 그리고 refresh_recent를 5 이상으로
+    올려 당월 비중이 20% 이하가 되는 수동 회차. 초안 주석은 이 구분 없이
+    "반드시 여기서 막는다"고 썼는데 리뷰가 과장이라고 짚었다. 그래도 고치는
+    이유는 손실 크기가 아니라 이 함수가 답해야 할 질문이 처음부터 하나여서다.
+
+    잃는 것도 정확히 적어 둔다. 한 달 후퇴는 확정월을 못 움직인다. 패널 끝이
+    M-1이든 M-2든 fetch-data.mjs의 lastSolid는 자체 달력 규칙(말일 + 35일)으로
+    같은 값이 되기 때문이다. 사라지는 것은 잠정으로 그리던 꼬리 한 달이고,
+    화면 문구가 "6월분까지 확정됐고 7월분은 아직 잠정입니다"에서 "6월분까지
+    확정됐습니다"로 바뀐다. units 쪽 확정월도 build_units의 달력 규칙에서
+    나오므로 갈림 경고는 애초에 걸릴 수 없다. 초안 주석은 이 경고가 "같은
+    값이라 안 걸린다"고 적었는데 메커니즘이 틀렸다.
+
+    마지막 회차만 본다. fetch_log는 지워지지 않고 쌓이므로, 옛 수동 실행이
+    --end를 미래 달로 줬으면 그 달이 영원히 최고수위로 남아 진행 중인 달이
+    패널에 샌다. 마지막 fetched_at에서 하루 안쪽 행만 세면 그 잔재가 빠진다.
+    회차 최장이 350분(collect.yml 타임아웃)이라 하루면 한 회차가 다 들어온다.
+
+    시계는 뚜껑으로만 쓴다. collect가 aggregate보다 먼저 도므로 정상 회차에서는
+    창의 끝이 시계보다 크지 않아 뚜껑이 안 닿는다. 닿는 것은 위 잔재가 하루
+    창까지 뚫고 들어온 경우뿐이고, 그때 피해를 진행 중인 달 하나로 묶는다.
+
+    fetch_log가 없거나 비면 시계를 쓴다. 릴리스 스냅숏에는 fetch_log가 늘
+    있으므로(collect.py SCHEMA가 같은 파일 안에 만든다) 이 경로는 그 테이블을
+    떼어 낸 DB를 손으로 집계할 때만 닿는다. 그 경우 옛 코드는 transactions의
+    최신 달로 물러섰는데, 그 값은 "행이 있는 마지막 달"이라 이번 달에 아직
+    신고가 없으면 지난달로 떨어져 위와 같은 후퇴를 낸다. 그래서 뺐다. 대신
+    시계가 더 높은 상한이라 옛 아카이브를 집계하면 더 많이 열린다는 것은
+    적어 둔다. 그런 DB는 애초에 이 함수가 답할 수 있는 대상이 아니다.
     """
-    for sql, why in (
-        ("SELECT MAX(deal_ymd) FROM fetch_log WHERE status = 'ok'", "fetch_log"),
-        ("SELECT MAX(deal_ymd) FROM transactions", "transactions"),
-    ):
+    clock = date.today().strftime("%Y%m")
+    try:
+        last = conn.execute("SELECT MAX(fetched_at) FROM fetch_log").fetchone()[0]
+    except sqlite3.OperationalError:
+        last = None
+    got = None
+    if last:
         try:
-            got = conn.execute(sql).fetchone()[0]
-        except sqlite3.OperationalError:
-            continue
-        if got:
-            if why != "fetch_log":
-                print(f"  주의: fetch_log를 못 읽어 {why}의 최신 달을 상한으로 씁니다.")
-            return str(got)[:6]
-    fallback = date.today().strftime("%Y%m")
-    print(f"  주의: 수집 이력이 없어 시계({fallback})를 상한으로 씁니다.")
-    return fallback
+            since = (datetime.fromisoformat(last) - timedelta(days=1)).isoformat(
+                timespec="seconds")
+        except ValueError:
+            since = ""
+        got = conn.execute(
+            "SELECT MAX(deal_ymd) FROM fetch_log WHERE fetched_at >= ?",
+            (since,)).fetchone()[0]
+    if not got:
+        print(f"  주의: 수집 이력이 없어 시계({clock})를 상한으로 씁니다.")
+        return clock
+    got = str(got)[:6]
+    if got > clock:
+        print(f"  주의: 마지막 회차가 겨눈 끝({got})이 시계({clock})보다 뒤입니다. "
+              "시계를 상한으로 씁니다.")
+        return clock
+    return got
 
 
 def main() -> int:

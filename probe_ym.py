@@ -6,7 +6,7 @@
 적 없는 질의 모양이다. 국토부가 당월 DEAL_YMD에 오류를 주면 그 444구간이 전부
 error가 되고, collect.py의 20% 오류율 가드가 회차 전체를 실패로 끝낸다. 그러면
 집계·units·CSV 커밋·Vercel 훅이 통째로 안 돈다. 주간 실거래 갱신을 통째로
-잃는다는 뜻이라, 병합 전에 6번만 두드려 확인한다(CTO 리뷰 지적).
+잃는다는 뜻이라, 6소스 x 2달 = 12요청으로 가볍게 두드려 확인한다.
 
 읽는 법: 소스마다 전월(대조군)과 당월을 나란히 찍고, 종료 코드로 셋을 가른다.
 0이면 둘 다 정상이라 넓혀도 된다. 1이면 전월은 되는데 당월만 막힌 것이라 창을
@@ -52,14 +52,25 @@ def main() -> int:
         line = [f"{src.label} ({key_name})"]
         for ym, tag in ((prev, "전월"), (cur, "당월")):
             try:
-                # 한 건만 받는다. 묻는 것은 "게이트웨이가 이 달을 받아 주는가"이지
-                # 몇 건이 있는가가 아니다. 처음엔 기본값으로 불렀다가 10분
-                # 타임아웃에 잘렸다. fetch_month는 그 달의 전 페이지를 다 받아서,
-                # 6소스 x 2달이 12회 전체 수집이 됐다.
-                rows = fetch_month(session, key, src, LAWD, ym,
-                                   rows_per_page=1, max_pages=1,
-                                   max_retries=1, timeout=20)
-                line.append(f"{tag} 정상(표본 {len(rows)}건)")
+                # 한 페이지만 받는다. 묻는 것은 "게이트웨이가 이 달을 받아
+                # 주는가"이지 몇 건이 있는가가 아니다. 처음엔 기본값으로
+                # 불렀다가 10분 타임아웃에 잘렸다. fetch_month는 그 달의 전
+                # 페이지를 다 받아서, 6소스 x 2달이 12회 전체 수집이 됐다.
+                #
+                # 끊는 것은 max_pages다. 한때 rows_per_page=1도 같이 줬는데,
+                # fetch_month의 docstring이 "rows_per_page를 줄이는 것으로는
+                # 안 된다"고 명시적으로 경고하는 조합이었다. 같은 목적의
+                # collect.preflight와 인자를 맞춘다.
+                #
+                # fetch_month는 (받은 항목, totalCount) 튜플을 낸다. 처음에
+                # rows로 받아 len(rows)를 찍었는데 그건 늘 2다(튜플 길이).
+                # 성공 줄의 건수가 언제나 거짓이었다. 아직 안 드러난 이유는
+                # 종료 코드와 무관하다. 지금까지 회차에서 성공한 소스가 한
+                # 번도 없어서 그 줄이 한 번도 안 찍혔을 뿐이다(CTO 리뷰).
+                items, total = fetch_month(session, key, src, LAWD, ym,
+                                           rows_per_page=1000, max_pages=1,
+                                           max_retries=1, timeout=20)
+                line.append(f"{tag} 정상(종로구 신고 {total}건)")
             except Exception as exc:
                 detail = describe(exc)
                 line.append(f"{tag} 실패: {detail}")
