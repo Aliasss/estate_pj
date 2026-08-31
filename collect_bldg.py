@@ -261,6 +261,33 @@ class Throttle:
             return self.interval
 
 
+class Requests:
+    """실제로 나간 HTTP 요청 수.
+
+    bldg_log는 지번당 한 행이라 쿼터와 눈금이 다르다. 실패 1건은 재시도까지
+    최대 4요청이고, 사전 확인은 최대 3요청을 쓰면서 행을 아예 안 남긴다.
+    8/31에 중복 방지 가드를 두 판 짰다가 둘 다 접었는데, 다시 짜려면 "회차가
+    쿼터를 얼마나 썼는가"를 알아야 하고 지금은 그 값을 아무도 안 세고 있다.
+    여기서부터 재 둔다. 동작은 안 바꾼다.
+
+    한 군데는 못 남는다. 사전 확인에서 막혀 끝나는 회차는 수집 루프의
+    try/finally에 들어가기 전에 돌아가므로 bldg_meta에 안 찍힌다. 그 회차가
+    쓰는 것은 최대 3요청이고 발행도 안 하므로 지금은 감수한다. 로그에는
+    남으니 나중에 세야 하면 거기서 세면 된다.
+    """
+
+    def __init__(self) -> None:
+        self.n = 0
+        self.lock = threading.Lock()
+
+    def hit(self) -> None:
+        with self.lock:
+            self.n += 1
+
+
+REQUESTS = Requests()
+
+
 def read_response(text: str) -> tuple[str, str, list[dict]]:
     """(코드, 메시지, items). 게이트웨이 오류는 JSON으로도 오므로 둘 다 읽는다.
 
@@ -299,6 +326,7 @@ def fetch(session: requests.Session, key: str, target: tuple, endpoint_idx: list
         try:
             if throttle:
                 throttle.wait()
+            REQUESTS.hit()
             res = session.get(url, params=params, timeout=timeout)
             # 429는 내 잘못이다. 물러섰다가 다시 시도한다.
             if res.status_code == 429 and throttle:
@@ -534,6 +562,9 @@ def main() -> int:
         conn.executemany(
             "INSERT OR REPLACE INTO bldg_meta (k, v) VALUES (?,?)",
             [("remaining", str(left)),
+             # 이 회차가 실제로 쓴 요청 수. 화면은 안 읽는다. 중복 방지 가드를
+             # 다시 짤 때 쓸 눈금을 모으는 자리다(Requests 주석 참고).
+             ("requests", str(REQUESTS.n)),
              # ran_at은 지금 아무도 안 읽는다. 진단용으로만 남긴다. 화면이 쓰는 시각은
              # 이것이 아니라 bldg_log.fetched_at이다(bldg_join.state 주석 참고).
              ("ran_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))])
@@ -659,8 +690,12 @@ def main() -> int:
         write_remaining()
 
     total = conn.execute("SELECT COUNT(*) FROM buildings").fetchone()[0]
-    print(f"\n완료. 이번 실행 {calls:,}회 호출, {inserted:,}동 적재 "
-          f"(빈응답 {empty:,} / 실패 {errors:,}). DB 총 {total:,}동")
+    # 지번 수와 요청 수를 갈라 적는다. 예전에는 calls를 "회 호출"이라고 찍었는데
+    # 그것은 조회한 지번 수이지 쿼터를 쓴 요청 수가 아니다. 쿼터를 논할 때 쓰는
+    # 눈금은 아래 요청 수다.
+    print(f"\n완료. 이번 실행 지번 {calls:,}건, 요청 {REQUESTS.n:,}회, "
+          f"{inserted:,}동 적재 (빈응답 {empty:,} / 실패 {errors:,}). "
+          f"DB 총 {total:,}동")
     if inserted:
         print("\n구조 분포 상위:")
         for strct, n in conn.execute(
