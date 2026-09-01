@@ -78,6 +78,10 @@ export const sigLabel = (col, i) =>
 /** 지하철역. 지도에서 통근 판단의 기준점이라 조건과 무관하게 늘 그린다. */
 const PAGE = 60
 
+// 도보 필터가 걸러내는 이유를 적는다. 상한을 모르는 옛 아카이브에서는 분을
+// 빼고 말한다. walk가 비는 이유가 좌표가 아니라 거리라는 것만 전하면 된다.
+const walkNote = (min) => (min ? `걸어서 ${min}분 안에 역이 있는` : '역이 걸어갈 거리에 있는')
+
 export default function Finder({ guNames, region = '11' }) {
   const fin = useFinder(region)
   const stationPins = useSubway()
@@ -119,6 +123,10 @@ export default function Finder({ guNames, region = '11' }) {
   // 새 열은 데이터보다 코드가 먼저 배포될 수 있다. 열이 정말 실려 왔는지는
   // FILL로 채워진 col이 아니라 원본 cols 목록이 말해 준다.
   const hasSale = fin.status === 'ready' && fin.d.cols.includes('sale')
+  // 도보 상한. walk 열을 구운 그 파일에서 같이 읽는다(build_units의
+  // max_walk_min 주석 참고). 옛 아카이브에는 없어서 그때는 분을 안 적고
+  // 거리만 말한다. 모르는 숫자를 지어내지 않는다.
+  const maxWalkMin = fin.status === 'ready' ? fin.d.max_walk_min ?? null : null
   // 월세 건수 열이 실려 오기 전 배포에서는 월세 선택지를 아예 내지 않는다.
   // 눌러도 0건인 항목을 목록에 두면 "이 동네에 월세가 없다"로 읽힌다.
   const hasNw = fin.status === 'ready' && fin.d.cols.includes('nw')
@@ -356,10 +364,17 @@ export default function Finder({ guNames, region = '11' }) {
           <em>억</em>
         </label>
         <label>
-          {/* 좌표가 일부만 수집된 동안에는 이 필터가 좌표 없는 건물을 걸러낸다는
-              사실을 숨기지 않는다. 수집이 끝나면 백분율 표기는 저절로 사라진다. */}
-          <span>역까지 도보{walkCoverage <= 0 ? ' · 좌표 수집 후'
-            : walkCoverage < 0.95 ? ` · 좌표 있는 ${Math.round(walkCoverage * 100)}%만 검색됨` : ''}</span>
+          {/* 이 필터가 소리 없이 걸러내는 건물이 있다는 사실을 숨기지 않는다.
+              다만 원인을 좌표라고 적으면 안 된다. walk가 비는 이유는 셋인데
+              (좌표 없음, 격자 안에 역 없음, 도보 25분 초과) 실측하면 경기에서
+              도보가 빈 44,993건 중 좌표 탓은 411건, 0.9%뿐이다. 나머지는 좌표를
+              멀쩡히 받은 외곽 건물이고 수집을 아무리 해도 안 채워진다.
+              "좌표 있는 63%"라고 적으면 소개 탭이 같은 좌표를 99%라고 말하는
+              것과 정면으로 부딪히고, 사용자는 기다리면 늘어날 숫자로 읽는다. */}
+          <span>역까지 도보{walkCoverage <= 0 ? ' · 아직 계산하지 못했습니다'
+            : walkCoverage < 0.95
+              ? ` · ${walkNote(maxWalkMin)} ${Math.round(walkCoverage * 100)}%만 검색됨`
+              : ''}</span>
           <select disabled={walkCoverage <= 0} value={maxWalk}
                   onChange={(e) => setMaxWalk(Number(e.target.value))}>
             <option value={0}>무관</option>
@@ -424,10 +439,11 @@ export default function Finder({ guNames, region = '11' }) {
         {commute && walkCoverage > 0 && (
           <>
             <label>
-              {/* 역까지 도보 필터와 같은 규율. 좌표 없는 건물은 이 필터가 소리
-                  없이 걸러내므로, 그 사실을 라벨이 말해야 한다. */}
+              {/* 역까지 도보 필터와 같은 규율이고 같은 이유로 원인도 같다.
+                  통근 시간은 역에서 재므로 걸어갈 역이 없으면 낼 값이 없다. */}
               <span>통근 목적지{walkCoverage < 0.95
-                ? ` · 좌표 있는 ${Math.round(walkCoverage * 100)}%만 검색됨` : ''}</span>
+                ? ` · ${walkNote(maxWalkMin)} ${Math.round(walkCoverage * 100)}%만 검색됨`
+                : ''}</span>
               <select value={dest} onChange={(e) => setDest(e.target.value)}>
                 <option value="">무관</option>
                 {Object.keys(commute).map((k) => <option key={k} value={k}>{k}</option>)}

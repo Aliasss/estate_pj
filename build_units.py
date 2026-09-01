@@ -30,7 +30,7 @@ from collections import Counter, defaultdict
 
 from bldg_join import Registry
 from school_join import Schools
-from subway_join import Nearest
+from subway_join import MAX_WALK_MIN, Nearest
 from terrain_join import Terrain
 from match_probe import area_key, norm_jibun, norm_name
 
@@ -141,6 +141,11 @@ def write_finder(out_dir: str, by_gu: dict, cols: list[str], window: list[str],
     payload = {"build": build_id, "window": window, "gus": gus, "stages": STAGES,
                "umds": [u for u, _ in sorted(umds.items(), key=lambda kv: kv[1])],
                "cols": FINDER_COLS, "n": len(recs),
+               # 화면이 "걸어서 N분 안에 역이 있는 M%만 검색됨"이라고 적는다.
+               # 그 N을 프런트에 따로 박으면 이 상수가 바뀌는 날 walk 열은 새
+               # 기준으로 구워지고 라벨만 옛 숫자를 말한다. 값과 라벨이 같은
+               # 파일에서 나와야 갈라지지 않는다.
+               "max_walk_min": MAX_WALK_MIN,
                "columns": [list(c) for c in zip(*recs)]}
     path = os.path.join(out_dir, fname)
     with open(path, "w", encoding="utf-8") as fh:
