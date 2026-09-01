@@ -3,7 +3,7 @@ import { bgNotifyEnabled, bgNotifySupported, disableBgNotify, enableBgNotify } f
 import MapView from './MapView.jsx'
 import ContractPlan from './ContractPlan.jsx'
 import { NoJeonseSig, UnitCard, questionsFor, ratioBroken, ratioTone } from './UnitLookup.jsx'
-import { REGIONS, guardCalendar, guardSignals, htName, search, collectLate, kstDay, parseIso, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
+import { REGIONS, guardCalendar, guardSignals, htName, search, collectLate, kstDay, unitAsof, parseIso, useCompare, useFinder, useGuard, useSubway, useUnitLoader, ym } from './units.js'
 import { rowComment } from './rowcomment.js'
 import { useInsights } from './Insight.jsx'
 
@@ -149,7 +149,12 @@ export default function Verify({ guNames, region = '11', onNearby, onRegion }) {
   // 지킴이 패널은 등록된 계약의 구 파일만 읽으므로 지역 토글의 로드 상태와
   // 무관하다. 경기 수집이 안 끝났다고 서울 계약의 감시가 사라지면 안 된다.
   const guardPanel = guard.items.length > 0 && (
+    // 지연을 여기서 같이 내려보낸다. 이 값은 검색 카드에만 붙어 있었는데, 지킴이
+    // 패널은 그 카드보다 위에 그려지므로 실거래가 열흘 멈춰도 화면 맨 위는 초록
+    // "이상 없음"이었다. 계약한 사람이 2년을 믿고 맡기는 자리에서 가장 비싼
+    // 거짓말이라 여기부터 막는다.
     <GuardPanel guard={guard} byId={byId}
+                late={insLate} at={ins.data?.generatedAt}
                 onOpen={(lawd, u) => {
                   setOpen({ lawd, u })
                   history.pushState(null, '', `?u=${lawd}.${u.id}`)
@@ -351,7 +356,7 @@ function GuardNotifyToggle() {
   if (state === 'unsupported') {
     return (
       <p className="muted-line">
-        앱을 열지 않아도 만기·위험 신호를 알려드리는 백그라운드 알림은
+        앱을 열지 않아도 만기 일정과 내 보증금보다 낮은 신규 전세를 알려드리는 백그라운드 알림은
         안드로이드 크롬에서 홈 화면에 설치하면 켤 수 있습니다. 아이폰 알림은 준비 중입니다.
       </p>
     )
@@ -359,7 +364,8 @@ function GuardNotifyToggle() {
   if (state === 'on') {
     return (
       <p className="muted-line">
-        백그라운드 알림이 켜져 있습니다. 앱을 열지 않아도 만기 일정과 위험 신호를 알려드립니다.{' '}
+        백그라운드 알림이 켜져 있습니다. 만기 일정과 내 보증금보다 낮은 신규 전세를
+        알려드립니다. 나머지 위험 신호는 앱을 열었을 때 이 화면이 알려드립니다.{' '}
         <button className="inline-act" onClick={() => disableBgNotify().then(() => setState('off'))}>끄기</button>
       </p>
     )
@@ -379,7 +385,7 @@ function GuardNotifyToggle() {
   )
 }
 
-function GuardPanel({ guard, byId, onOpen }) {
+function GuardPanel({ guard, byId, onOpen, late, at }) {
   const [details, setDetails] = useState({})
   useEffect(() => {
     for (const it of guard.items) {
@@ -396,12 +402,23 @@ function GuardPanel({ guard, byId, onOpen }) {
   return (
     <section className="card">
       <h2>보증금 지킴이</h2>
+      {/* 초안은 "실거래 자료가 갱신될 때마다 다시 봅니다"였다. 지킬 수 없는
+          약속이라 지운 문장을 주어만 바꿔 되살린 것이었다(CTO). 이 앱에는 자동
+          재확인이 없다. 판정은 이 화면이 그려질 때 이 기기가 계산한다. */}
       <p className="sub">
-        등록하신 계약의 건물을 데이터가 갱신될 때마다 다시 봅니다
+        앱을 여실 때 이 기기가 등록하신 계약의 건물을 다시 봅니다
       </p>
+      {late && (
+        <p className="sub warning">
+          <b>{guardDay(late.got)}</b> 수집분까지만 확인했습니다.{' '}
+          <b>{guardDay(late.due)}</b>에 받았어야 할 회차를 아직 받지 못해,
+          그날 이후 신고된 거래는 아직 못 봤습니다({late.days}일째)
+        </p>
+      )}
       <ul className="guard-list">
         {guard.items.map((it) => (
           <GuardItem key={it.id} it={it} u={details[it.id]} onOpen={onOpen}
+                     late={late} at={at}
                      onRemove={() => guard.remove(it.id)} />
         ))}
       </ul>
@@ -423,7 +440,13 @@ function GuardPanel({ guard, byId, onOpen }) {
 const guardWatchable = (u) => !!(u?.deals?.j?.length || u?.n_sale_24m)
 
 /** 접힌 줄에 띄울 상태 하나. 위험한 것부터 잡는다. */
-function guardStatus(u, sigs, cal) {
+/* 지킴이는 2년을 사는 화면이라 "8월 18일"만 적으면 작년인지 올해인지
+   갈리지 않는다. 여기서만 연도를 붙인다. */
+const guardDay = (d) => (d ? new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric',
+}).format(d) : '-')
+
+function guardStatus(u, sigs, cal, late, asof) {
   if (u === undefined) return { tone: 'muted', label: '확인 중' }
   // 오프라인은 위험이 아니라 연결 문제다. 경고색을 쓰면 톤이 거짓말을 한다.
   if (u.offline) return { tone: 'muted', label: '연결 없음' }
@@ -437,6 +460,20 @@ function guardStatus(u, sigs, cal) {
     return { tone: cal.tone, label: cal.d < 0 ? '만기 지남' : `만기 D-${cal.d}` }
   }
   if (!guardWatchable(u)) return { tone: 'muted', label: '잴 자료 없음' }
+  // 자료가 늦으면 초록을 내린다. "이상 없음"은 "재 봤더니 괜찮다"는 말인데,
+  // 받았어야 할 회차를 못 받은 동안은 그 기간을 아예 안 본 것이다.
+  //
+  // 강등은 여기 하나뿐이다. 신호가 있으면 낡은 자료로 잡혔어도 진짜 신호이고,
+  // 만기는 사용자가 적어 넣은 계약일에서 나오므로 수집 지연과 무관하다. 둘까지
+  // 회색으로 만들면 경고가 배경 소음이 되어 진짜 위험을 가린다.
+  // 라벨의 주어를 앱이 아니라 원인으로 둔다. "확인 못 함"은 바로 위 "확인
+  // 필요"(등록 식별자가 깨짐, 사용자가 재등록해야 함)와 한 글자 차이인데
+  // 원인도 처방도 정반대라, 접힌 줄만 보는 사람이 자기 등록이 깨진 것으로
+  // 읽는다(QA). 사용자 쪽에는 아무 잘못이 없다.
+  if (late) return { tone: 'muted', label: '자료 지연' }
+  // 어느 시점 자료로 봤는지를 못 밝히면 "이상 없음"도 못 쓴다. 그 말은 "재
+  // 봤더니 괜찮다"인데, 무엇을 봤는지 모르는 상태다(unitAsof 주석 참고).
+  if (!asof) return { tone: 'muted', label: '시점 미확인' }
   return { tone: 'good', label: '이상 없음' }
 }
 
@@ -444,10 +481,13 @@ function guardStatus(u, sigs, cal) {
  * 지킴이 한 물건. 항상 한 줄 요약으로 접혀서 시작한다. 위험은 상태 칩의 색과
  * 글로 접힌 줄에서도 보이므로, 설명 전문이 화면을 점령할 이유가 없다.
  */
-function GuardItem({ it, u, onOpen, onRemove }) {
+function GuardItem({ it, u, onOpen, onRemove, late, at }) {
   const cal = guardCalendar(it.expiry)
   const sigs = u && !u.missing && !u.offline ? guardSignals(u, it) : []
-  const st = guardStatus(u, sigs, cal)
+  // 물건마다 따로 판정한다. 같은 화면이라도 어떤 구 파일은 캐시본이고 어떤
+  // 것은 방금 받은 것일 수 있다.
+  const asof = u && !u.missing && !u.offline ? unitAsof(u, at) : null
+  const st = guardStatus(u, sigs, cal, late, asof)
   const [open, setOpen] = useState(false)
   return (
     <li className="guard-item">
@@ -479,10 +519,40 @@ function GuardItem({ it, u, onOpen, onRemove }) {
           )}
           {u && !u.missing && !u.offline && sigs.length === 0 && (
             guardWatchable(u) ? (
-              <div className="verdict good">
-                <strong>등록 이후 새 위험 신호가 없습니다</strong>
-                <span>실거래 데이터는 매주 화요일 갱신됩니다. 갱신될 때마다 이 화면이 다시 확인합니다.</span>
-              </div>
+              // "매주 화요일 갱신됩니다. 갱신될 때마다 다시 확인합니다"라고
+              // 적었는데 멈춘 동안 둘 다 거짓이 된다. 수집이 막히면 사람이
+              // 다시 눌러야 하고 자동 재시도는 없다. 시제 약속을 빼고 어느
+              // 시점 자료로 봤는지를 적는다.
+              late ? (
+                <div className="verdict muted">
+                  <strong>등록 이후 새 위험 신호를 확인하지 못했습니다</strong>
+                  <span>
+                    {/* "그 뒤에"라고 적었더니 직전 명사구가 예정일이라 공백이
+                        일주일로 읽혔다. 실제로 안 본 것은 마지막 수집일 이후
+                        전부다. 며칠째인지도 함께 적는다(QA). */}
+                    {guardDay(late.got)} 수집분까지는 신호가 없었습니다. 그날 이후
+                    신고된 거래는 아직 못 봤습니다({late.days}일째). 이상이 없다는
+                    뜻이 아니라 그 기간을 확인하지 못했다는 뜻입니다.
+                  </span>
+                </div>
+              ) : asof ? (
+                <div className="verdict good">
+                  <strong>등록 이후 새 위험 신호가 없습니다</strong>
+                  <span>{guardDay(asof)} 수집분으로 확인했습니다.</span>
+                </div>
+              ) : (
+                // 시점을 못 밝히면 초록을 못 쓴다. 예전에는 이 자리가 무조건
+                // 초록이었고, insights.json을 못 받은 오프라인 재방문이 정확히
+                // 그 경로였다. 구 파일은 45일 캐시라 화면은 멀쩡히 그려진다.
+                <div className="verdict muted">
+                  <strong>어느 시점 자료로 확인한 것인지 알 수 없습니다</strong>
+                  <span>
+                    지금 이 화면에는 신호가 없습니다. 다만 이 건물 자료가 언제
+                    수집된 것인지 확인하지 못해, 최근 신고를 다 본 것인지는 말씀드릴
+                    수 없습니다. 연결된 상태에서 다시 열어 주세요.
+                  </span>
+                </div>
+              )
             ) : (
               <div className="verdict muted">
                 <strong>이 건물은 최근 2년 전세·매매 신고가 없습니다</strong>

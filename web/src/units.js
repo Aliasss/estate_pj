@@ -802,9 +802,43 @@ export function nextCollect(now = new Date()) {
  * days는 마지막 수집 이후 일수다. 예정일로부터가 아니다. 문구도 그 뜻으로
  * 적어야 한다. 놓친 예정일은 due로 따로 준다.
  */
+/**
+ * 이 물건 화면에 적어도 되는 실거래 수집 시점. 못 믿으면 null이다.
+ *
+ * 지킴이가 신호를 계산하는 원본은 구 파일(data/units/{lawd}.json)인데, 화면에
+ * 적으려는 날짜는 insights.json의 generatedAt이다. 둘은 다른 산출물이고 캐시
+ * 정책이 반대다. 구 파일은 StaleWhileRevalidate 45일, insights는 NetworkFirst다.
+ * 그래서 8월 캐시로 계산해 놓고 "9월 1일까지 받은 자료로 확인했습니다"를 적는
+ * 상태가 실재한다. 날짜 없는 거짓 초록을 날짜 붙은 더 믿음직한 초록으로 바꾸는
+ * 것이라 그대로 두면 이번 변경이 손해다(CTO 리뷰).
+ *
+ * 구 파일의 세대 표식(_build = 확정월-수집시각)으로 가른다. 같은 회차에서는
+ * units 발행이 collected_at 기록보다 먼저라 구 파일이 30초쯤 이르고, 대장만
+ * 도는 날에는 재조인이 구 파일을 앞으로 밀어 며칠 새것이 된다. 그러므로 "구
+ * 파일이 더 이르다"는 것만으로는 못 가르고, 회차 하나를 덮을 여유를 둔다.
+ *
+ * 틀리는 방향은 "시점을 못 밝힌다"이다. 집계에 변화가 없어 collected_at이 안
+ * 움직인 회차에서는 실제보다 늦게 읽지만, 안전이 걸린 화면에서는 덜 주장하는
+ * 쪽이 맞다.
+ *
+ * 미래 값도 버린다. 기기 시계가 뒤져 있으면 아직 오지도 않은 자료를 "받았다"고
+ * 적게 된다. bldgAt이 같은 이유로 같은 가드를 갖고 있다.
+ */
+export function unitAsof(u, generatedAt, now = new Date()) {
+  const got = parseIso(generatedAt)
+  if (!got) return null
+  if (got.getTime() > now.getTime() + 864e5) return null
+  const built = Number(String(u?._build ?? '').split('-')[1])
+  if (Number.isFinite(built) && built * 1000 < got.getTime() - 12 * 3600e3) return null
+  return got
+}
+
 export function collectLate(generatedAt, now = new Date()) {
   const got = parseIso(generatedAt)
   if (!got) return null
+  // 미래 값은 못 믿는다. 기기 시계가 앞서 있으면 정상 회차가 지연으로 뒤집혀
+  // 지킴이 전체가 회색이 된다(bldgAt과 같은 가드).
+  if (got.getTime() > now.getTime() + 864e5) return null
   // 직전 예정 시각. nextCollect는 늘 미래를 내므로 한 주를 뺀다.
   const due = new Date(nextCollect(now).getTime() - WEEK_MS)
   if (got.getTime() >= due.getTime()) return null       // 그 회차는 받았다
