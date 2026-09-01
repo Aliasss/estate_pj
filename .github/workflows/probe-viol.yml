@@ -11,7 +11,6 @@ on:
 
 env:
   PYTHONUNBUFFERED: '1'
-  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
 
 jobs:
   probe:
@@ -19,8 +18,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 이 잡은 git push를 안 한다. gh는 스텝마다 명시한 GH_TOKEN으로
+          # 돈다. 기본값 true면 쓰기 토큰이 .git/config에 남아 이후 모든
+          # 스텝이 읽을 수 있으므로, 시크릿을 스텝으로 내린 이득이 상쇄된다.
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install requests
       - run: python probe_viol.py
+        env:
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}

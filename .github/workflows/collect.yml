@@ -42,8 +42,6 @@ env:
   # 이게 없으면 파이썬 stdout이 블록 버퍼링돼서 실행 중 로그가 안 보인다.
   # 인구 백필 첫 실행을 두 시간 동안 깜깜이로 지켜본 원인이 이것이었다.
   PYTHONUNBUFFERED: '1'
-  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SNAPSHOT_TAG: data-latest
 
 jobs:
@@ -99,6 +97,8 @@ jobs:
       # "다운로드 실패"(GitHub API 일시 오류)를 구분한다. 후자를 처음부터 수집으로
       # 삼키면 5년치 스냅샷이 한 달치로 조용히 갈려 나간다.
       - name: 직전 스냅샷 복원
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # '없음' 판정은 세 번 확인한다. GitHub API가 존재하는 릴리스에 일시적으로
           # 404를 주는 드문 경우를 '최초 실행'으로 오판하면, 빈 DB에서 시작한 부분
@@ -144,6 +144,7 @@ jobs:
         env:
           # dispatch 입력은 env를 거쳐 셸에 준다. 직접 보간은 인젝션 표면이다.
           IN_REFRESH: ${{ inputs.refresh_recent }}
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
         run: |
           # 종료 코드 75는 "이 러너의 IP가 막혔다"는 뜻이다(collect.py EXIT_BLOCKED).
           # 코드가 틀린 실패와 IP를 잘못 뽑은 실패는 사람이 할 일이 다르므로 가른다.
@@ -159,6 +160,8 @@ jobs:
       # 건너뛴 경우엔 원본이 그대로라 다시 올릴 게 없다(2.2GB 왕복을 아낀다).
       - name: 원본 스냅샷 발행
         if: ${{ always() && !inputs.skip_collect && hashFiles('seoul_rt.sqlite') != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 행 수 가드: 복원 시점보다 줄어든 DB로 스냅샷을 덮어쓰지 않는다.
           # 스냅샷은 다음 실행의 이어받기 기반이라, 한 번 줄면 되돌릴 길이 없다.
@@ -200,6 +203,8 @@ jobs:
       # 조용히 발행되지 않도록 중단한다.
       - name: 건축물대장 복원
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
             if echo "$assets" | grep -qiE 'not found|404'; then
@@ -219,6 +224,8 @@ jobs:
       # 좌표·지하철도 릴리스에서 받아 온다. 위와 같은 규율: 정말 없을 때만 비운다.
       - name: 좌표·지하철 복원
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
             if echo "$assets" | grep -qiE 'not found|404'; then
@@ -269,6 +276,8 @@ jobs:
       # 활용신청(자동승인)이 따로 되어 있어야 한다.
       - name: 인구·세대 수집 (행안부)
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
+        env:
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
         run: |
           # 시간 예산을 잡 한도에서 거꾸로 계산한다. 고정 240분으로 두면 실거래
           # 수집이 두 시간 넘게 걸린 날 인구 수집이 자기 중단 전에 러너에게
@@ -305,6 +314,8 @@ jobs:
       # 릴리스 자산으로 올리고 Vercel 빌드가 받아 정적 파일로 굽는다.
       - name: 물건 단위 패널 발행
         if: ${{ inputs.skip_collect || steps.collect.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python build_units.py --db seoul_rt.sqlite --out units \
             --bldg bldg.sqlite --geo geo.sqlite --subway subway.json \

@@ -158,8 +158,6 @@ env:
   # 이게 없으면 파이썬 stdout이 블록 버퍼링돼서 실행 중 로그가 한 줄도 안 보인다.
   # 첫 실행에서 47분을 눈감고 돌린 원인이 이것이었다.
   PYTHONUNBUFFERED: '1'
-  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SNAPSHOT_TAG: data-latest
 
 jobs:
@@ -171,6 +169,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 이 잡은 git push를 안 한다. gh는 스텝마다 명시한 GH_TOKEN으로
+          # 돈다. 기본값 true면 쓰기 토큰이 .git/config에 남아 이후 모든
+          # 스텝이 읽을 수 있으므로, 시크릿을 스텝으로 내린 이득이 상쇄된다.
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -181,6 +184,8 @@ jobs:
       # 것이지 실패가 아니다. 매일 빨간 런이 쌓이면 진짜 실패가 묻힌다.
       - name: 실거래가 스냅샷 복원
         id: rt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name' 2>&1); then
             if echo "$assets" | grep -qx 'seoul_rt.sqlite.gz'; then
@@ -203,6 +208,8 @@ jobs:
       # 삼키면 며칠치 진행분이 이번 실행의 하루치로 덮여 갈려 나간다.
       - name: 건축물대장 진행분 복원
         if: steps.rt.outputs.has_rt == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name')
           if echo "$assets" | grep -qx 'bldg.sqlite.gz'; then
@@ -244,6 +251,7 @@ jobs:
           IN_WORKERS: ${{ inputs.workers }}
           IN_RATE: ${{ inputs.rate }}
           IN_PROBE: ${{ inputs.probe == true && '1' || '' }}
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
         run: |
           python collect_bldg.py --rt-db seoul_rt.sqlite --db bldg.sqlite \
             --lawd "$IN_LAWD" --max-calls "${IN_MAX_CALLS:-8000}" \
@@ -253,6 +261,8 @@ jobs:
       # 한도에 걸려 중간에 끊겨도 받은 만큼은 보존해야 다음 실행이 이어받는다.
       - name: 진행분 발행
         if: always() && hashFiles('bldg.sqlite') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 행 수 가드: 복원 시점보다 줄어든 DB로 진행분을 덮어쓰지 않는다.
           if [ ! -f .rows_before ]; then

@@ -53,12 +53,6 @@ concurrency:
 
 env:
   PYTHONUNBUFFERED: '1'
-  MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
-  # 아직 없으면 해당 후보는 건너뛴다. 있으면 같이 확인한다.
-  VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
-  JUSO_SEARCH_KEY: ${{ secrets.JUSO_SEARCH_KEY }}
-  JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
-  SEOUL_OPENAPI_KEY: ${{ secrets.SEOUL_OPENAPI_KEY }}
 
 jobs:
   probe:
@@ -68,8 +62,28 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: write
+    # 키 게이트.
+    #
+    # 시크릿을 워크플로 레벨 env에 두면 체크아웃과 pip install을 포함한 이 잡의
+    # 모든 스텝이 값을 들고 돈다. 그래서 값은 그것을 읽는 스텝에만 내렸는데,
+    # 아래 세 수집의 if 조건이 바로 그 워크플로 레벨 env를 읽고 있었다. 값을
+    # 내리면 조건이 빈 문자열이 되어 셋이 통째로, 그것도 조용히 스킵된다.
+    #
+    # secrets 컨텍스트는 스텝 if에서는 못 쓰지만 여기(jobs.<id>.env)서는 쓸 수
+    # 있다. 그래서 값이 아니라 "있다/없다"만 잡 레벨에 둔다. 어느 스텝에도
+    # 실리는 것은 문자열 true/false뿐이고, 게이트는 스텝 if가 읽을 수 있는
+    # env로 남는다.
+    env:
+      HAS_SUBWAY: ${{ secrets.SEOUL_OPENAPI_KEY != '' }}
+      HAS_SCHOOLS: ${{ secrets.MOLIT_SERVICE_KEY != '' }}
+      HAS_GEO: ${{ secrets.JUSO_CONFM_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 이 잡은 git push를 안 한다. gh는 스텝마다 명시한 GH_TOKEN으로
+          # 돈다. 기본값 true면 쓰기 토큰이 .git/config에 남아 이후 모든
+          # 스텝이 읽을 수 있으므로, 시크릿을 스텝으로 내린 이득이 상쇄된다.
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -80,8 +94,13 @@ jobs:
       - run: python probe_sources.py
         if: ${{ github.event_name == 'workflow_dispatch' }}
         continue-on-error: true
+        env:
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+          JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
+          # VWorld는 해외 IP 차단을 실측하고 폐기했다. 이 정찰만 후보로 두드린다.
+          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
 
-      # 키가 들어오면 여기서 바로 지하철을 굽는다. 없으면 조용히 건너뛴다.
+      # 키가 들어오면 여기서 바로 지하철을 굽는다. 없으면 건너뛰고 요약이 경고한다.
       #
       # continue-on-error가 필요한 이유: 서울 오픈API가 간헐적으로 응답하지
       # 않는다. 실측(2026-08-17)으로 ConnectTimeout 한 번에 이 잡이 2분 만에
@@ -90,34 +109,40 @@ jobs:
       # 이전 것을 쓰고 넘어가는 것이 맞다.
       - name: 지하철역 수집 (SEOUL_OPENAPI_KEY 있을 때만)
         id: subway
-        if: ${{ env.SEOUL_OPENAPI_KEY != '' }}
+        if: env.HAS_SUBWAY == 'true'
         continue-on-error: true
         run: |
           python collect_subway.py --out subway.json
           gh release upload data-latest subway.json --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEOUL_OPENAPI_KEY: ${{ secrets.SEOUL_OPENAPI_KEY }}
 
       # 학교 위치. 실거래가와 같은 계정 키지만 활용신청은 데이터셋마다 따로라,
       # 신청 전에는 여기서 오류가 난다. 승인되면 다음 실행부터 조용히 켜진다.
       - name: 학교 위치 수집 (MOLIT_SERVICE_KEY 있을 때만)
         id: schools
-        if: ${{ env.MOLIT_SERVICE_KEY != '' }}
+        if: env.HAS_SCHOOLS == 'true'
         continue-on-error: true
         run: |
           python collect_schools.py --out schools.json
           gh release upload data-latest schools.json --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+          JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
+          JUSO_SEARCH_KEY: ${{ secrets.JUSO_SEARCH_KEY }}
 
       # 지오코딩은 48,226건이라 하루에 다 못 받을 수 있다. 진행분을 릴리스에 남겨
       # 다음 실행이 이어받는다. 건축물대장과 같은 방식이다.
       - name: 좌표 수집 (JUSO_CONFM_KEY 있을 때만)
         id: geo
-        if: ${{ env.JUSO_CONFM_KEY != '' }}
+        if: env.HAS_GEO == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JUSO_CONFM_KEY: ${{ secrets.JUSO_CONFM_KEY }}
+          JUSO_SEARCH_KEY: ${{ secrets.JUSO_SEARCH_KEY }}
         run: |
           gh release download data-latest --pattern 'units.tar.gz' --clobber
           mkdir -p units && tar -xzf units.tar.gz -C units
@@ -178,7 +203,7 @@ jobs:
         run: python collect_dem.py --db geo.sqlite --subway subway.json
 
       - name: 좌표 진행분 발행
-        if: ${{ always() && env.JUSO_CONFM_KEY != '' && hashFiles('geo.sqlite') != '' }}
+        if: ${{ always() && hashFiles('geo.sqlite') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -228,6 +253,18 @@ jobs:
           GEO: ${{ steps.geo.outcome }}
         run: |
           echo "지하철 ${SUBWAY:-미실행} · 학교 ${SCHOOLS:-미실행} · 좌표 ${GEO:-미실행}"
+          # 키가 없어 건너뛴 것은 outcome이 skipped라 아래 failure 판정에 안
+          # 걸린다. 여기서 따로 잡지 않으면 그 회차가 조용히 초록으로 끝난다.
+          if [ "$HAS_SUBWAY" != true ]; then
+            echo "::warning::SEOUL_OPENAPI_KEY가 없어 지하철역 수집을 건너뛰었습니다. 이전 자료를 그대로 씁니다."
+          fi
+          if [ "$HAS_SCHOOLS" != true ]; then
+            echo "::warning::MOLIT_SERVICE_KEY가 없어 학교 위치 수집을 건너뛰었습니다. 이전 자료를 그대로 씁니다."
+          fi
+          if [ "$HAS_GEO" != true ]; then
+            echo "::error::JUSO_CONFM_KEY가 없어 좌표 수집을 건너뛰었습니다. 새 지번이 지도·통근·학교·지형에서 계속 빕니다."
+            exit 1
+          fi
           if [ "$SUBWAY" = failure ]; then
             echo "::warning::지하철역 수집이 실패했습니다. 이전 자료를 그대로 씁니다."
           fi
