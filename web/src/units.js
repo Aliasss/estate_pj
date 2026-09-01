@@ -904,3 +904,30 @@ export function bldgLate(at, remaining, now = new Date()) {
   const days = kstDayNo(now.getTime()) - kstDayNo(got.getTime())
   return days >= 2 ? { days, got } : null
 }
+
+/**
+ * 전량 스냅숏 자료원(지하철·학교)이 며칠째 멈춰 있으면 {days, got}, 아니면 null.
+ *
+ * 잔여를 안 본다. bldgLate가 잔여를 요구하는 이유는 하나뿐이다. 이어받는 수집은
+ * 완주하면 시각이 안 움직여, 다 받은 날부터 없는 장애를 영구히 알리게 된다.
+ * 이 둘에는 그 실패 양식이 아예 없다. collect_subway와 collect_schools는 매
+ * 회차 파일 전체를 새로 굽고 저장 직전에 at을 찍으므로, 내용이 하나도 안 바뀐
+ * 회차에도 날짜가 움직인다. 날짜가 안 움직였다는 것은 회차가 안 돌았거나
+ * 실패했다는 뜻 하나다. 그래서 날짜만으로 확정된다.
+ *
+ * 초안은 정반대로 짰다. 이 둘은 "남은 것이라는 개념이 없어 판정할 근거가
+ * 없다"며 침묵시키고, 정작 완주하면 시각이 멈추는 좌표에만 판정을 붙였다.
+ * 리뷰 둘이 같은 자리를 짚었다. 근거가 가장 확실한 쪽을 침묵시키고 가장
+ * 불확실한 쪽에 단언을 붙인 것이었다.
+ *
+ * 임계는 아흐레다. sources.yml 크론이 주간(수 04:17 UTC)이라 이레는 정상이고,
+ * 이틀은 크론 지각과 회차 자체가 350분까지 도는 것을 덮는다. 이 값이 화면까지
+ * 가는 통로가 units/index.json 하나뿐이라 엄밀히는 "반영된 마지막 회차"를
+ * 재는 것이고, 그래서 놓친 예정 시각(due)은 안 짚는다. bldgLate와 같은 규율이다.
+ */
+export function snapshotLate(at, now = new Date()) {
+  const got = parseIso(at)
+  if (!got) return null
+  const days = kstDayNo(now.getTime()) - kstDayNo(got.getTime())
+  return days >= 9 ? { days, got } : null
+}

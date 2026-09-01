@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInsights } from './Insight.jsx'
-import { bldgAt, bldgLate, collectLate, kstDay } from './units.js'
+import { bldgAt, bldgLate, collectLate, kstDay, snapshotLate } from './units.js'
 import { fdTrack } from './fakedoor.js'
 import { RPT_ITEMS, RPT_ITEM_BLDG } from './UnitLookup.jsx'
 
@@ -103,10 +103,25 @@ function PkgPlan() {
 
 export default function About({ onBack }) {
   const { data, err } = useInsights()
-  // 시의성 표에 지연을 적기 위한 두 값. 파이프라인이 둘이라 각자 잰다.
+  // 시의성 표에 날짜와 지연을 적기 위한 값들. 파이프라인마다 주기가 달라
+  // 각자 잰다. bldgAt은 기기 시계가 앞선 경우를 막는 가드라 누적 수집 넷 모두
+  // 그것을 통과시킨다. 이름이 대장에서 왔을 뿐 하는 일은 같다.
   const rtLate = collectLate(data?.generatedAt)
   const bldgStale = bldgLate(data?.bldg?.at, data?.bldg?.remaining)
   const bldgDay = bldgAt(data?.bldg?.at)
+  const geoDay = bldgAt(data?.geo?.at)
+  const subwayDay = bldgAt(data?.subway?.at)
+  const schoolsDay = bldgAt(data?.schools?.at)
+  // 표가 읽는 자리를 한 곳으로 모은다. 행마다 삼항을 늘리면 다음 자료원을
+  // 붙일 때 날짜와 지연을 서로 다른 행에 잘못 매다는 사고가 난다.
+  const asofDay = { bldg: bldgDay, geo: geoDay, subway: subwayDay, schools: schoolsDay }
+  // 좌표는 날짜만 낸다. 잔여를 잴 값이 아직 없어서다. 초안은 nearest.miss를
+  // 잔여로 썼는데 그것은 좌표와 무관한 "역이 먼 물건"을 64% 섞어 세고 0이
+  // 될 수도 없었다. 못 재는 것을 재는 척하느니 말하지 않는다.
+  const asofStale = {
+    rt: rtLate, bldg: bldgStale,
+    subway: snapshotLate(data?.subway?.at), schools: snapshotLate(data?.schools?.at),
+  }
 
   return (
     <>
@@ -182,12 +197,13 @@ export default function About({ onBack }) {
               </thead>
               <tbody>
                 {data.freshness.map((f) => {
-                  // 대장은 월 단위 asof가 없다. 이어받는 누적 수집이라
-                  // "어디까지"에 해당하는 값이 수집한 날짜다. 날짜가 없으면
-                  // 붙임표가 아니라 공백이다. 이 표의 다른 asof 없는 행(지형·
-                  // 지하철)이 공백이라, 한 표 안에 빈 값 표기가 둘이 되면 안 된다.
-                  const at = f.key === 'bldg' ? (bldgDay ? kstDay(bldgDay) : '') : f.asof
-                  const stale = f.key === 'rt' ? rtLate : f.key === 'bldg' ? bldgStale : null
+                  // 대장·좌표·지하철·학교는 월 단위 asof가 없다. 이어받는
+                  // 누적 수집이라 "어디까지"에 해당하는 값이 수집한 날짜다.
+                  // 날짜가 없으면 붙임표가 아니라 공백이다. 아직 새 수집기가
+                  // 한 번도 안 돈 자료원이 그렇고, 그때는 아무 말도 하지 않는다.
+                  const day = asofDay[f.key]
+                  const at = f.key in asofDay ? (day ? kstDay(day) : '') : f.asof
+                  const stale = asofStale[f.key] ?? null
                   return (
                     <tr key={f.key}>
                       <td>{f.name}</td>

@@ -207,6 +207,11 @@ async function buildInsights(tier1) {
       asof: tier1.months.at(-1), solid: lastSolid, note: `확정 구간 ~${lastSolid}, 이후는 잠정`,
     })
   }
+  // 백분율은 정확히 전부일 때만 100으로 적는다. Math.round는 99.77%를 100%로
+  // 올리는데, 그 0.23%가 좌표 없는 748개 물건이고 그 물건은 화면에서 역·학교·
+  // 지형 네 줄이 통째로 사라진 채 뜬다. 표가 100%라고 말하면 사용자는 그 결측을
+  // "우리 동네에 학교가 없나 보다"로 읽는다. 올림으로 빵꾸를 덮지 않는다.
+  const pct = (num, den) => (num >= den ? 100 : Math.min(99, Math.round((num / Math.max(den, 1)) * 100)))
   const readJson = async (p) => {
     try { return JSON.parse(await readFile(p, 'utf8')) } catch { return null }
   }
@@ -217,6 +222,12 @@ async function buildInsights(tier1) {
   // 없어서 undefined로 온다. 그때 화면은 아무 말도 하지 않는다.
   const uidx = await readJson(path.join(outDir, 'units', 'index.json'))
   out.bldg = { at: uidx?.bldg_at ?? null, remaining: uidx?.bldg_remaining ?? null }
+  // 좌표·지하철·학교의 수집 시점. 대장과 같은 자리에서 같은 이유로 꺼낸다.
+  // 날짜와 지연 판정이 한 출처에서 나와야 "기준일은 없는데 12일째"처럼
+  // 자기모순을 안 낸다. 옛 아카이브에는 없어서 null로 온다.
+  out.geo = { at: uidx?.geo_at ?? null }
+  out.subway = { at: uidx?.subway_at ?? null }
+  out.schools = { at: uidx?.sch_at ?? null }
   if (fin11) {
     const n = (fin11.n ?? 0) + (fin41?.n ?? 0)
     // 두 산출물의 확정월이 갈리면 화면마다 다른 달을 말하게 된다. 빌드에서 알린다.
@@ -243,7 +254,7 @@ async function buildInsights(tier1) {
       // 서로 다른 출처에서 읽게 되어, 둘이 어긋나는 날 "기준일은 없는데
       // 12일째"처럼 자기모순을 낸다(QA).
       asof: null,
-      note: `건물의 약 ${Math.round((elvt / Math.max(n, 1)) * 100)}%에 결합(근사치, 누적 수집 중)`,
+      note: `건물의 약 ${pct(elvt, n)}%에 결합(근사치, 누적 수집 중)`,
     })
     // 좌표 커버리지: lat 열이 붙은 비율. 지형(표고·경사)은 좌표 있는 지번에 함께 결합된다.
     let geo = 0
@@ -252,14 +263,43 @@ async function buildInsights(tier1) {
       if (col.lat) geo += col.lat.filter((v) => v != null).length
     }
     out.freshness.push({
-      key: 'geo', name: '도로명주소 좌표 · NASA SRTM 지형', cycle: '수시 수집 · 재계산 때 반영',
-      asof: null, note: `건물의 약 ${Math.round((geo / Math.max(n, 1)) * 100)}%에 좌표·표고·경사 결합`,
+      key: 'geo', name: '도로명주소 좌표 · NASA SRTM 지형', cycle: '이어받는 누적 수집 · 받는 대로 반영',
+      // asof는 비운다. 월 단위 자료가 아니라 누적 수집이고, 그 시점은 out.geo
+      // 한 곳에만 둔다(대장과 같은 이유).
+      asof: null, note: `건물의 약 ${pct(geo, n)}%에 좌표·표고·경사 결합`,
     })
+    // 학교는 이 표에 행 자체가 없었다. 자산이 릴리스에 생긴 뒤에도 화면은
+    // 그것을 모르고 있었고, 사용자는 "내 물건만 학교가 없나"와 "서비스에
+    // 학교가 통째로 없나"를 구분할 수 없었다. 조인된 물건이 있을 때만 낸다.
+    // 없는 자료의 행을 만들어 두면 그 자체가 또 다른 거짓이다.
+    // 학교 행은 수집 시각이 실제로 있을 때만 낸다. sch_hit만 보고 내면, 아직
+    // 새 수집기가 한 번도 안 돈 동안 "어디까지"가 빈 행이 새로 하나 생긴다.
+    // 이 변경이 없애려던 것이 바로 그 영구 공백 칸이다.
+    //
+    // 숫자는 결합률이 아니라 원천 개수를 적는다. 초안은 sch_hit을 물건 수로
+    // 나눴는데, sch_hit은 "학교가 붙은 물건"이 아니라 "반경을 세어 본 물건"이라
+    // (counts는 학교가 0개여도 hit을 올린다) 실제로는 좌표 보유율이다. 그래서
+    // 바로 윗줄 좌표 행과 글자 그대로 같은 숫자가 두 번 적혔다(둘 다 326,181).
+    // 그 값은 schools.json이 3년 전 것이어도, 초등학교만 들어 있어도 똑같이
+    // 100%라, 이 행을 만든 이유(학교 자료 자체의 상태를 말한다)를 못 지킨다.
+    // 원천을 적으면 자료가 반만 온 회차에 숫자가 반으로 준다.
+    if (uidx?.sch_at && uidx?.sch_src) {
+      const src = uidx.sch_src
+      const emh = (src.e ?? 0) + (src.m ?? 0) + (src.h ?? 0)
+      // 미수집 레벨은 index.json에 키가 아예 없다. 없는 것을 0으로 적으면
+      // "대학이 한 곳도 없다"는 거짓이 되므로 그 말 자체를 안 한다.
+      const univ = src.u == null ? '' : ` · 대학 ${src.u.toLocaleString()}곳`
+      out.freshness.push({
+        key: 'schools', name: '공공데이터포털 학교·대학 위치 표준데이터',
+        cycle: '받는 대로 반영', asof: null,
+        note: `초·중·고 ${emh.toLocaleString()}곳${univ} · 반경 안의 수를 셉니다`,
+      })
+    }
   }
   const subway = await readJson(path.join(outDir, 'subway.json'))
   if (subway?.stations?.length) {
     out.freshness.push({
-      key: 'subway', name: '서울 열린데이터광장 지하철역', cycle: '수시 갱신',
+      key: 'subway', name: '서울 열린데이터광장 지하철역', cycle: '받는 대로 반영',
       asof: null, note: `역 ${subway.stations.length}개 좌표 · 가까운 역과 도보 환산에 사용`,
     })
   }

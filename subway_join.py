@@ -44,6 +44,8 @@ class Stations:
         with open(subway_path, encoding="utf-8") as fh:
             data = json.load(fh)
         self.names = data["stations"]
+        # 옛 자산에는 없다. 그때 None이고 화면은 아무 말도 하지 않는다.
+        self.at = data.get("at")
         self.coords = data["coords"]
         self.grid: dict[tuple[int, int], list[int]] = {}
         for i, (lat, lon) in enumerate(self.coords):
@@ -65,15 +67,55 @@ def walk_minutes(meters: float) -> int:
     return max(1, round(meters * DETOUR / WALK_SPEED))
 
 
+def coords_at(db_path: str) -> str | None:
+    """좌표를 마지막으로 받은 시각. bldg_join.state와 같은 규율이다.
+
+    error 행은 뺀다. 키가 죽었거나 망이 막혀 전부 실패한 회차도 coords에 행을
+    남기는데, 그 시각을 집으면 한 건도 못 받은 상태에서 화면이 "9월 1일까지
+    받았습니다"라고 단언한다. notfound는 남긴다. 그건 정말 받아서 "이 주소에는
+    좌표가 없다"를 확인한 것이고, 다음 회차 계획에서 그 지번을 빼는 근거이기도
+    하다(geocode.py의 done 질의가 같은 기준을 쓴다).
+
+    잡는 예외는 OperationalError가 아니라 sqlite3.Error다. connect는 파일이
+    DB가 아니어도 성공하고 첫 질의에서 DatabaseError가 나는데, 그건
+    OperationalError의 상위라 좁게 잡으면 안 걸린다.
+
+    다만 이 catch가 막는 것은 "coords 표가 아직 없는 DB"까지다. 손상된 파일은
+    바로 아래 Nearest.__init__의 본 질의가 감싸지 않은 채 다시 읽으므로 거기서
+    그대로 죽는다. 초안 주석이 "재조인 전체를 죽이는 것을 막는다"고 썼는데
+    과장이었다. 그 방어를 정말 하려면 본 질의도 Terrain처럼 감싸야 하고, 그건
+    "좌표 0개인 units를 발행 가드에 맡긴다"는 다른 판단이라 여기서 같이 하지
+    않는다.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+    except sqlite3.Error:
+        return None
+    try:
+        return conn.execute(
+            "SELECT MAX(fetched_at) FROM coords WHERE status <> 'error'").fetchone()[0]
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
 class Nearest:
     """지번으로 (역 번호, 도보 분)을 꺼낸다. 좌표가 없으면 빈 값."""
 
     def __init__(self, geo_db: str | None, subway_path: str | None):
         self.ready = bool(geo_db and subway_path)
         self.hit = self.miss = self.far = 0
+        # 좌표 수집 시각은 지하철 자료와 무관하다. ready 뒤에 두면, subway.json을
+        # 못 구해 파일을 지운 회차에 화면의 좌표 기준일이 통째로 사라진다. 그
+        # 경로는 sources.yml에 실재한다("맞추지 못하면 파일을 지워 역 표고
+        # 계산을 건너뛴다"). 좌표는 그때도 멀쩡히 받은 것이므로 먼저 잰다.
+        self.at = coords_at(geo_db) if geo_db else None
+        self.sub_at = None
         if not self.ready:
             return
         self.stations = Stations(subway_path)
+        self.sub_at = self.stations.at
         conn = sqlite3.connect(geo_db)
         self.coords = {
             (lawd, umd, jibun): (lat, lon)

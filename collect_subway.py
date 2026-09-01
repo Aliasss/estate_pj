@@ -27,6 +27,7 @@ import math
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from collections import defaultdict
 
 import requests
@@ -271,6 +272,25 @@ def main() -> int:
 
     data = build(fetch_all(key, MASTER), fetch_all(key, LINES))
     sanity(data)
+
+    # 절단 가드. 초안은 "sanity를 통과한 뒤 찍는다"고 적었는데 거짓이었다.
+    # sanity()는 print만 하고 아무것도 막지 않는다(collect_schools에는 진짜
+    # 가드가 있어서 그쪽과 헷갈렸다). 그래서 fetch_all이 둘째 페이지에서 빈
+    # 배열을 받아 부분 수집을 조용히 성공으로 반환하면, 역 50개짜리 파일이
+    # 새 시각을 달고 저장되고 같은 스텝의 gh release upload까지 간다. 시각을
+    # 붙이는 이번 변경이 그 사고를 "방금 받았습니다"라는 거짓말로 키운다.
+    #
+    # 하한은 500이다. sources.yml이 릴리스 파일을 되맞출 때 쓰는 절단 감지선과
+    # 같은 값이고, 현재 654역이라 여유가 있다. 여기서 막으면 릴리스가 옛
+    # 파일을 그대로 유지하므로 잃는 것이 없다.
+    if len(data["stations"]) < 500:
+        raise RuntimeError(
+            f"역이 {len(data['stations'])}개뿐입니다(하한 500) — 절단 의심, 저장하지 않습니다")
+
+    # 이 자산이 언제 것인지 화면이 말할 수 있게 시각을 싣는다. 가드를 통과한
+    # 뒤, 저장 직전에 찍는다. 파일 전체를 매 회차 새로 쓰므로 이 값이 곧
+    # 수집 시각이고, 그래서 화면이 날짜만으로 지연을 판정할 수 있다.
+    data["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:

@@ -28,6 +28,7 @@ import os
 import sys
 import time
 import urllib.parse
+from datetime import datetime, timezone
 
 import requests
 
@@ -301,8 +302,11 @@ def main() -> int:
         # 전국 초등 6천·중 3천·고 2천이 상식선이다. 절반도 안 오면 절단이다.
         raise RuntimeError("초중등 개수가 상식선의 절반 미만 — 절단 의심, 저장하지 않습니다")
 
+    # 절단 가드를 통과한 뒤에 찍는다(collect_subway와 같은 규율).
+    at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with open(args.out, "w", encoding="utf-8") as fh:
-        json.dump({"schools": coords}, fh, ensure_ascii=False, separators=(",", ":"))
+        json.dump({"schools": coords, "at": at}, fh, ensure_ascii=False,
+                  separators=(",", ":"))
     print(f"{args.out}  {os.path.getsize(args.out) / 1e3:.0f}KB")
     return 0
 

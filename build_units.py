@@ -439,9 +439,30 @@ def build(conn: sqlite3.Connection, out_dir: str, registry: Registry,
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         # bldg_at / bldg_remaining은 화면이 대장 갱신일과 지연을 말하는 근거다.
         # bldg_rows와 달리 재조인 판단에는 안 쓴다(bldg_join.state 주석 참고).
+        #
+        # geo_at / subway_at / sch_at도 같은 목적이다. 이 셋이 없던 동안 화면의
+        # 시의성 표는 좌표와 지하철 행의 "어디까지" 칸을 영구히 비워 뒀고 학교는
+        # 행 자체가 없었다. 그래서 8/23부터 9/1까지 좌표 수집이 멈춰 있어도
+        # 화면은 그 사실을 말할 수단이 없었다.
+        #
+        # 잔여는 안 싣는다. 초안이 nearest.miss를 좌표 잔여로 썼는데 리뷰가
+        # 반증했다. miss는 두 곳에서 오른다. 좌표가 없을 때와, 좌표는 멀쩡한데
+        # ring 안에 역이 없을 때다. 실측하면 2,095 중 1,347(64%)이 후자라
+        # 가평·연천처럼 역 없는 지역이 "좌표 미수집"으로 계상된다. 게다가
+        # notfound는 geocode의 done 질의에서 영원히 빠지므로 이 값은 구조적으로
+        # 0이 안 된다. 0을 못 만드는 잔여는 "다 받았다"를 영영 말하지 못해,
+        # 지연 경고를 끄는 가드가 죽은 코드가 된다.
+        #
+        # 진짜 잔여는 geocode.py가 bldg_meta처럼 남겨야 한다. 그 전까지 좌표는
+        # 날짜만 낸다. 날짜는 그 자체로 값이 있고, 못 재는 판정을 지어내는 것이
+        # 이 저장소에서 제일 비싼 실수다.
         json.dump({"window": [recent_start, complete_end], "gu": index,
                    "bldg_rows": registry.n, "sch_hit": schools.hit,
-                   "bldg_at": registry.at, "bldg_remaining": registry.remaining},
+                   # 미수집 레벨은 아예 키가 없다. 화면이 "대" 없이 적는다.
+                   "sch_src": schools.src,
+                   "bldg_at": registry.at, "bldg_remaining": registry.remaining,
+                   "geo_at": nearest.at,
+                   "subway_at": nearest.sub_at, "sch_at": schools.at},
                   fh, ensure_ascii=False)
 
     prefixes = sorted({lawd[:2] for lawd in by_gu})

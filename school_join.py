@@ -29,14 +29,25 @@ class Schools:
     def __init__(self, schools_path: str | None):
         self.ready = bool(schools_path)
         self.hit = 0
+        self.at = None
+        # 원천 학교 수. 화면이 학교 행에 적을 값이다. hit은 이 목적에
+        # 못 쓴다. counts()가 좌표만 있으면 학교가 0개여도 hit을 올리므로
+        # hit은 학교 자료가 아니라 좌표 보유율을 재는 값이고, 실제로
+        # 좌표 행의 숫자와 글자 그대로 같다(둘 다 326,181, QA 실측).
+        # 원천을 세면 자료가 절반만 왔을 때 화면이 그것을 말할 수 있다.
+        self.src: dict[str, int] = {}
         if not self.ready:
             return
         with open(schools_path, encoding="utf-8") as fh:
-            data = json.load(fh)["schools"]
+            doc = json.load(fh)
+        data = doc["schools"]
+        # 옛 자산에는 없다. 그때 None이고 화면은 아무 말도 하지 않는다.
+        self.at = doc.get("at")
         # None인 레벨은 "미수집"이다. 빈 격자로 만들면 모든 물건에 0을 세어
         # "없음"으로 단정하게 되므로, 레벨 자체를 빼서 그 열이 None으로 나가게 한다.
         self.levels = tuple(lv for lv in LEVELS if data.get(lv) is not None)
         self.grid: dict[str, dict[tuple[int, int], list[tuple[float, float]]]] = {}
+        self.src = {lv: len(data[lv]) for lv in self.levels}
         for level in self.levels:
             g: dict[tuple[int, int], list[tuple[float, float]]] = {}
             for lat, lon in data[level]:
