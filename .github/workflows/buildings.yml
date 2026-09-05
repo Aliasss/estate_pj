@@ -255,9 +255,18 @@ jobs:
           rm -f bjdong.prev.json
           if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name'); then
             if echo "$assets" | grep -qx 'bjdong.json'; then
-              mkdir -p prev
-              gh release download "$SNAPSHOT_TAG" --pattern 'bjdong.json' --dir prev --clobber
-              mv prev/bjdong.json bjdong.prev.json
+              # 셋 다 set -e에 노출돼 있었다. 실패하면 스텝이 죽고, 뒤 수집
+              # 스텝이 암묵 success()로 통째로 건너뛰어져 하루치 8,000지번을
+              # 잃는다. 비교용 보조 자료 때문에 치를 값이 아니다. 못 받으면
+              # "보관본 없음"으로 강등하고 수집은 그대로 간다. 바로 위에서
+              # 목록 조회 실패를 경고로 흡수하는 것과 같은 규율이다.
+              if ! { mkdir -p prev \
+                     && gh release download "$SNAPSHOT_TAG" --pattern 'bjdong.json' \
+                          --dir prev --clobber \
+                     && mv prev/bjdong.json bjdong.prev.json; }; then
+                echo "::warning::보관된 코드표를 못 받아 직전 비교를 건너뜁니다."
+                rm -f bjdong.prev.json
+              fi
             else
               echo "보관본이 아직 없습니다. 처음 도는 회차입니다."
             fi

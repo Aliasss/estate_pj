@@ -234,7 +234,13 @@ def main() -> int:
     #
     # LEGACY_LAWD는 빼고 본다. 구 재설치·신설로 갈린 시군구의 옛 코드라 공식
     # 코드표에는 원래 없고 수집 목록에만 있다. 그 둘까지 걸면 매 회차 걸린다.
-    retired = sorted(set(LAWD_CODES) - set(sgg_names) - LEGACY_LAWD)
+    #
+    # mapping도 함께 본다. sgg_names는 읍면동 코드가 000인 행에서만 채워지는데,
+    # 코드표가 어떤 시군구의 법정동 행은 주면서 시군구 행은 안 주는 경우가
+    # 있을 수 있다. 그때 sgg_names만 보면 멀쩡히 쓰이고 있는 시군구를 "빠졌다"고
+    # 판정해 매 회차 옛 표로 떨어진다. 화성 신설 4구(41591·41593·41595·41597)가
+    # 정확히 그 위험이라 리뷰가 짚었다. 둘 다에 없어야 진짜 소실이다.
+    retired = sorted(set(LAWD_CODES) - set(sgg_names) - set(mapping) - LEGACY_LAWD)
     if retired:
         names = ", ".join(f"{c} {LAWD_CODES[c]}" for c in retired)
         return _keep(prev, args.out,
