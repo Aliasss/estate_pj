@@ -11,3 +11,5 @@ web/dist/
 subway.json
 geo.sqlite
 bldg.sqlite
+bjdong.json
+bjdong.prev.json

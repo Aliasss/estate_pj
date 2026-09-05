@@ -230,14 +230,55 @@ jobs:
             echo 0 > .log_before
           fi
 
+      # 코드표를 릴리스에 보관한다. 이 파일이 조회 계획의 크기를 정하는데,
+      # 반쪽으로 온 날 그대로 쓰면 그 회차가 수천 지번을 조용히 건너뛴다.
+      # 2026-09-02 회차(run 47, 33659003895)에서 대상이 하루 만에 2,468지번
+      # 줄었다가 다음 날 정확히 되돌아왔다. 코드표가 그날만 반쪽으로 왔다고 보는
+      # 것이 가장 단순한 설명이고, 단정은 아니다(fetch_bjdong.py 머리말).
+      # 옛것을 들고 있으면 그런 날 옛것으로 버틸 수 있다.
+      #
+      # 실패해도 수집은 계속한다. 활용신청 승인이 아직이면 여기서 오류가 나고,
+      # 그때는 payload 매핑이 대비책이다. 다만 그쪽은 대상이 174,653지번으로
+      # 7,065지번 적으므로(2026-09-01 스냅숏에 targets()를 직접 돌려 잰 값,
+      # fetch_bjdong.py 주석 참고), 옛 코드표가 있으면 그것을 먼저 쓴다.
       - name: 법정동코드 공식 매핑 내려받기
         if: steps.rt.outputs.has_rt == 'true'
         env:
           MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 실패해도 수집은 계속한다. payload 매핑이 대비책이고, 활용신청 승인이
-          # 아직이면 여기서 오류가 난다. 승인되면 다음 크론부터 조용히 켜진다.
-          python fetch_bjdong.py --out bjdong.json || echo "공식 매핑 없이 진행 (payload 매핑 사용)"
+          # "에셋이 정말 없음"과 "다운로드 실패"를 구분한다. 이 파일 다른 곳
+          # 다섯 군데가 쓰는 규약이고, 그 이유는 위 진행분 복원 주석에 있다.
+          # 초안은 2>/dev/null || rm -f로 둘을 뭉갰는데, 그러면 API가 흔들린
+          # 날 비교 가드가 조용히 꺼지고 플래그 조합이 거부되면 이 기능이
+          # 배포 첫날부터 영영 무동작이면서도 로그에 한 줄도 안 남는다.
+          rm -f bjdong.prev.json
+          if assets=$(gh release view "$SNAPSHOT_TAG" --json assets --jq '.assets[].name'); then
+            if echo "$assets" | grep -qx 'bjdong.json'; then
+              mkdir -p prev
+              gh release download "$SNAPSHOT_TAG" --pattern 'bjdong.json' --dir prev --clobber
+              mv prev/bjdong.json bjdong.prev.json
+            else
+              echo "보관본이 아직 없습니다. 처음 도는 회차입니다."
+            fi
+          else
+            echo "::warning::릴리스 자산 목록을 못 읽어 직전 코드표 비교를 건너뜁니다."
+          fi
+
+          set +e
+          python fetch_bjdong.py --out bjdong.json --prev bjdong.prev.json
+          code=$?
+          set -e
+          case "$code" in
+            # 보관 실패가 수집을 죽이면 안 된다. 이 스텝은 변경 전까지 구조적으로
+            # 실패할 수 없었는데(마지막 명령이 echo였다), 업로드를 마지막에 두면
+            # bash -e에서 스텝이 실패하고 뒤 수집 스텝이 암묵 success()로 통째로
+            # 건너뛰어진다. 부가 기능의 일시 오류로 하루치 8,000지번을 잃는다.
+            0) gh release upload "$SNAPSHOT_TAG" bjdong.json --clobber \
+                 || echo "::warning::코드표 보관에 실패했습니다. 이번 회차 수집은 그대로 진행합니다." ;;
+            3) echo "직전 코드표로 진행합니다. 보관본은 그대로 둡니다." ;;
+            *) echo "공식 매핑 없이 진행 (payload 매핑 사용)"; rm -f bjdong.json ;;
+          esac
 
       - name: 건축물대장 수집
         id: collect

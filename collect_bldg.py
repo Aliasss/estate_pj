@@ -122,15 +122,25 @@ def parse_jibun(jibun: str | None) -> tuple[str, str, str] | None:
 
 
 def load_bjdong_map(path: str) -> dict[tuple[str, str], str]:
-    """fetch_bjdong.py가 만든 공식 법정동 매핑. 없으면 빈 dict로 살고 payload가 대신한다."""
+    """fetch_bjdong.py가 만든 공식 법정동 매핑. 없으면 빈 dict로 살고 payload가 대신한다.
+
+    깨진 파일도 없는 것으로 본다. 잡이 취소되거나 디스크가 차서 쓰다 만 파일이
+    남을 수 있고, 그때 여기서 예외가 나면 수집이 통째로 죽는다. payload 매핑으로
+    도는 것이 아무것도 안 받는 것보다 낫다. 호출부(buildings.yml)가 rm -f로 같은
+    일을 하지만, 그 안전장치가 워크플로에만 있으면 계약이 한쪽에만 있는 셈이다.
+    """
     if not path or not os.path.exists(path):
         return {}
-    with open(path, encoding="utf-8") as fh:
-        raw = json.load(fh)
-    out = {}
-    for lawd, umds in raw.items():
-        for name, cd in umds.items():
-            out[(lawd, name)] = cd
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        out = {}
+        for lawd, umds in raw.items():
+            for name, cd in umds.items():
+                out[(lawd, name)] = cd
+    except (OSError, ValueError, AttributeError) as exc:
+        print(f"법정동코드 매핑을 못 읽었습니다({exc}). payload 매핑으로 진행합니다.")
+        return {}
     print(f"법정동코드 공식 매핑 사용: {len(out)}개 동 ({path})")
     return out
 
