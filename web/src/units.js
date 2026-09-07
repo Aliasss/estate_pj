@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 // 판정과 금액 표기는 verdict.js에 산다. 공유 카드를 내는 서버 함수도 같은 것을
 // 써야 하는데, 이 파일은 React를 끌어오므로 순수한 쪽만 따로 뒀다.
-export { RATIO_BROKEN, eok, pct0, ratioBroken, verdict } from './verdict.js'
+export { RATIO_BROKEN, eok, pct0, pctCov, ratioBroken, verdict } from './verdict.js'
 
 /**
  * 지하철역 목록. 물건 데이터의 stn 열은 이 배열의 번호다 — 이름을 물건마다
@@ -895,6 +895,39 @@ export function bldgAt(at, now = new Date()) {
   const got = parseIso(at)
   if (!got || got.getTime() > now.getTime() + 24 * 60 * 60 * 1000) return null
   return got
+}
+
+/**
+ * 대장 수집이 어느 단계인지. 'done' | 'going' | 'unknown'.
+ *
+ * 화면 넷이 각자 remaining을 해석하고 있었고, 그중 셋은 아예 안 보고 "이어받는
+ * 중"이라고 못박아 두었다. 2026-09-06 01:14 KST에 잔여가 0이 된 뒤로 그 셋이
+ * 거짓을 말했다. 방향은 안전한 쪽이었지만(다 받은 것을 덜 받았다고 말했다)
+ * "기다리면 채워진다"는 약속이 되어, 대장이 안 붙은 물건을 가진 사용자가
+ * 오지 않을 것을 기다리게 된다.
+ *
+ * 판정을 여기 한 줄로 모은다. 임계는 bldgLate와 같은 remaining <= 0이다.
+ * null은 done도 going도 아니다. 옛 산출물이라 잔여를 모르는 것이고, 그때는
+ * 어느 쪽도 단언하지 않는다.
+ *
+ * 'done'을 실시간 판정으로 읽으면 안 된다. 여기 오는 remaining은 collect_bldg의
+ * write_remaining이 그 회차의 plan_all에 대해 센 값이고, plan_all은 그 회차가
+ * 시작할 때 실거래 DB를 읽어 세운 계획이다. 그 뒤에 실거래가 늘어 생긴 지번은
+ * 이 숫자에 안 들어간다.
+ *
+ * 크론이 그 창을 매주 연다. collect.yml은 월 21:00 UTC(화 06:00 KST)에 새
+ * 실거래를 받고 같은 잡에서 build_units를 돌리는데, build_units는 bldg_meta의
+ * remaining을 그대로 옮겨 적는다(bldg_join.state). 그 값은 월요일 22:07 회차가
+ * 쓴 0이다. 다음 대장 회차는 화요일 22:07이다. 그래서 화요일 아침부터 밤까지
+ * 약 열여섯 시간은 잔여가 0인데 한 번도 조회된 적 없는 지번이 섞여 있다.
+ *
+ * 그래서 이 판정에 기대는 화면 문장은 전부 "지난 회차까지"로 시작하고, 남은
+ * 이유를 열거할 때 "대부분" "보입니다"로 닫지 않는다. 진짜 고침은 build_units가
+ * 자기 DB로 잔여를 다시 세는 것이고, 그건 따로 한다(CTO).
+ */
+export function bldgPhase(remaining) {
+  if (remaining == null) return 'unknown'
+  return remaining <= 0 ? 'done' : 'going'
 }
 
 export function bldgLate(at, remaining, now = new Date()) {

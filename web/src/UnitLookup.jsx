@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CHECKLIST, RATIO_BROKEN, eok, latestRate, pct0, ratioBroken, useRates, verdict, ym as ymKor, useSubway } from './units.js'
+import { CHECKLIST, RATIO_BROKEN, bldgPhase, eok, latestRate, pct0, ratioBroken, useRates, verdict, ym as ymKor, useSubway } from './units.js'
 // 판정과 금액 표기는 units.js에 산다. 서버 함수(공유 카드)도 같은 것을 써야 해서
 // JSX 밖으로 옮겼다. 두 벌이 되면 화면과 공유 카드가 다른 말을 하게 된다.
 export { RATIO_BROKEN, eok, pct0, ratioBroken }
@@ -927,7 +927,7 @@ function Guard2yrOffer() {
 export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, compare, guard, pctOf }) {
   // 대장 잔여. 0이면 수집이 끝났다는 뜻이라 안 붙은 물건은 영영 안 붙는다.
   // useInsights는 모듈 프라미스라 카드마다 새로 받지 않는다.
-  const bldgDone = useInsights().data?.bldg?.remaining === 0
+  const bPhase = bldgPhase(useInsights().data?.bldg?.remaining)
   const v = verdict(u)
   const st = STAGE[u.stage] ?? STAGE.C
   const nq = placeQuery(lawd, guNames?.[lawd], u.umd, u.jibun)
@@ -969,10 +969,17 @@ export function UnitCard({ u, lawd, guNames, onClose, onMap, onSibling, rank, co
           잔여를 모르면(옛 산출물) 약속하지 않는 쪽 문장을 쓴다. */}
       {!hasBldgData(u) && (
         <p className="muted-line">
-          이 건물은 {bldgDone
-            ? <><strong>건축물대장이 붙지 않았습니다</strong>. 대장 수집은 끝났으므로
-              기다려도 채워지지 않습니다. </>
-            : <><strong>건축물대장이 아직 붙지 않아</strong> </>}
+          {/* unknown을 else로 두면 "아직"이 그대로 나간다. units.js가 "모르는 것이
+              모으는 중으로 새어 나간다"고 적어 놓고 여기서 그 누수를 그대로 두고
+              있었다(QA). "아직"은 기다리면 채워진다는 약속이고, 잔여를 모르는
+              상태에서는 할 수 없는 말이다. 세 갈래를 다 쓴다. */}
+          이 건물은 {bPhase === 'done'
+            ? <><strong>건축물대장이 붙지 않았습니다</strong>. 대장은 지난 회차까지
+              대상 지번을 다 받았고, 이 건물은 조회 결과가 비었거나 지번이 대장
+              주소로 풀리지 않은 쪽으로 보입니다. </>
+            : bPhase === 'going'
+              ? <><strong>건축물대장이 아직 붙지 않아</strong> </>
+              : <><strong>건축물대장이 붙지 않아</strong> </>}
           준공·세대수·구조·승강기·주차를 보여 드리지 못합니다. 위 판정은 실거래만으로
           낸 것이고, 건물 자체의 문제는 여기서 알 수 없습니다. 정부24에서 무료로
           발급받아 확인하실 수 있습니다.

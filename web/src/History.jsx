@@ -140,7 +140,7 @@ function HomeForm({ region, guNames, init, onSave, onCancel }) {
       approx: false,
     }))
     setQ('')
-    setNote(h.lat == null ? '이 건물은 아직 좌표가 없어 지도에는 안 나옵니다.' : '')
+    setNote(h.lat == null ? '이 건물은 좌표가 없어 지도에는 안 나옵니다.' : '')
   }
 
   const useUmd = () => {

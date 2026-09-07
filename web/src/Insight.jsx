@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react'
 import { LineChart } from './charts.jsx'
 // 갱신 시점 계산은 units.js에 산다. 확인 탭도 같은 값을 써야 두 화면이
 // 다른 날짜를 말하지 않는다.
-import { bldgAt, bldgLate, collectLate, kstDay, nextCollect, parseIso } from './units.js'
+import { bldgAt, bldgLate, bldgPhase, collectLate, kstDay, nextCollect, parseIso } from './units.js'
+
+/* 갱신 방식 문장. 잔여 단계에 따라 갈린다.
+   unknown은 옛 산출물이다. bldg_remaining이 없던 시절 index.json이 있고
+   fetch-data.mjs가 ?? null로 읽으므로 실제로 닿는다. 이분기로 두면 모르는
+   것이 "모으는 중"으로 새어 나간다. */
+const BLDG_REJOIN = {
+  done: '지난 회차까지 대상 지번을 다 받았고, 새 실거래로 지번이 늘면 그만큼 이어받아',
+  going: '이어받아 모으는 중이고, 새로 받은 것이 있으면 그 수집이 끝나는 대로',
+  unknown: '새로 받은 것이 있으면',
+}
 
 const nextLabel = () => new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long',
@@ -76,6 +86,7 @@ export default function Insight({ onGoFind }) {
   // 며칠 멈출 수 있고, 8/27과 8/28이 실제로 그랬다.
   const bAt = bldgAt(data.bldg?.at)
   const bLate = bldgLate(data.bldg?.at, data.bldg?.remaining)
+  const bPhase = bldgPhase(data.bldg?.remaining)
   const ws = cards.wolseShare
   // 헤드라인 수치는 확정월 기준이다. 잠정월 값으로 1년 증감을 말하면
   // "잠정 구간은 증감률을 내지 않는다"는 우리 약속을 첫 카드가 어긴다.
@@ -133,8 +144,19 @@ export default function Insight({ onGoFind }) {
             줄을 나눠 주어를 붙여 적는다. 대장이 없는 산출물에서는 통째로 빠진다. */}
         {bAt && (
           <p className="ins-when">
-            건축물대장은 이어받아 모으는 중입니다. 마지막으로 받은
-            것은 <b>{kstDay(bAt)}</b>
+            {/* 세 갈래 모두 주어로 시작해야 한다. unknown에서 앞 두 문장이 다
+                빠지면 문단이 "마지막으로 받은 것은 9월 6일입니다"로 시작하고,
+                바로 앞이 실거래 신고 기한 문단이라 그 날짜가 실거래 날짜로
+                읽힌다. 대장과 실거래는 날짜가 다르고 그것이 이 문단을 따로 뗀
+                이유다(CTO).
+
+                주어를 갈래 밖으로 빼는 것으로는 안 된다. 그러면 unknown이
+                "건축물대장은 마지막으로 받은 것은"이 되어 조사가 겹친다.
+                갈래마다 제 조사를 갖게 둔다. */}
+            {bPhase === 'going' && '건축물대장은 이어받아 모으는 중입니다. '}
+            {bPhase === 'done' && '건축물대장은 지난 회차까지 대상 지번을 다 받았습니다. '}
+            {bPhase === 'unknown' ? '건축물대장을 마지막으로 받은 것은 ' : '마지막으로 받은 것은 '}
+            <b>{kstDay(bAt)}</b>
             {bLate
               ? <span className="warning">이고, 그 뒤로 {bLate.days}일째 새로 받은
                   것이 없습니다. 건물 정보는 그날까지 받은 것만 보입니다</span>
@@ -290,8 +312,8 @@ export default function Insight({ onGoFind }) {
       <p className="note">
         <strong>이 숫자들은 어떻게 갱신되나.</strong> 실거래·금리·인구는 매주 화요일
         아침 자동으로 수집되고, 그때 이 화면의 실거래 지표가 같은 시점 데이터로 다시
-        계산됩니다. 건축물대장은 이어받아 모으는 중이고, 새로 받은 것이 있으면 그 수집이
-        끝나는 대로 건물 단위 판정에 다시 결합됩니다.
+        계산됩니다. 건축물대장은 {BLDG_REJOIN[bPhase]}{' '}
+        건물 단위 판정에 다시 결합됩니다.
         사람 손을 거치지 않고 고정된 방법론으로만 계산되므로, 어제와 오늘을 같은
         기준으로 비교할 수 있습니다.
       </p>

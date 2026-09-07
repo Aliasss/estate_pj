@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './MapView.jsx'
 import { NoJeonseSig, RATIO_BROKEN, UnitCard, eok, pct0, ratioTone } from './UnitLookup.jsx'
-import { DEAL_KINDS, hasDeal, htName, meters, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
+import { useInsights } from './Insight.jsx'
+import { bldgPhase, DEAL_KINDS, hasDeal, htName, meters, pctCov, REGIONS, useCompare, useFinder, useGuard, useSubway, ym } from './units.js'
 import { rowComment } from './rowcomment.js'
 
 /**
@@ -155,6 +156,13 @@ export default function Finder({ guNames, region = '11' }) {
     }
     return { coverage: e / d.n, geoCoverage: g / d.n, walkCoverage: w / d.n, dealCount: dc }
   }, [fin])
+
+  // 대장 수집 단계. 초안 주석은 "이 화면 때문에 요청이 하나 더 생기지 않는다"고
+  // 적었는데 틀렸다. 동네 살펴보기로 바로 들어와 카드를 한 번도 안 여는 사용자
+  // 에게는 이 화면이 insights.json의 최초 요청자다(전에는 UnitCard가 열릴 때
+  // 처음 받았다). 맞는 말은 이쪽이다. useInsights가 모듈 프라미스라 이 화면이
+  // 처음 받더라도 다른 화면이 다시 받지는 않는다. 6.5KB다.
+  const bPhase = bldgPhase(useInsights().data?.bldg?.remaining)
 
   // 예산 역산. "내 보증금이면 어느 동네에 안전한 선택지가 많은가"는 전 물건의
   // 위험 판정이 있어야 답할 수 있고, 매물 앱은 못 하는 방향이다. 확인된 안전 =
@@ -515,7 +523,8 @@ export default function Finder({ guNames, region = '11' }) {
             아니라 대장을 안 받아서다. 데이터가 차기 전에는 눌러서 실망할 버튼을 안 보여 준다. */}
         {coverage >= 0.3 && (
           <button className="chip" aria-pressed={needElvt} onClick={() => setNeedElvt((v) => !v)}
-                  title="건축물대장에 승강기가 등록된 물건만. 대장을 아직 안 받은 물건은 함께 걸러집니다">
+                  title={`건축물대장에 승강기가 등록된 물건만. 대장이 안 붙은 물건은 함께 걸러집니다${
+                    bPhase === 'going' ? '(아직 받는 중입니다)' : ''}`}>
             엘리베이터
           </button>
         )}
@@ -562,12 +571,25 @@ export default function Finder({ guNames, region = '11' }) {
               방금 보던 자리를 잃는다 — 지도는 위치 감각이 전부인 화면이다. */}
           <MapView points={pins} stations={stationPins} selected={picked}
                    onPick={(p) => toggle(p.i, `${col.g[p.i]}-${col.i[p.i]}`)}
-                   note={pins.length ? `좌표를 ${pct0(geoCoverage)} 확보했습니다` : '파란 점은 지하철역입니다'} />
-          {!pins.length && (
+                   note={pins.length
+                     // 대장과 같은 이유로 pctCov다. 오히려 이쪽이 더 급했다. 이 문장은
+                     // 지도 위에 붙는데, 100%라고 적힌 지도에서 목록에 있던 물건이 핀으로
+                     // 안 보이면 사용자는 그것을 결측이 아니라 필터로 읽는다(CTO).
+                     ? `좌표를 ${pctCov(geoCoverage)} 확보했습니다`
+                     : '파란 점은 지하철역입니다'} />
+          {/* 게이트가 !pins.length였다. pins는 hits에서 나오므로 조건 필터가 0건이면
+              좌표와 아무 상관 없이 이 문단이 켜졌다. 최소 전용면적에 9999를 넣으면
+              바로 나온다(QA). 그때 화면은 "205,034건의 주소를 좌표로 바꾸는 작업이
+              남았습니다"라고 하는데, 실측 좌표 결측은 서울 322개 경기 408개뿐이고
+              바로 아래 줄이 이미 "조건에 맞는 물건이 없습니다"라고 진짜 원인을
+              말하고 있었다. 한 화면에서 두 문장이 부딪혔다.
+
+              걸린 물건은 있는데 그중 좌표 있는 것이 하나도 없을 때만 켠다. 수도
+              d.n이 아니라 실제로 걸린 수를 적는다. */}
+          {hits.length > 0 && !pins.length && (
             <p className="warnline">
-              <strong>물건은 아직 지도에 없습니다.</strong> 주소를 좌표로 바꾸는 작업이
-              남았습니다 ({d.n.toLocaleString()}건). 파란 점은 지하철역이고, 좌표가 붙으면
-              조건에 맞는 물건이 그 위에 뜹니다.
+              <strong>조건에 맞는 물건이 지도에는 안 뜹니다.</strong> 걸린 {hits.length.toLocaleString()}건에
+              좌표가 아직 없습니다. 파란 점은 지하철역이고, 목록 보기에서는 그대로 보실 수 있습니다.
             </p>
           )}
           {open && (
@@ -645,9 +667,12 @@ export default function Finder({ guNames, region = '11' }) {
       )}
 
       <p className="warnline">
-        <strong>건축물대장은 {pct0(coverage)} 받았습니다.</strong> 승강기·세대수·준공연도·층간소음 추정은
-        대장이 붙은 물건에서만 보입니다. 하루 1만 건 한도로 나눠 이어받는 중이라 전체를
-        채우는 데 시간이 걸립니다.
+        {/* pct0은 99.72%를 100%로 올린다. 그러면 대장이 안 붙은 물건이 이 문장에서
+            사라지는데, 바로 아래에서 그 물건 이야기를 하고 있다. pctCov를 쓴다. */}
+        <strong>건축물대장은 이 지역 물건의 {pctCov(coverage)}에 붙었습니다.</strong> 승강기·세대수·준공연도·층간소음
+        추정은 대장이 붙은 물건에서만 보입니다.
+        {bPhase === 'going' && ' 하루 1만 건 한도로 나눠 이어받는 중이라 전체를 채우는 데 시간이 걸립니다.'}
+        {bPhase === 'done' && ' 지난 회차까지 조회할 지번은 다 조회했으므로, 안 붙은 나머지는 조회 결과가 비었거나 지번이 대장 주소로 풀리지 않은 물건이 대부분입니다.'}
         {commute && walkCoverage > 0 && (
           <>
             <br /><br />
